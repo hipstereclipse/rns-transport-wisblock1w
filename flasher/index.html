@@ -1060,9 +1060,12 @@ let autoRefreshTimer = null;
 let snapshotInFlight = false;
 let serialCommandQueue = Promise.resolve();
 let serialCooldownUntil = 0;
+let serialSessionId = 0;
+let lastSnapshotAt = 0;
 
 const SERIAL_CMD_GAP_MS = 90;
 const SERIAL_BOOT_GRACE_MS = 2200;
+const SNAPSHOT_MIN_INTERVAL_MS = 3000;
 
 const linkVerifyState = {
   running: false,
@@ -1980,9 +1983,12 @@ function feedStatusParser(text) {
   for (const line of lines) parseStatusLine(line);
 }
 
-async function refreshRepeaterSnapshot() {
+async function refreshRepeaterSnapshot(force = false) {
   if (!writer || snapshotInFlight) return;
+  const now = Date.now();
+  if (!force && (now - lastSnapshotAt) < SNAPSHOT_MIN_INTERVAL_MS) return;
   snapshotInFlight = true;
+  lastSnapshotAt = now;
   try {
     repeaterState.routeCount = '0';
     detectedNodes.clear();
@@ -2279,8 +2285,10 @@ async function openSelectedPort(selectedPort) {
   const enc = new TextEncoderStream();
   enc.readable.pipeTo(port.writable);
   writer = enc.writable.getWriter();
+  serialSessionId++;
   serialCommandQueue = Promise.resolve();
   serialCooldownUntil = Date.now() + SERIAL_BOOT_GRACE_MS;
+  lastSnapshotAt = 0;
 
   looping = true;
   readLoop();
@@ -2383,6 +2391,8 @@ async function doDisconnect(opts = {}) {
 
   try {
     if (manual) userRequestedDisconnect = true;
+    serialSessionId++;
+    serialCommandQueue = Promise.resolve();
 
     looping = false;
     stopAutoRefresh();
@@ -3037,17 +3047,20 @@ function saveLog() {
 async function sendCmd(cmd, opts = {}) {
   const { quiet = false, bypassCooldown = false } = opts;
   if (!writer) return false;
+  const queuedSessionId = serialSessionId;
 
   const safeCmd = typeof cmd === 'string' ? cmd.trim() : '';
   const line = safeCmd ? `${safeCmd}\r\n` : '\r\n';
 
   const queued = serialCommandQueue.then(async () => {
-    if (!writer) return false;
+    if (!writer || !connected || queuedSessionId !== serialSessionId) return false;
 
     if (!bypassCooldown) {
       const waitMs = serialCooldownUntil - Date.now();
       if (waitMs > 0) await sleep(waitMs);
     }
+
+    if (!writer || !connected || queuedSessionId !== serialSessionId) return false;
 
     if (!quiet && safeCmd) appendConsole('tx', `> ${safeCmd}\n`);
     await writer.write(line);
