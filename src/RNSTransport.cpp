@@ -91,7 +91,21 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 
-    if (radio->transmit(outBuf, outLen)) {
+    int8_t originalTx = radio->curTxDbm;
+    int8_t announceTx = (originalTx > LORA_TX_DBM_ANNOUNCE_SAFE)
+        ? LORA_TX_DBM_ANNOUNCE_SAFE
+        : originalTx;
+    if (announceTx != originalTx) {
+        radio->setTxPower(announceTx);
+    }
+
+    bool ok = radio->transmit(outBuf, outLen);
+
+    if (announceTx != originalTx) {
+        radio->setTxPower(originalTx);
+    }
+
+    if (ok) {
         stats.txPackets++;
         return true;
     }

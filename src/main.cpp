@@ -93,7 +93,7 @@ enum MorseBlinkMode : uint8_t {
 };
 
 struct MorseBlinkConfigState {
-    uint8_t mode = MORSE_MODE_ERRORS;
+    uint8_t mode = MORSE_MODE_OFF;
     char defaultMessage[17] = "SOS";
 };
 
@@ -333,7 +333,25 @@ static const char* morseMessageForError() {
     return (morseCfg.mode == MORSE_MODE_DEFAULT) ? morseCfg.defaultMessage : "ERR";
 }
 
+static void clearMorsePlaybackQueue() {
+    morsePlaybackActive = false;
+    morseStepCount = 0;
+    morseStepIndex = 0;
+    morseStepUntil = 0;
+    morseQueueHead = 0;
+    morseQueueTail = 0;
+    morseQueueCount = 0;
+    digitalWrite(PIN_LED_BLUE, LOW);
+}
+
 static void updateMorseBlinkPlayback(uint32_t now) {
+    if (morseCfg.mode == MORSE_MODE_OFF) {
+        if (morsePlaybackActive || morseQueueCount > 0) {
+            clearMorsePlaybackQueue();
+        }
+        return;
+    }
+
     if (!morsePlaybackActive) {
         if (morseQueueCount == 0) return;
         char msg[17] = {0};
@@ -493,6 +511,9 @@ void RNSConsole::cmdMorse(const char* args) {
             return;
         }
         morseCfg.mode = mode;
+        if (morseCfg.mode == MORSE_MODE_OFF) {
+            clearMorsePlaybackQueue();
+        }
         io->print(F("Morse mode -> ")); io->println(morseModeName(morseCfg.mode));
         io->println(F("Tip: run 'save' to persist."));
         return;

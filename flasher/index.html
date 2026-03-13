@@ -732,6 +732,9 @@
           <div class="status-item"><span class="status-k">Announce capability</span><span class="status-v dim" id="stAnnounce">manual + periodic</span></div>
           <div class="status-item"><span class="status-k">Last refresh</span><span class="status-v dim" id="stRefresh">—</span></div>
         </div>
+        <div class="repeater-panel-foot" style="margin-top:0.55rem;">Detected nodes (from routing table):</div>
+        <div id="detectedNodesList" style="display:grid;gap:0.3rem;"></div>
+        <div class="repeater-panel-foot" id="detectedNodesEmpty">No nodes detected yet.</div>
       </div>
 
       <div class="repeater-block">
@@ -1060,6 +1063,8 @@ const linkVerifyState = {
   announceSeen: false,
   announceFailed: false,
 };
+
+const detectedNodes = new Map();
 
 const repeaterState = {
   firmware: '—',
@@ -1729,7 +1734,45 @@ function updateStatusUi() {
     repName.value = repeaterState.name;
   }
 
+  updateDetectedNodesUi();
   loadSettingsFromStatus(true);
+}
+
+function updateDetectedNodesUi() {
+  const listEl = document.getElementById('detectedNodesList');
+  const emptyEl = document.getElementById('detectedNodesEmpty');
+  if (!listEl || !emptyEl) return;
+
+  listEl.innerHTML = '';
+  const nodes = Array.from(detectedNodes.values()).sort((a, b) => {
+    if (a.hops !== b.hops) return a.hops - b.hops;
+    return a.destHash.localeCompare(b.destHash);
+  });
+
+  if (!nodes.length) {
+    emptyEl.style.display = '';
+    emptyEl.textContent = 'No nodes detected yet.';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  for (const node of nodes) {
+    const row = document.createElement('div');
+    row.className = 'status-item';
+    row.style.margin = '0';
+
+    const key = document.createElement('span');
+    key.className = 'status-k';
+    key.textContent = node.destHash;
+
+    const val = document.createElement('span');
+    val.className = 'status-v';
+    val.textContent = `hops ${node.hops} · age ${node.age}s`;
+
+    row.appendChild(key);
+    row.appendChild(val);
+    listEl.appendChild(row);
+  }
 }
 
 function numberFromText(text) {
@@ -1850,6 +1893,25 @@ function parseStatusLine(line) {
   const t = line.trim();
   if (!t) return;
 
+  const routeMatch = t.match(/^([0-9A-Fa-f]{16})\.\.\s+(\d+)\s+(\d+)$/);
+  if (routeMatch) {
+    const destHash = routeMatch[1].toUpperCase();
+    const hops = Number(routeMatch[2]);
+    const age = Number(routeMatch[3]);
+    if (Number.isFinite(hops) && Number.isFinite(age)) {
+      detectedNodes.set(destHash, { destHash, hops, age });
+      repeaterState.routeCount = String(detectedNodes.size);
+      updateDetectedNodesUi();
+    }
+    return;
+  }
+
+  if (t === '(empty)') {
+    detectedNodes.clear();
+    repeaterState.routeCount = '0';
+    updateDetectedNodesUi();
+  }
+
   if (/^RNS Transport Node v/i.test(t)) repeaterState.firmware = t.replace(/^RNS Transport Node v/i, 'v');
   if (/^RatTunnel\s+V\./i.test(t)) repeaterState.firmware = t;
   if (/^Build:/i.test(t)) repeaterState.build = t.split(':').slice(1).join(':').trim();
@@ -1915,6 +1977,8 @@ function feedStatusParser(text) {
 async function refreshRepeaterSnapshot() {
   if (!writer) return;
   repeaterState.routeCount = '0';
+  detectedNodes.clear();
+  updateDetectedNodesUi();
   await sendCmd('version');
   await sleep(120);
   await sendCmd('status');

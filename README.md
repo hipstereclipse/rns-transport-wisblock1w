@@ -97,6 +97,7 @@ After serial connect and repeater detection, switch to **Repeater mode** to use 
 - Use `Apply + Save` to write settings and persist in one step
 - Use `Announce now` to immediately test visibility from peers
 - Use `Verify Link` to run `radio`, `status`, and `announce` in one click with pass/fail hints
+- Repeater mode now shows a **Detected nodes** area populated from live routing table entries
 
 ### Browser/API requirements
 
@@ -158,6 +159,7 @@ Once a release exists with valid assets, the web flasher will list it automatica
 - Fast path: apply one-shot preset with `profile rnode-eu`, `profile rnode-us`, or `profile ratspeak-us`
 - Set values as needed, for example: `set freq 915`, `set sf 9`, `set bw 125`, `set cr 5`, `set txpower 17`, `set syncword 0x12`, `set preamble 18`
 - If `announce` causes reconnect/reboot, lower TX power first (17 dBm or less) and ensure stable USB power/cable
+- `announce` now transmits with a temporary safe TX cap to reduce brownout-triggered resets, then restores configured TX power
 - Run `save` to persist settings, then `announce` to broadcast immediately
 
 ### Flash button disabled
