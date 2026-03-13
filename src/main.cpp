@@ -94,7 +94,7 @@ enum MorseBlinkMode : uint8_t {
 
 struct MorseBlinkConfigState {
     uint8_t mode = MORSE_MODE_OFF;
-    char defaultMessage[17] = "SOS";
+    char defaultMessage[17] = "";
 };
 
 static MorseBlinkConfigState morseCfg;
@@ -255,7 +255,6 @@ static void sanitizeMorseMessage(const char* src, char* dst, size_t dstLen) {
 
     while (j > 0 && dst[j - 1] == ' ') j--;
     dst[j] = '\0';
-    if (dst[0] == '\0') strncpy(dst, "SOS", dstLen - 1);
     dst[dstLen - 1] = '\0';
 }
 
@@ -494,10 +493,12 @@ void RNSConsole::cmdMorse(const char* args) {
     if (!args || *args == '\0') {
         io->println(F("── Morse Blinker ──"));
         io->print(F("  mode:    ")); io->println(morseModeName(morseCfg.mode));
-        io->print(F("  default: ")); io->println(morseCfg.defaultMessage);
+        io->print(F("  default: "));
+        if (morseCfg.defaultMessage[0]) io->println(morseCfg.defaultMessage);
+        else io->println(F("(none)"));
         io->println(F("Usage:"));
         io->println(F("  morse mode <off|errors|incoming|both|default>"));
-        io->println(F("  morse default <message>"));
+        io->println(F("  morse default <message|clear|none>"));
         io->println(F("  morse test [message]"));
         return;
     }
@@ -524,7 +525,15 @@ void RNSConsole::cmdMorse(const char* args) {
         while (*args == ' ') args++;
         if (!*args) {
             io->print(F("Default message: "));
-            io->println(morseCfg.defaultMessage);
+            if (morseCfg.defaultMessage[0]) io->println(morseCfg.defaultMessage);
+            else io->println(F("(none)"));
+            return;
+        }
+
+        if (strcmp(args, "clear") == 0 || strcmp(args, "none") == 0 || strcmp(args, "off") == 0) {
+            morseCfg.defaultMessage[0] = '\0';
+            io->println(F("Default Morse message cleared (none)."));
+            io->println(F("Tip: run 'save' to persist."));
             return;
         }
 
@@ -533,7 +542,8 @@ void RNSConsole::cmdMorse(const char* args) {
         strncpy(morseCfg.defaultMessage, cleaned, sizeof(morseCfg.defaultMessage) - 1);
         morseCfg.defaultMessage[sizeof(morseCfg.defaultMessage) - 1] = '\0';
         io->print(F("Default Morse message -> "));
-        io->println(morseCfg.defaultMessage);
+        if (morseCfg.defaultMessage[0]) io->println(morseCfg.defaultMessage);
+        else io->println(F("(none)"));
         io->println(F("Tip: run 'save' to persist."));
         return;
     }
@@ -544,6 +554,10 @@ void RNSConsole::cmdMorse(const char* args) {
         char cleaned[17] = {0};
         if (*args) sanitizeMorseMessage(args, cleaned, sizeof(cleaned));
         else strncpy(cleaned, morseCfg.defaultMessage, sizeof(cleaned) - 1);
+        if (!cleaned[0]) {
+            io->println(F("No Morse message set. Nothing queued."));
+            return;
+        }
         enqueueMorseMessage(cleaned);
         io->print(F("Queued Morse test: "));
         io->println(cleaned);

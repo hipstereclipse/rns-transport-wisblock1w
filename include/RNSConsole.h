@@ -94,6 +94,7 @@ private:
 
         if      (strcmp(command, "status")    == 0) cmdStatus();
         else if (strcmp(command, "routes")    == 0) cmdRoutes();
+        else if (strcmp(command, "peers")     == 0) cmdPeers();
         else if (strcmp(command, "identity")  == 0) cmdIdentity();
         else if (strcmp(command, "stats")     == 0) cmdStatus();
         else if (strcmp(command, "radio")     == 0) cmdRadio();
@@ -104,7 +105,7 @@ private:
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
         else if (strcmp(command, "dfu")       == 0) cmdDfu();
         else if (strcmp(command, "reboot")    == 0) cmdReboot();
-        else if (strcmp(command, "announce")  == 0) cmdAnnounce();
+        else if (strcmp(command, "announce")  == 0) cmdAnnounce(args);
         else if (strcmp(command, "morse")     == 0) cmdMorse(args);
         else if (strcmp(command, "test")      == 0) cmdTest();
         else if (strcmp(command, "ping")      == 0) cmdTest();
@@ -187,6 +188,31 @@ private:
             count++;
         }
         if (count == 0) io->println(F("  (empty)"));
+    }
+
+    // ── peers (alias with peer-oriented heading) ────────
+    void cmdPeers() {
+        const PathEntry* pt = transport->getPathTable();
+        io->println(F("── Known Peers ──"));
+        io->println(F("  Peer Hash          Hops  Age(s)"));
+        io->println(F("  ────────────────── ───── ──────"));
+#ifndef NATIVE_TEST
+        uint32_t now = millis();
+#else
+        uint32_t now = 0;
+#endif
+        int count = 0;
+        for (int i = 0; i < PATH_TABLE_MAX; i++) {
+            if (!pt[i].active) continue;
+            io->print(F("  "));
+            printHex(pt[i].destHash, 8);
+            io->print(F("..  "));
+            io->print(pt[i].hops);
+            io->print(F("     "));
+            io->println((now - pt[i].learnedAt) / 1000);
+            count++;
+        }
+        if (count == 0) io->println(F("  (none yet — run announce and wait for peers)"));
     }
 
     // ── identity ──────────────────────────────────────────
@@ -367,13 +393,32 @@ private:
     }
 
     // ── announce ─────────────────────────────────────────
-    void cmdAnnounce() {
+    void cmdAnnounce(const char* args) {
         if (!transport) {
             io->println(F("Transport not available."));
             return;
         }
-        if (transport->sendLocalAnnounce()) {
+
+        const uint8_t* appData = nullptr;
+        uint16_t appDataLen = 0;
+        uint8_t appDataBuf[80] = {0};
+
+        while (args && *args == ' ') args++;
+        if (args && *args != '\0') {
+            size_t inLen = strlen(args);
+            if (inLen > sizeof(appDataBuf) - 1) inLen = sizeof(appDataBuf) - 1;
+            memcpy(appDataBuf, args, inLen);
+            appDataBuf[inLen] = '\0';
+            appData = appDataBuf;
+            appDataLen = (uint16_t)inLen;
+        }
+
+        if (transport->sendLocalAnnounce(nullptr, appData, appDataLen)) {
             io->println(F("Local announce transmitted."));
+            if (appData && appDataLen > 0) {
+                io->print(F("Announce payload: "));
+                io->println((const char*)appDataBuf);
+            }
         } else {
             io->println(F("Announce transmit failed (radio busy/offline)."));
         }
@@ -409,6 +454,7 @@ private:
         io->println(F("── Available Commands ──"));
         io->println(F("  status         Node status and counters"));
         io->println(F("  routes         Show routing table"));
+        io->println(F("  peers          Show known peers (learned routes)"));
         io->println(F("  identity       Display node identity hash + keys"));
         io->println(F("  radio          Current radio configuration"));
         io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower/syncword/preamble)"));
@@ -418,7 +464,7 @@ private:
         io->println(F("  factory-reset  Erase all persisted data"));
         io->println(F("  dfu            Reboot into bootloader (USB flashing)"));
         io->println(F("  reboot         Restart node"));
-        io->println(F("  announce       Broadcast this node announce now"));
+        io->println(F("  announce [txt] Broadcast announce (optional text payload)"));
         io->println(F("  morse          Configure Morse blinker (mode/default)"));
         io->println(F("  test|ping      Emit one-line node health response"));
         io->println(F("  version        Firmware version"));

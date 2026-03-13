@@ -153,6 +153,36 @@ public:
         }
         stats.announces++;
 
+#ifndef NATIVE_TEST
+        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        const uint16_t sigLen = RNS_SIGLENGTH;
+        if (pkt.dataLen > (baseLen + sigLen)) {
+            const uint16_t appLen = pkt.dataLen - baseLen - sigLen;
+            const uint8_t* app = pkt.data + baseLen;
+            if (app && appLen > 4 && appLen < 96 &&
+                app[0] == 'M' && app[1] == 'S' && app[2] == 'G' && app[3] == ':') {
+                char msg[97] = {0};
+                uint16_t out = 0;
+                for (uint16_t i = 4; i < appLen && out < (sizeof(msg) - 1); i++) {
+                    uint8_t c = app[i];
+                    if (c >= 0x20 && c <= 0x7E) {
+                        msg[out++] = (char)c;
+                    }
+                }
+                msg[out] = '\0';
+                if (out > 0) {
+                    Serial.print(F("[PEERMSG] from "));
+                    for (int i = 0; i < 8; i++) {
+                        if (pkt.destHash[i] < 0x10) Serial.print('0');
+                        Serial.print(pkt.destHash[i], HEX);
+                    }
+                    Serial.print(F("..: "));
+                    Serial.println(msg);
+                }
+            }
+        }
+#endif
+
         // Record path: destHash → arrived here at this hop count
         updatePath(pkt.destHash, nullptr, pkt.hops);
 

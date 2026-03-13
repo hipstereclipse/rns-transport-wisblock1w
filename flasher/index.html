@@ -831,6 +831,23 @@
         </div>
         <div class="repeater-panel-foot">Choose whether Morse blink indicates errors, incoming messages, or your saved default pattern.</div>
       </div>
+
+      <div class="repeater-block">
+        <div class="repeater-block-title">Communication / Messages</div>
+        <div class="repeater-form">
+          <div class="repeater-field" style="grid-column:1 / -1;">
+            <label for="commText">Message text (broadcast announce payload)</label>
+            <input id="commText" type="text" maxlength="72" placeholder="Hello mesh" />
+          </div>
+        </div>
+        <div class="repeater-actions" style="margin-top:0.55rem;">
+          <button class="qbtn" onclick="sendPeerMessage()">Send message</button>
+          <button class="qbtn" onclick="runRepeaterAction('peers')">Refresh peers</button>
+          <button class="qbtn" onclick="clearCommLog()">Clear messages</button>
+        </div>
+        <div id="commLog" style="margin-top:0.55rem;max-height:140px;overflow:auto;font-family:var(--mono);font-size:0.74rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0.55rem;white-space:pre-wrap;line-height:1.4;"></div>
+        <div class="repeater-panel-foot">Messages use <strong>announce</strong> payloads with <code>MSG:</code> prefix (broadcast, plaintext).</div>
+      </div>
     </div>
   </div>
 
@@ -1902,6 +1919,11 @@ function parseStatusLine(line) {
   const t = line.trim();
   if (!t) return;
 
+  const peerMsg = t.match(/^\[PEERMSG\]\s+from\s+([0-9A-Fa-f]{8})\.\.:\s*(.+)$/i);
+  if (peerMsg) {
+    appendCommLog(`${new Date().toLocaleTimeString()}  ${peerMsg[1].toUpperCase()}..  ${peerMsg[2]}`);
+  }
+
   const routeMatch = t.match(/^([0-9A-Fa-f]{16})\.\.\s+(\d+)\s+(\d+)$/);
   if (routeMatch) {
     const destHash = routeMatch[1].toUpperCase();
@@ -2055,6 +2077,47 @@ async function runRepeaterAction(cmd) {
     return;
   }
   await sendCmd(cmd);
+  openRepeaterConsole();
+}
+
+function appendCommLog(line) {
+  const box = document.getElementById('commLog');
+  if (!box) return;
+  const text = (line || '').trim();
+  if (!text) return;
+  box.textContent += (box.textContent ? '\n' : '') + text;
+  if (box.textContent.length > 8000) {
+    box.textContent = box.textContent.slice(-6000);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearCommLog() {
+  const box = document.getElementById('commLog');
+  if (box) box.textContent = '';
+}
+
+async function sendPeerMessage() {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'Messaging requires current RatTunnel firmware in Repeater mode.');
+    return;
+  }
+
+  const input = document.getElementById('commText');
+  const raw = input ? input.value.trim() : '';
+  if (!raw) {
+    showFlashAlert('warn', 'Enter a message first.');
+    return;
+  }
+
+  const clean = raw.replace(/\s+/g, ' ').trim().slice(0, 72);
+  await sendCmd(`announce MSG:${clean}`);
+  appendCommLog(`${new Date().toLocaleTimeString()}  me      ${clean}`);
+  if (input) input.value = '';
   openRepeaterConsole();
 }
 
@@ -2228,6 +2291,9 @@ async function applyMorseBlinkSettings() {
   if (msgClean) {
     await sendCmd(`morse default ${msgClean}`);
     await sleep(120);
+  } else if (mode === 'default') {
+    await sendCmd('morse default clear');
+    await sleep(120);
   }
   await sendCmd('save');
   await sleep(120);
@@ -2295,8 +2361,7 @@ async function openSelectedPort(selectedPort) {
   await sendCmd('', { quiet: true, bypassCooldown: true });
   sysLog('Serial connected.\n');
   updateRepeaterUi();
-  setTimeout(() => { if (writer) probeRepeaterFirmware(); }, SERIAL_BOOT_GRACE_MS);
-  setTimeout(() => { if (writer) refreshRepeaterSnapshot(); }, SERIAL_BOOT_GRACE_MS + 400);
+  setTimeout(() => { if (writer) refreshRepeaterSnapshot(true); }, SERIAL_BOOT_GRACE_MS + 300);
   advanceWizard(2);
 }
 
