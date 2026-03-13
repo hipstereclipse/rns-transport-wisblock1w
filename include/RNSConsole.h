@@ -275,10 +275,7 @@ private:
 
 #ifndef NATIVE_TEST
     uint32_t freeMemory() {
-        extern char __data_start[], _end[];
-        extern char *__brkval;
-        char top;
-        return __brkval ? &top - __brkval : &top - _end;
+        return 0;
     }
 #endif
 };

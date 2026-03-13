@@ -19,9 +19,11 @@ public:
 };
 namespace Ed25519 {
     inline bool verify(const uint8_t*,const uint8_t*,const uint8_t*,size_t){return true;}
-    inline void generateKey(uint8_t p[32],uint8_t s[64]){
-        for(int i=0;i<32;i++)p[i]=0xA0+(i&0xF);
-        for(int i=0;i<64;i++)s[i]=0xB0+(i&0xF);
+    inline void generatePrivateKey(uint8_t s[32]){
+        for(int i=0;i<32;i++)s[i]=0xB0+(i&0xF);
+    }
+    inline void derivePublicKey(uint8_t p[32],const uint8_t s[32]){
+        for(int i=0;i<32;i++)p[i]=s[i]^0x11;
     }
     inline void sign(uint8_t sig[64],const uint8_t*,const uint8_t*,const uint8_t*,size_t){memset(sig,0x33,64);}
 }

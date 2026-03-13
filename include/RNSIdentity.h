@@ -28,7 +28,8 @@ public:
     // ── Generate a fresh random identity ──────────────────
     void generate() {
         Curve25519::dh1(pubEncKey, privEncKey);
-        Ed25519::generateKey(pubSigKey, privSigKey);
+        Ed25519::generatePrivateKey(privSigKey);
+        Ed25519::derivePublicKey(pubSigKey, privSigKey);
         computeIdentityHash();
         initialized = true;
     }

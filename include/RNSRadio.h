@@ -10,12 +10,15 @@
  */
 #pragma once
 #include "RNSConfig.h"
+#include "RNSTransport.h"
+
+#ifndef IRAM_ATTR
+#define IRAM_ATTR
+#endif
 
 #ifndef NATIVE_TEST
 #include <RadioLib.h>
 #endif
-
-class RNSTransport;
 
 class RNSRadio {
 public:
@@ -179,4 +182,4 @@ public:
 };
 
 // Static instance pointer for ISR callback
-RNSRadio* RNSRadio::instance = nullptr;
+inline RNSRadio* RNSRadio::instance = nullptr;

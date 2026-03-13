@@ -719,9 +719,28 @@ async function fetchReleases() {
     );
 
     if (!withFw.length) {
+      const branchAssetUrl = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2?_=${Date.now()}`;
+      releases = [{
+        tag_name: 'main',
+        name: 'Latest main branch build',
+        prerelease: true,
+        published_at: new Date().toISOString(),
+        assets: [{
+          name: 'latest.uf2',
+          state: 'uploaded',
+          browser_download_url: branchAssetUrl,
+          updated_at: new Date().toISOString(),
+          size: 0
+        }]
+      }];
+
       document.getElementById('noReleasesAlert').classList.add('show');
-      document.getElementById('releaseSub').textContent = 'No firmware releases found.';
-      sel.innerHTML = '<option value="">— No releases published —</option>';
+      document.getElementById('releaseSub').textContent = 'Using latest branch firmware (fallback).';
+      sel.innerHTML = '<option value="0">main  —  Latest branch firmware</option>';
+      sel.disabled = false;
+      sel.value = '0';
+      onVersionChange();
+      advanceWizard(1);
       return;
     }
 
@@ -747,8 +766,27 @@ async function fetchReleases() {
     advanceWizard(1);
 
   } catch (err) {
-    document.getElementById('releaseSub').textContent = 'Could not reach GitHub.';
-    sel.innerHTML = '<option value="">— fetch failed —</option>';
+    const branchAssetUrl = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2?_=${Date.now()}`;
+    releases = [{
+      tag_name: 'main',
+      name: 'Latest main branch build',
+      prerelease: true,
+      published_at: new Date().toISOString(),
+      assets: [{
+        name: 'latest.uf2',
+        state: 'uploaded',
+        browser_download_url: branchAssetUrl,
+        updated_at: new Date().toISOString(),
+        size: 0
+      }]
+    }];
+
+    document.getElementById('releaseSub').textContent = 'GitHub releases unavailable; using branch firmware fallback.';
+    sel.innerHTML = '<option value="0">main  —  Latest branch firmware</option>';
+    sel.disabled = false;
+    sel.value = '0';
+    onVersionChange();
+    advanceWizard(1);
     document.getElementById('noReleasesAlert').classList.add('show');
     console.error(err);
   }
