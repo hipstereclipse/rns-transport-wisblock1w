@@ -28,6 +28,14 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      uint16_t appDataLen) {
     if (!radio || !identity || !identity->initialized) return false;
 
+    if (!announceHashCacheReady) {
+        uint8_t publicKeyForHash[RNS_KEYSIZE];
+        identity->getPublicKey(publicKeyForHash);
+        RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, publicKeyForHash, cachedTransportDestHash);
+        computeNameHash10(RNS_TRANSPORT_DEST_NAME, cachedTransportNameHash);
+        announceHashCacheReady = true;
+    }
+
     const uint8_t* announceAppData = appData;
     uint16_t announceAppDataLen = appDataLen;
     if (!announceAppData) {
@@ -44,17 +52,13 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     memset(announceData, 0, totalDataLen);
 
     // [pubkey 64B]
-    uint8_t publicKey[RNS_KEYSIZE];
-    identity->getPublicKey(publicKey);
-    memcpy(announceData, publicKey, RNS_KEYSIZE);
+    identity->getPublicKey(announceData);
 
     // [nameHash 10B]
     if (nameHash) {
         memcpy(announceData + RNS_KEYSIZE, nameHash, RNS_NAME_HASH_LEN);
     } else {
-        uint8_t defaultNameHash[RNS_NAME_HASH_LEN];
-        computeNameHash10(RNS_TRANSPORT_DEST_NAME, defaultNameHash);
-        memcpy(announceData + RNS_KEYSIZE, defaultNameHash, RNS_NAME_HASH_LEN);
+        memcpy(announceData + RNS_KEYSIZE, cachedTransportNameHash, RNS_NAME_HASH_LEN);
     }
 
     // [randomBlob 10B]
@@ -78,12 +82,12 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     pkt.destType    = SINGLE;
     pkt.packetType  = ANNOUNCE;
     pkt.hops        = 0;
-    RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, publicKey, pkt.destHash);
+    memcpy(pkt.destHash, cachedTransportDestHash, RNS_ADDR_LEN);
     pkt.context = 0x00;
     pkt.data    = announceData;
     pkt.dataLen = totalDataLen;
 
-    uint8_t outBuf[RNS_MTU];
+    static uint8_t outBuf[RNS_MTU];
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 

@@ -60,6 +60,9 @@ private:
     HashCacheEntry     hashCache[HASH_CACHE_MAX];
     AnnounceQueueEntry announceQueue[ANNOUNCE_QUEUE_MAX];
     char               announceName[RNS_ANNOUNCE_NAME_MAX + 1] = "RatTunnel";
+    uint8_t            cachedTransportDestHash[RNS_ADDR_LEN] = {0};
+    uint8_t            cachedTransportNameHash[RNS_NAME_HASH_LEN] = {0};
+    bool               announceHashCacheReady = false;
 
 public:
     /**
@@ -74,6 +77,7 @@ public:
         memset(announceQueue, 0, sizeof(announceQueue));
         strncpy(announceName, "RatTunnel", sizeof(announceName) - 1);
         announceName[sizeof(announceName) - 1] = '\0';
+        announceHashCacheReady = false;
     }
 
     bool setAnnounceName(const char* name) {
