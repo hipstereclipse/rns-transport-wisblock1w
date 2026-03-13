@@ -18,6 +18,7 @@
 
 #ifndef NATIVE_TEST
 #include <RadioLib.h>
+#include <SPI.h>
 #endif
 
 class RNSRadio {
@@ -73,6 +74,23 @@ public:
         rnodeSeq  = (uint8_t)random(0, 16);
 
 #ifndef NATIVE_TEST
+        // ── SPI FIX ──────────────────────────────────────────────
+        // The nrf52840_dk_adafruit board variant maps the default SPI
+        // to the DK's pins (P1.13/P1.14/P1.15), but the RAK4631
+        // WisBlock routes SPI to P0.03/P0.29/P0.30.  Create a
+        // properly-pinned SPI instance and rebuild the RadioLib
+        // Module so the SX1262 is actually reachable.
+        static SPIClass rakSPI(NRF_SPIM3, PIN_LORA_MISO, PIN_LORA_SCK, PIN_LORA_MOSI);
+        rakSPI.begin();
+        static ArduinoHal rakHal(rakSPI);
+        lora = SX1262(new Module(&rakHal, PIN_LORA_NSS, PIN_LORA_DIO1,
+                                  PIN_LORA_RESET, PIN_LORA_BUSY));
+
+        Serial.println(F("[DIAG] SPI remapped to RAK4631 pins (SPIM3)"));
+        Serial.print(F("[DIAG]   MOSI=")); Serial.print(PIN_LORA_MOSI);
+        Serial.print(F(" MISO=")); Serial.print(PIN_LORA_MISO);
+        Serial.print(F(" SCK=")); Serial.println(PIN_LORA_SCK);
+
         // Power-cycle 3V3_S rail for a clean SX1262 start
         pinMode(PIN_LORA_ENABLE, OUTPUT);
         digitalWrite(PIN_LORA_ENABLE, LOW);
