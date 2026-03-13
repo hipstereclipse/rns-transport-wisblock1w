@@ -1620,7 +1620,7 @@ function inspectDeviceOutput(text) {
   }
 
   // Only flag legacy if the device identifies with the old "RNS Transport Node vX.Y.Z" banner.
-  // "RatTunnel V. 1.0.1" is the current banner and must never trigger this path.
+  // "RatTunnel V. 1.0.2" is the current banner and must never trigger this path.
   const legacyVersion = rxProbeBuffer.match(/\bRNS Transport Node v(\d+\.\d+\.\d+)\b/i);
   if (legacyVersion && !/RatTunnel\s+V\./i.test(rxProbeBuffer)) {
     markLegacyRepeater(legacyVersion[1]);
