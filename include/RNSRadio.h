@@ -69,15 +69,27 @@ public:
         rnodeSeq  = (uint8_t)random(0, 16);
 
 #ifndef NATIVE_TEST
-        // Gate 3V3_S rail on for RAK13302
+        // Power-cycle 3V3_S rail for a clean SX1262 start
         pinMode(PIN_LORA_ENABLE, OUTPUT);
+        digitalWrite(PIN_LORA_ENABLE, LOW);
+        delay(40);
         digitalWrite(PIN_LORA_ENABLE, HIGH);
-        delay(100);
+        delay(180);
 
-        int state = lora.begin(
-            curFreqMHz, curBwKHz, curSF, curCR,
-            curSyncWord, curTxDbm, curPreamble, 0
-        );
+        int state = RADIOLIB_ERR_UNKNOWN;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            state = lora.begin(
+                curFreqMHz, curBwKHz, curSF, curCR,
+                curSyncWord, curTxDbm, curPreamble, 0
+            );
+            if (state == RADIOLIB_ERR_NONE) break;
+
+            // Retry once after another short power-cycle.
+            digitalWrite(PIN_LORA_ENABLE, LOW);
+            delay(80);
+            digitalWrite(PIN_LORA_ENABLE, HIGH);
+            delay(200);
+        }
         if (state != RADIOLIB_ERR_NONE) return false;
 
         // WisBlock 1W specifics

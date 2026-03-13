@@ -1057,6 +1057,12 @@ let rxLineBuffer = '';
 let morseLineBuffer = '';
 let lastDecodedMorse = '';
 let autoRefreshTimer = null;
+let snapshotInFlight = false;
+let serialCommandQueue = Promise.resolve();
+let serialCooldownUntil = 0;
+
+const SERIAL_CMD_GAP_MS = 90;
+const SERIAL_BOOT_GRACE_MS = 2200;
 
 const linkVerifyState = {
   running: false,
@@ -1975,17 +1981,22 @@ function feedStatusParser(text) {
 }
 
 async function refreshRepeaterSnapshot() {
-  if (!writer) return;
-  repeaterState.routeCount = '0';
-  detectedNodes.clear();
-  updateDetectedNodesUi();
-  await sendCmd('version');
-  await sleep(120);
-  await sendCmd('status');
-  await sleep(120);
-  await sendCmd('radio');
-  await sleep(120);
-  await sendCmd('routes');
+  if (!writer || snapshotInFlight) return;
+  snapshotInFlight = true;
+  try {
+    repeaterState.routeCount = '0';
+    detectedNodes.clear();
+    updateDetectedNodesUi();
+    await sendCmd('version');
+    await sleep(120);
+    await sendCmd('status');
+    await sleep(120);
+    await sendCmd('radio');
+    await sleep(120);
+    await sendCmd('routes');
+  } finally {
+    snapshotInFlight = false;
+  }
 }
 
 function stopAutoRefresh() {
@@ -2223,11 +2234,11 @@ async function applyMorseBlinkSettings() {
 async function probeRepeaterFirmware() {
   if (!writer) return;
   try {
-    await writer.write('\r\n');
+    await sendCmd('', { quiet: true });
     await sleep(120);
-    await writer.write('version\r\n');
+    await sendCmd('version');
     await sleep(120);
-    await writer.write('help\r\n');
+    await sendCmd('help');
   } catch (_) {}
 }
 
@@ -2268,14 +2279,16 @@ async function openSelectedPort(selectedPort) {
   const enc = new TextEncoderStream();
   enc.readable.pipeTo(port.writable);
   writer = enc.writable.getWriter();
+  serialCommandQueue = Promise.resolve();
+  serialCooldownUntil = Date.now() + SERIAL_BOOT_GRACE_MS;
 
   looping = true;
   readLoop();
-  await writer.write('\r\n');
+  await sendCmd('', { quiet: true, bypassCooldown: true });
   sysLog('Serial connected.\n');
   updateRepeaterUi();
-  probeRepeaterFirmware();
-  setTimeout(() => { if (writer) refreshRepeaterSnapshot(); }, 500);
+  setTimeout(() => { if (writer) probeRepeaterFirmware(); }, SERIAL_BOOT_GRACE_MS);
+  setTimeout(() => { if (writer) refreshRepeaterSnapshot(); }, SERIAL_BOOT_GRACE_MS + 400);
   advanceWizard(2);
 }
 
@@ -2335,7 +2348,7 @@ async function enterDfuMode() {
   }
 
   try {
-    await writer.write('dfu\r\n');
+    await sendCmd('dfu', { bypassCooldown: true });
     sysLog('DFU command sent.\n');
     showFlashAlert('info', 'DFU command sent. The RAK4631 USB drive should appear in a few seconds.');
     advanceWizard(2);
@@ -2484,7 +2497,7 @@ async function startFlash(eraseBeforeFlash = false) {
     if (eraseBeforeFlash && connected && writer) {
       try {
         sysLog('Sending factory-reset before flash…\n');
-        await writer.write('factory-reset\r\n');
+        await sendCmd('factory-reset', { bypassCooldown: true });
         await sleep(1800);
       } catch (e) {
         sysLog(`Factory reset command failed: ${e.message}\n`);
@@ -2497,7 +2510,7 @@ async function startFlash(eraseBeforeFlash = false) {
     if (connected && writer) {
       try {
         sysLog('Sending DFU command…\n');
-        await writer.write('dfu\r\n');
+        await sendCmd('dfu', { bypassCooldown: true });
         // Give device a moment to disconnect
         await sleep(2500);
         dfuTriggered = true;
@@ -3021,10 +3034,29 @@ function saveLog() {
   a.href = url; a.download = `rns-log-${Date.now()}.txt`; a.click();
   URL.revokeObjectURL(url);
 }
-async function sendCmd(cmd) {
-  if (!writer || !cmd) return;
-  appendConsole('tx', `> ${cmd}\n`);
-  await writer.write(cmd + '\r\n');
+async function sendCmd(cmd, opts = {}) {
+  const { quiet = false, bypassCooldown = false } = opts;
+  if (!writer) return false;
+
+  const safeCmd = typeof cmd === 'string' ? cmd.trim() : '';
+  const line = safeCmd ? `${safeCmd}\r\n` : '\r\n';
+
+  const queued = serialCommandQueue.then(async () => {
+    if (!writer) return false;
+
+    if (!bypassCooldown) {
+      const waitMs = serialCooldownUntil - Date.now();
+      if (waitMs > 0) await sleep(waitMs);
+    }
+
+    if (!quiet && safeCmd) appendConsole('tx', `> ${safeCmd}\n`);
+    await writer.write(line);
+    await sleep(SERIAL_CMD_GAP_MS);
+    return true;
+  });
+
+  serialCommandQueue = queued.catch(() => {});
+  return queued;
 }
 async function onConsoleKey(e) {
   const input = e.target;
