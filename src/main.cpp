@@ -39,6 +39,11 @@ static RNSPersistence persist;
 static bool radioOk = false;
 static uint32_t nextAnnounceAt = 0;
 
+// ── Fault codes (displayed as Morse numeric digit on green LED) ──
+enum FaultCode : uint8_t {
+    FAULT_RADIO_INIT = 1,
+};
+
 // ── Watchdog helpers ──────────────────────────────────────
 static nrf_wdt_rr_register_t wdtChannel = NRF_WDT_RR0;
 
@@ -57,19 +62,84 @@ static inline void wdtFeed() {
 // ── LED error patterns ────────────────────────────────────
 // Codes:
 //   Solid green              = powered, booting
-//   Green blink (2 s)        = running normally
-//   Blue on                  = radio OK
-//   Fast green blink (200 ms)= radio init failure
+//   Green blink (2 s)        = running normally heartbeat
+//   Blue pulse               = packet activity (RX/TX)
+//   Green Morse digit loop   = fault code
 //   Alternating green/blue   = fatal error
 
-static void errorBlinkRadio() {
-    // Fast green blink — indicates radio failure but device is alive.
-    // Console remains available for DFU or diagnosis.
-    while (true) {
+static void serviceDelay(uint32_t ms) {
+    // Keep console and watchdog alive while delaying.
+    uint32_t start = millis();
+    while ((millis() - start) < ms) {
         wdtFeed();
-        console.poll();   // keep console alive in error state
-        digitalWrite(PIN_LED_GREEN, !digitalRead(PIN_LED_GREEN));
-        delay(200);
+        console.poll();
+        delay(20);
+    }
+}
+
+static const char* morseDigitPattern(uint8_t digit) {
+    static const char* table[10] = {
+        "-----", ".----", "..---", "...--", "....-",
+        ".....", "-....", "--...", "---..", "----."
+    };
+    return (digit <= 9) ? table[digit] : table[0];
+}
+
+static void blinkMorseFaultDigit(uint8_t digit) {
+    // Unit timing chosen for readability on status LEDs.
+    const uint32_t unitMs = 180;
+    const char* pattern = morseDigitPattern(digit);
+
+    for (int i = 0; pattern[i] != '\0'; i++) {
+        digitalWrite(PIN_LED_GREEN, HIGH);
+        if (pattern[i] == '.') serviceDelay(unitMs);
+        else                   serviceDelay(unitMs * 3);
+        digitalWrite(PIN_LED_GREEN, LOW);
+
+        // Intra-symbol gap
+        if (pattern[i + 1] != '\0') serviceDelay(unitMs);
+    }
+
+    // Inter-digit spacing (a little more pause for readability)
+    serviceDelay(unitMs * 8);
+}
+
+static void errorBlinkFault(uint8_t faultCode) {
+    // Morse-code numeric fault loop. Console remains active for DFU/diagnosis.
+    digitalWrite(PIN_LED_BLUE, LOW);
+    while (true) {
+        blinkMorseFaultDigit(faultCode % 10);
+    }
+}
+
+// ── Activity LED state machine (blue LED) ───────────────
+static uint32_t lastRxCount = 0;
+static uint32_t lastTxCount = 0;
+static uint32_t lastFwdCount = 0;
+static uint32_t lastAnnounceCount = 0;
+static uint8_t  activityTogglesRemaining = 0;
+static uint32_t nextActivityToggleAt = 0;
+
+static void queueBluePulseToggles(uint8_t toggles) {
+    uint16_t total = (uint16_t)activityTogglesRemaining + toggles;
+    if (total > 16) total = 16;  // prevent long LED backlog under burst traffic
+    activityTogglesRemaining = (uint8_t)total;
+}
+
+static void updateActivityLed(uint32_t now) {
+    if (activityTogglesRemaining == 0) {
+        digitalWrite(PIN_LED_BLUE, LOW);
+        return;
+    }
+
+    if (now >= nextActivityToggleAt) {
+        digitalWrite(PIN_LED_BLUE, !digitalRead(PIN_LED_BLUE));
+        activityTogglesRemaining--;
+        nextActivityToggleAt = now + 90;
+
+        if (activityTogglesRemaining == 0) {
+            digitalWrite(PIN_LED_BLUE, LOW);
+        }
     }
 }
 
@@ -174,7 +244,7 @@ void setup() {
     radioOk = radio.begin(&transport);
     if (radioOk) {
         Serial.println(F("OK"));
-        digitalWrite(PIN_LED_BLUE, HIGH);
+        digitalWrite(PIN_LED_BLUE, LOW);
 
         // Apply saved config if available
         if (persist.loadConfig(radio)) {
@@ -202,8 +272,14 @@ void setup() {
 
     // If radio failed, enter error mode (console stays alive)
     if (!radioOk) {
-        errorBlinkRadio();  // does not return; keeps WDT fed
+        errorBlinkFault(FAULT_RADIO_INIT);  // does not return; keeps WDT fed
     }
+
+    const auto& startupStats = transport.getStats();
+    lastRxCount       = startupStats.rxPackets;
+    lastTxCount       = startupStats.txPackets;
+    lastFwdCount      = startupStats.fwdPackets;
+    lastAnnounceCount = startupStats.announces;
 
     nextAnnounceAt = millis() + ANNOUNCE_STARTUP_DELAY_MS;
 }
@@ -231,6 +307,26 @@ void loop() {
 
     // Poll console for serial commands
     console.poll();
+
+    // Activity indication from transport counters:
+    //   RX event  -> one blue pulse
+    //   TX/FWD/announce event -> two blue pulses
+    const auto& s = transport.getStats();
+    if (s.rxPackets > lastRxCount) {
+        uint32_t delta = s.rxPackets - lastRxCount;
+        if (delta > 3) delta = 3;
+        queueBluePulseToggles((uint8_t)(delta * 2));
+        lastRxCount = s.rxPackets;
+    }
+
+    if (s.txPackets > lastTxCount || s.fwdPackets > lastFwdCount || s.announces > lastAnnounceCount) {
+        queueBluePulseToggles(4);
+        lastTxCount       = s.txPackets;
+        lastFwdCount      = s.fwdPackets;
+        lastAnnounceCount = s.announces;
+    }
+
+    updateActivityLed(now);
 
     // Periodic self-announce so peers can discover this node
     if (radioOk && now >= nextAnnounceAt) {
