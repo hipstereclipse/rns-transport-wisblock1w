@@ -1586,6 +1586,9 @@ function markCompatibleRepeater(reason = '') {
 }
 
 function markLegacyRepeater(reason = '') {
+  // Never mark legacy once current-RatTunnel compatibility has been confirmed.
+  if (repeaterCaps.compatible) return;
+
   repeaterCaps.legacyDetected = true;
   repeaterCaps.compatible = false;
   if (activeMode === 'repeater') activeMode = 'flasher';
@@ -1616,8 +1619,10 @@ function inspectDeviceOutput(text) {
     markCompatibleRepeater('name command present');
   }
 
-  const legacyVersion = rxProbeBuffer.match(/RNS Transport Node v(\d+\.\d+\.\d+)/i);
-  if (legacyVersion) {
+  // Only flag legacy if the device identifies with the old "RNS Transport Node vX.Y.Z" banner.
+  // "RatTunnel V. 1.0.1" is the current banner and must never trigger this path.
+  const legacyVersion = rxProbeBuffer.match(/\bRNS Transport Node v(\d+\.\d+\.\d+)\b/i);
+  if (legacyVersion && !/RatTunnel\s+V\./i.test(rxProbeBuffer)) {
     markLegacyRepeater(legacyVersion[1]);
   }
 
@@ -1883,6 +1888,7 @@ async function openSelectedPort(selectedPort) {
   repeaterCaps.supportsAnnounce = false;
   repeaterCaps.supportsName = false;
   repeaterCaps.legacyDetected = false;
+  rxProbeBuffer = '';  // fresh probe window; never carry over state from a previous connection
   updateConnChip(true);
   document.getElementById('consoleInput').disabled = false;
 
