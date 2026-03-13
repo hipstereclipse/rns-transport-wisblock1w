@@ -459,6 +459,87 @@
     flex-wrap: wrap;
   }
 
+  .repeater-bar {
+    display: none;
+    margin: 0 0 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--r);
+    border: 1px solid rgba(74,222,128,0.35);
+    background: var(--green-glow);
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .repeater-bar.show { display: flex; }
+  .repeater-copy {
+    font-size: 0.83rem;
+    color: var(--text);
+    line-height: 1.45;
+  }
+  .repeater-copy strong { color: var(--green); }
+
+  .repeater-panel {
+    display: none;
+    margin-bottom: 1rem;
+  }
+  .repeater-panel.show { display: block; }
+  .repeater-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .repeater-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.8rem;
+  }
+  .repeater-block-title {
+    font-size: 0.8rem;
+    color: var(--dim);
+    margin-bottom: 0.55rem;
+    font-weight: 600;
+  }
+  .repeater-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .repeater-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .repeater-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .repeater-field label {
+    font-size: 0.72rem;
+    color: var(--dim);
+    font-family: var(--mono);
+  }
+  .repeater-field input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.45rem 0.55rem;
+    outline: none;
+  }
+  .repeater-field input:focus {
+    border-color: var(--accent);
+  }
+  .repeater-panel-foot {
+    margin-top: 0.6rem;
+    font-size: 0.73rem;
+    color: var(--dim);
+  }
+
   /* ── Connect chip ─────────────────────────── */
   .conn-chip {
     display: inline-flex;
@@ -512,6 +593,60 @@
   </div>
 
   <div class="unsupported" id="contextNotice"></div>
+
+  <div class="repeater-bar" id="repeaterBar">
+    <div class="repeater-copy"><strong>Repeater detected.</strong> You can interact with the live firmware console from the web flasher.</div>
+    <button class="qbtn" id="openRepeaterBtn" onclick="openRepeaterConsole()">Open repeater console</button>
+  </div>
+
+  <div class="card repeater-panel" id="repeaterPanel">
+    <div class="card-title">🛰️ Repeater controls</div>
+    <div class="card-sub">Use guided controls for common repeater tasks. Full command access remains available in the advanced console.</div>
+
+    <div class="repeater-grid">
+      <div class="repeater-block">
+        <div class="repeater-block-title">Quick actions</div>
+        <div class="repeater-actions">
+          <button class="qbtn" onclick="runRepeaterAction('status')">Status</button>
+          <button class="qbtn" onclick="runRepeaterAction('test')">Test reply</button>
+          <button class="qbtn" onclick="runRepeaterAction('radio')">Radio</button>
+          <button class="qbtn" onclick="runRepeaterAction('routes')">Routes</button>
+          <button class="qbtn" onclick="runRepeaterAction('identity')">Identity</button>
+          <button class="qbtn" onclick="runRepeaterAction('stats')">Stats</button>
+          <button class="qbtn" onclick="runRepeaterAction('announce')">Announce now</button>
+          <button class="qbtn" onclick="runRepeaterAction('save')">Save config</button>
+          <button class="qbtn" onclick="runRepeaterAction('reboot')">Reboot</button>
+        </div>
+      </div>
+
+      <div class="repeater-block">
+        <div class="repeater-block-title">Radio settings</div>
+        <div class="repeater-form">
+          <div class="repeater-field">
+            <label for="repFreq">Frequency (MHz)</label>
+            <input id="repFreq" type="number" step="0.1" min="150" max="960" placeholder="915.0">
+          </div>
+          <div class="repeater-field">
+            <label for="repSf">Spreading factor</label>
+            <input id="repSf" type="number" step="1" min="5" max="12" placeholder="8">
+          </div>
+          <div class="repeater-field">
+            <label for="repBw">Bandwidth (kHz)</label>
+            <input id="repBw" type="number" step="1" min="7" max="500" placeholder="125">
+          </div>
+          <div class="repeater-field">
+            <label for="repTx">TX power (dBm)</label>
+            <input id="repTx" type="number" step="1" min="-9" max="22" placeholder="22">
+          </div>
+        </div>
+        <div class="repeater-actions" style="margin-top:0.55rem;">
+          <button class="qbtn" onclick="applyRepeaterSettings()">Apply settings</button>
+          <button class="qbtn" onclick="runRepeaterAction('radio')">Read current radio config</button>
+        </div>
+        <div class="repeater-panel-foot">Tip: click Save config after applying settings to persist them across reboots.</div>
+      </div>
+    </div>
+  </div>
 
   <!-- Step track -->
   <div class="step-track" id="stepTrack">
@@ -580,8 +715,8 @@
   <!-- ── Card 2: Flash ── -->
   <div class="card" id="cardFlash">
     <div class="card-title">🚀 Flash firmware</div>
-    <div class="card-sub">
-      The device will reboot into DFU mode, and the firmware will be written automatically. No drag-and-drop needed.
+    <div class="card-sub" id="flashSub">
+      The device will reboot into DFU mode. On the first flash, you may need to click <strong>Write to device drive</strong> once; later flashes in this tab can continue automatically.
     </div>
 
     <div class="flash-btn-wrap">
@@ -622,11 +757,14 @@
 
     <!-- File System API write button -->
     <div class="write-drive" id="writeDriveSection">
-      <button class="drive-btn" id="writeDriveBtn" onclick="writeToDrive()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        Write to device drive
-      </button>
-      <div class="drive-hint">A folder picker will open — select the <strong>RAK4631</strong> USB drive</div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <button class="drive-btn" id="writeDriveBtn" onclick="writeToDrive()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Write to device drive
+        </button>
+        <button class="qbtn" id="downloadUf2Btn" onclick="saveFile()">Download UF2</button>
+      </div>
+      <div class="drive-hint" id="driveHint">On first use, a folder picker will open — select the <strong>RAK4631</strong> USB drive</div>
     </div>
 
     <!-- Success -->
@@ -663,6 +801,8 @@
       <div style="padding:0.6rem 0.9rem;">
         <div class="quick-row">
           <span class="qbtn" onclick="sendCmd('status')">status</span>
+          <span class="qbtn" onclick="sendCmd('test')">test</span>
+          <span class="qbtn" onclick="sendCmd('announce')">announce</span>
           <span class="qbtn" onclick="sendCmd('radio')">radio</span>
           <span class="qbtn" onclick="sendCmd('identity')">identity</span>
           <span class="qbtn" onclick="sendCmd('routes')">routes</span>
@@ -695,12 +835,15 @@ let releases      = [];
 let selectedAsset = null;   // GitHub release asset object
 let firmwareBlob  = null;   // ArrayBuffer ready to write
 let firmwareName  = '';
+let rememberedDriveHandle = null;
 
 let port    = null;
 let reader  = null;
 let writer  = null;
 let looping = false;
 let connected = false;
+let repeaterDetected = false;
+let rxProbeBuffer = '';
 
 let cmdHistory = [], cmdIdx = -1;
 
@@ -949,6 +1092,102 @@ function updateActionButtons() {
   eraseBtn.disabled = !hasFirmwareSelection();
 }
 
+function updateRepeaterUi() {
+  const bar = document.getElementById('repeaterBar');
+  const btn = document.getElementById('openRepeaterBtn');
+  const panel = document.getElementById('repeaterPanel');
+  if (!bar || !btn || !panel) return;
+  const show = connected && repeaterDetected;
+  bar.classList.toggle('show', show);
+  panel.classList.toggle('show', show);
+  btn.disabled = !show;
+}
+
+function markRepeaterDetected() {
+  if (repeaterDetected) return;
+  repeaterDetected = true;
+  updateRepeaterUi();
+  sysLog('Repeater firmware detected on serial console.\n');
+}
+
+function inspectDeviceOutput(text) {
+  rxProbeBuffer = (rxProbeBuffer + String(text || '')).slice(-2048);
+  if (/(\[RNS\]|rns>|Transport Node|Reticulum transport|Available Commands|Firmware:|Board: WisBlock)/i.test(rxProbeBuffer)) {
+    markRepeaterDetected();
+  }
+}
+
+function openRepeaterConsole() {
+  const wrap = document.getElementById('consoleWrap');
+  const toggle = document.getElementById('advToggle');
+  if (!wrap.classList.contains('show')) {
+    wrap.classList.add('show');
+    toggle.classList.add('open');
+  }
+  document.getElementById('consoleInput').focus();
+}
+
+async function runRepeaterAction(cmd) {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  await sendCmd(cmd);
+  openRepeaterConsole();
+}
+
+async function applyRepeaterSettings() {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+
+  const freq = document.getElementById('repFreq').value.trim();
+  const sf = document.getElementById('repSf').value.trim();
+  const bw = document.getElementById('repBw').value.trim();
+  const tx = document.getElementById('repTx').value.trim();
+
+  const commands = [];
+  if (freq) commands.push(`set freq ${freq}`);
+  if (sf) commands.push(`set sf ${sf}`);
+  if (bw) commands.push(`set bw ${bw}`);
+  if (tx) commands.push(`set txpower ${tx}`);
+
+  if (!commands.length) {
+    showFlashAlert('warn', 'Enter at least one setting to apply.');
+    return;
+  }
+
+  const sfNum = sf ? Number(sf) : null;
+  if (sf && (!Number.isFinite(sfNum) || sfNum < 5 || sfNum > 12)) {
+    showFlashAlert('error', 'Spreading factor must be between 5 and 12.');
+    return;
+  }
+
+  const txNum = tx ? Number(tx) : null;
+  if (tx && (!Number.isFinite(txNum) || txNum < -9 || txNum > 22)) {
+    showFlashAlert('error', 'TX power must be between -9 and 22 dBm.');
+    return;
+  }
+
+  for (const cmd of commands) {
+    await sendCmd(cmd);
+    await sleep(120);
+  }
+  await sendCmd('radio');
+  showFlashAlert('info', 'Settings sent. Review the radio output and click Save config if needed.');
+  openRepeaterConsole();
+}
+
+async function probeRepeaterFirmware() {
+  if (!writer) return;
+  try {
+    await writer.write('\r\n');
+    await sleep(120);
+    await writer.write('version\r\n');
+  } catch (_) {}
+}
+
 /* ════════════════════════════════════════════
    Serial connect / disconnect
 ════════════════════════════════════════════ */
@@ -979,6 +1218,8 @@ async function openSelectedPort(selectedPort) {
   readLoop();
   await writer.write('\r\n');
   sysLog('Serial connected.\n');
+  updateRepeaterUi();
+  probeRepeaterFirmware();
   advanceWizard(2);
 }
 
@@ -1053,10 +1294,13 @@ async function doDisconnect() {
   try { if (writer) { await writer.close();  writer = null; } } catch (_) {}
   try { if (port)   { await port.close();    port   = null; } } catch (_) {}
   connected = false;
+  repeaterDetected = false;
+  rxProbeBuffer = '';
   updateConnChip(false);
   document.getElementById('consoleInput').disabled = true;
   sysLog('Serial disconnected.\n');
   updateActionButtons();
+  updateRepeaterUi();
 }
 
 function updateConnChip(on) {
@@ -1171,24 +1415,35 @@ async function startFlash(eraseBeforeFlash = false) {
     setPStep(2, 'done');
 
     /* ── 3. Write firmware ── */
-    setPStep(3, 'active');
-    const written = await tryWriteToDrive(buf, firmwareName);
-    if (!written) {
-      // showDirectoryPicker fell through (e.g. user cancelled) — show manual button
-      document.getElementById('writeDriveSection').classList.add('show');
-      showFlashAlert('info', 'Select the RAK4631 USB drive in the picker to complete flashing.');
-      return;
+    if (supportsFileSystemAccess() && rememberedDriveHandle) {
+      setPStep(3, 'active');
+      showFlashAlert('info', 'Waiting for the remembered RAK4631 drive to reappear for automatic write…');
+      const autoWritten = await tryWriteToRememberedDrive(buf, firmwareName);
+      if (autoWritten) {
+        setProgress(85);
+        setPStep(3, 'done');
+        setPStep(4, 'active');
+        await sleep(600);
+        setPStep(4, 'done');
+        setProgress(100);
+        flashSuccess();
+        return;
+      }
     }
 
-    setProgress(85);
-    setPStep(3, 'done');
+    document.getElementById('writeDriveSection').classList.add('show');
+    setPStep(3, 'idle');
+    setProgress(60);
 
-    /* ── 4. Done ── */
-    setPStep(4, 'active');
-    await sleep(600);
-    setPStep(4, 'done');
-    setProgress(100);
-    flashSuccess();
+    if (supportsFileSystemAccess()) {
+      showFlashAlert('info', rememberedDriveHandle
+        ? 'Firmware is ready. If automatic write did not start, click "Write to device drive" to reselect the RAK4631 USB drive.'
+        : 'Firmware is ready. First-time setup: click "Write to device drive" and select the RAK4631 USB drive once.');
+    } else {
+      showFlashAlert('info', 'Firmware is ready. Click "Download UF2", then drag the file onto the RAK4631 USB drive.');
+    }
+    document.getElementById('flashBtn').disabled = false;
+    return;
 
   } catch (err) {
     showFlashAlert('error', err.message);
@@ -1304,31 +1559,27 @@ function fileSystemAccessHint() {
 
 function refreshEnvironmentNotice() {
   const notice = document.getElementById('contextNotice');
+  const writeBtn = document.getElementById('writeDriveBtn');
+  const downloadBtn = document.getElementById('downloadUf2Btn');
+  const driveHint = document.getElementById('driveHint');
   if (!notice) return;
 
   if (supportsFileSystemAccess()) {
     notice.classList.remove('show');
     notice.innerHTML = '';
+    if (writeBtn) writeBtn.disabled = false;
+    if (downloadBtn) downloadBtn.disabled = false;
+    if (driveHint) driveHint.innerHTML = rememberedDriveHandle
+      ? 'Automatic write can reuse the remembered <strong>RAK4631</strong> drive in this tab; click <strong>Write to device drive</strong> if you need to reselect it.'
+      : 'On first use, a folder picker will open — select the <strong>RAK4631</strong> USB drive';
     return;
   }
 
   notice.innerHTML = `<strong>ℹ Auto-write unavailable</strong><br>${escHtml(fileSystemAccessHint())}`;
   notice.classList.add('show');
-}
-
-/* ════════════════════════════════════════════
-   File System Access API — write to UF2 drive
-════════════════════════════════════════════ */
-async function tryWriteToDrive(buf, name) {
-  if (!supportsFileSystemAccess()) return false;
-  try {
-    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
-    await writeBufferToDir(dir, buf, name);
-    return true;
-  } catch (err) {
-    if (err.name === 'AbortError') return false;  // user cancelled
-    throw err;
-  }
+  if (writeBtn) writeBtn.disabled = true;
+  if (downloadBtn) downloadBtn.disabled = false;
+  if (driveHint) driveHint.innerHTML = 'Use <strong>Download UF2</strong>, then drag the downloaded file onto the <strong>RAK4631</strong> USB drive manually.';
 }
 
 async function writeToDrive() {
@@ -1337,15 +1588,20 @@ async function writeToDrive() {
     return;
   }
   if (!supportsFileSystemAccess()) {
-    showFlashAlert('warn', `${fileSystemAccessHint()} A .uf2 file will be downloaded now; drag it onto the RAK4631 drive manually.`);
+    showFlashAlert('warn', `${fileSystemAccessHint()} Use the Download UF2 button, then drag the file onto the RAK4631 drive manually.`);
     saveFile();
     return;
   }
   try {
     document.getElementById('writeDriveBtn').disabled = true;
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    rememberedDriveHandle = dir;
     setPStep(3, 'active');
-    await writeBufferToDir(dir, firmwareBlob, firmwareName);
+    await writeBufferToDir(dir, firmwareBlob, firmwareName, (written, total) => {
+      if (total > 0) {
+        setProgress(Math.round(60 + (written / total) * 25));
+      }
+    });
     setProgress(85);
     setPStep(3, 'done');
     setPStep(4, 'active');
@@ -1353,6 +1609,8 @@ async function writeToDrive() {
     setPStep(4, 'done');
     setProgress(100);
     flashSuccess();
+    refreshEnvironmentNotice();
+    sysLog('UF2 drive access remembered for this session.\n');
   } catch (err) {
     if (err.name !== 'AbortError') {
       showFlashAlert('error', err.message);
@@ -1361,7 +1619,69 @@ async function writeToDrive() {
   }
 }
 
-async function writeBufferToDir(dir, buf, name) {
+async function tryWriteToRememberedDrive(buf, name) {
+  if (!rememberedDriveHandle) return false;
+
+  try {
+    if (typeof rememberedDriveHandle.queryPermission === 'function') {
+      const perm = await rememberedDriveHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') return false;
+    }
+  } catch (_) {
+    return false;
+  }
+
+  const deadline = Date.now() + 15000;
+  let lastErr = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await writeBufferToDir(rememberedDriveHandle, buf, name, (written, total) => {
+        if (total > 0) {
+          setProgress(Math.round(60 + (written / total) * 25));
+        }
+      });
+      return true;
+    } catch (err) {
+      lastErr = err;
+      if (!['NotFoundError', 'InvalidStateError', 'NotAllowedError', 'AbortError', 'UnknownError'].includes(err.name)) {
+        throw err;
+      }
+      await sleep(500);
+    }
+  }
+
+  if (lastErr) sysLog(`Remembered drive write not ready yet: ${lastErr.message}\n`);
+  return false;
+}
+
+const WRITE_CLOSE_TIMEOUT_MESSAGE = 'Timed out waiting for UF2 drive to finish writing.';
+
+function isLikelyDriveResetError(err) {
+  const msg = String(err && err.message || '').toLowerCase();
+  return ['AbortError', 'InvalidStateError', 'NotFoundError', 'NetworkError', 'UnknownError'].includes(err && err.name)
+    || msg.includes('device has been lost')
+    || msg.includes('not be found')
+    || msg.includes('network error')
+    || msg.includes('functioning')
+    || msg.includes('disconnected');
+}
+
+async function withTimeout(promise, ms, message) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function writeBufferToDir(dir, buf, name, onProgress = null) {
   const ext = name.split('.').pop().toLowerCase();
   // nRF52840 UF2 bootloader expects a UF2 file at the root of the drive.
   // .bin/.hex files are not directly accepted; advise only for UF2.
@@ -1371,10 +1691,35 @@ async function writeBufferToDir(dir, buf, name) {
       'Please select a .uf2 release asset or convert your binary with the included generate_uf2.py tool.');
     throw new Error(`Only .uf2 files can be written directly to the bootloader drive.`);
   }
+
+  const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || buf);
   const fileHandle = await dir.getFileHandle(name, { create: true });
   const writable   = await fileHandle.createWritable();
-  await writable.write(buf);
-  await writable.close();
+  const chunkSize = 64 * 1024;
+  let written = 0;
+
+  try {
+    while (written < bytes.length) {
+      const next = Math.min(written + chunkSize, bytes.length);
+      await writable.write(bytes.subarray(written, next));
+      written = next;
+      if (onProgress) onProgress(written, bytes.length);
+    }
+
+    try {
+      await withTimeout(writable.close(), 12000, WRITE_CLOSE_TIMEOUT_MESSAGE);
+    } catch (err) {
+      if (written === bytes.length && (err.message === WRITE_CLOSE_TIMEOUT_MESSAGE || isLikelyDriveResetError(err))) {
+        sysLog('UF2 drive disconnected after data write; assuming flash completed and device is rebooting.\n');
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    try { await writable.abort(); } catch (_) {}
+    throw err;
+  }
+
   sysLog(`Written ${name} to drive.\n`);
 }
 
@@ -1478,6 +1823,7 @@ function toggleAdvanced() {
 }
 
 function rxLog(text) {
+  inspectDeviceOutput(text);
   appendConsole('rx', text);
 }
 function sysLog(text) {

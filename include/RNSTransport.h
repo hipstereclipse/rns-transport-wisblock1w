@@ -247,6 +247,11 @@ public:
 
     void processAnnounceQueue(uint32_t now);  // in RNSTransport.cpp
 
+    // ── Local announce emission ──────────────────────────
+    bool sendLocalAnnounce(const uint8_t* nameHash = nullptr,
+                           const uint8_t* appData = nullptr,
+                           uint16_t appDataLen = 0);
+
     // ── Expiry sweep ──────────────────────────────────────
     void expireEntries(uint32_t now) {
         for (int i = 0; i < PATH_TABLE_MAX; i++) {

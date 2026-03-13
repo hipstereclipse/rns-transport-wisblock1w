@@ -6,6 +6,66 @@
 #include "RNSTransport.h"
 #include "RNSRadio.h"
 
+bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
+                                     const uint8_t* appData,
+                                     uint16_t appDataLen) {
+    if (!radio || !identity || !identity->initialized) return false;
+
+    const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+    const uint16_t sigOffset = baseLen + appDataLen;
+    const uint16_t totalDataLen = sigOffset + RNS_SIGLENGTH;
+    if (totalDataLen > RNS_MTU) return false;
+
+    static uint8_t announceData[RNS_MTU];
+    memset(announceData, 0, totalDataLen);
+
+    // [pubkey 64B]
+    identity->getPublicKey(announceData);
+
+    // [nameHash 10B]
+    if (nameHash) {
+        memcpy(announceData + RNS_KEYSIZE, nameHash, RNS_NAME_HASH_LEN);
+    } else {
+        memset(announceData + RNS_KEYSIZE, 0, RNS_NAME_HASH_LEN);
+    }
+
+    // [randomBlob 10B]
+    for (uint16_t i = 0; i < RNS_RANDOM_BLOB_LEN; i++) {
+        announceData[RNS_KEYSIZE + RNS_NAME_HASH_LEN + i] = (uint8_t)random(0, 256);
+    }
+
+    // [optional appData]
+    if (appData && appDataLen > 0) {
+        memcpy(announceData + baseLen, appData, appDataLen);
+    }
+
+    // [signature 64B]
+    identity->sign(announceData, sigOffset, announceData + sigOffset);
+
+    RNSPacket pkt;
+    pkt.ifacFlag    = false;
+    pkt.headerType  = HEADER_1;
+    pkt.contextFlag = false;
+    pkt.propType    = BROADCAST;
+    pkt.destType    = SINGLE;
+    pkt.packetType  = ANNOUNCE;
+    pkt.hops        = 0;
+    memcpy(pkt.destHash, identity->identityHash, RNS_ADDR_LEN);
+    pkt.context = 0x00;
+    pkt.data    = announceData;
+    pkt.dataLen = totalDataLen;
+
+    uint8_t outBuf[RNS_MTU];
+    uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
+    if (outLen == 0) return false;
+
+    if (radio->transmit(outBuf, outLen)) {
+        stats.txPackets++;
+        return true;
+    }
+    return false;
+}
+
 /**
  * @brief Forward a routable packet toward its destination.
  *

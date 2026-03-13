@@ -97,6 +97,9 @@ private:
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
         else if (strcmp(command, "dfu")       == 0) cmdDfu();
         else if (strcmp(command, "reboot")    == 0) cmdReboot();
+        else if (strcmp(command, "announce")  == 0) cmdAnnounce();
+        else if (strcmp(command, "test")      == 0) cmdTest();
+        else if (strcmp(command, "ping")      == 0) cmdTest();
         else if (strcmp(command, "version")   == 0) cmdVersion();
         else if (strcmp(command, "help")      == 0) cmdHelp();
         else {
@@ -241,6 +244,36 @@ private:
 #endif
     }
 
+    // ── announce ─────────────────────────────────────────
+    void cmdAnnounce() {
+        if (!transport) {
+            io->println(F("Transport not available."));
+            return;
+        }
+        if (transport->sendLocalAnnounce()) {
+            io->println(F("Local announce transmitted."));
+        } else {
+            io->println(F("Announce transmit failed (radio busy/offline)."));
+        }
+    }
+
+    // ── test / ping: one-line health response ───────────
+    void cmdTest() {
+        const auto& s = transport->getStats();
+        io->print(F("TEST_OK "));
+#ifndef NATIVE_TEST
+        io->print(F("uptime_s=")); io->print(millis() / 1000); io->print(F(" "));
+#endif
+        io->print(F("rx=")); io->print(s.rxPackets); io->print(F(" "));
+        io->print(F("tx=")); io->print(s.txPackets); io->print(F(" "));
+        io->print(F("fwd=")); io->print(s.fwdPackets); io->print(F(" "));
+        io->print(F("paths=")); io->print(s.pathEntries); io->print(F(" "));
+        io->print(F("freq_mhz=")); io->print(radio->curFreqMHz, 1); io->print(F(" "));
+        io->print(F("sf=")); io->print(radio->curSF); io->print(F(" "));
+        io->print(F("bw_khz=")); io->print(radio->curBwKHz, 1); io->print(F(" "));
+        io->print(F("tx_dbm=")); io->println(radio->curTxDbm);
+    }
+
     // ── version ───────────────────────────────────────────
     void cmdVersion() {
         io->print(F("RNS Transport Node v")); io->println(F(FW_VERSION_STRING));
@@ -261,6 +294,8 @@ private:
         io->println(F("  factory-reset  Erase all persisted data"));
         io->println(F("  dfu            Reboot into bootloader (USB flashing)"));
         io->println(F("  reboot         Restart node"));
+        io->println(F("  announce       Broadcast this node announce now"));
+        io->println(F("  test|ping      Emit one-line node health response"));
         io->println(F("  version        Firmware version"));
         io->println(F("  help           This message"));
     }

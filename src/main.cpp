@@ -37,6 +37,7 @@ static RNSConsole     console;
 static RNSPersistence persist;
 
 static bool radioOk = false;
+static uint32_t nextAnnounceAt = 0;
 
 // ── Watchdog helpers ──────────────────────────────────────
 static nrf_wdt_rr_register_t wdtChannel = NRF_WDT_RR0;
@@ -203,11 +204,17 @@ void setup() {
     if (!radioOk) {
         errorBlinkRadio();  // does not return; keeps WDT fed
     }
+
+    nextAnnounceAt = millis() + ANNOUNCE_STARTUP_DELAY_MS;
 }
 
 // ── Main loop ─────────────────────────────────────────────
 static uint32_t lastTransportLoop = 0;
 static uint32_t lastLedToggle     = 0;
+
+static inline void scheduleNextAnnounce(uint32_t now) {
+    nextAnnounceAt = now + ANNOUNCE_INTERVAL_MS;
+}
 
 void loop() {
     wdtFeed();
@@ -224,6 +231,16 @@ void loop() {
 
     // Poll console for serial commands
     console.poll();
+
+    // Periodic self-announce so peers can discover this node
+    if (radioOk && now >= nextAnnounceAt) {
+        if (transport.sendLocalAnnounce()) {
+            Serial.println(F("[RNS] Announce sent"));
+        } else {
+            Serial.println(F("[RNS] Announce send failed"));
+        }
+        scheduleNextAnnounce(now);
+    }
 
     // Heartbeat: toggle green LED every 2 seconds
     if (now - lastLedToggle >= 2000) {

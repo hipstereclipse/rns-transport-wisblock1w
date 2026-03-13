@@ -72,6 +72,8 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define DEDUP_EXPIRY_MS      (5UL  * 60UL   * 1000UL)  // 5 min
 #define ANNOUNCE_JITTER_MS   2000
 #define TRANSPORT_LOOP_MS    5
+#define ANNOUNCE_STARTUP_DELAY_MS  5000UL
+#define ANNOUNCE_INTERVAL_MS    (5UL * 60UL * 1000UL)
 
 // ── Watchdog timeout (seconds) ───────────────────────────
 #define WDT_TIMEOUT_SEC      8
