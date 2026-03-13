@@ -673,6 +673,7 @@
    State
 ════════════════════════════════════════════ */
 const REPO = 'hipstereclipse/rns-transport-wisblock1w';
+const RAW_FIRMWARE_FALLBACK_URL = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2`;
 
 let releases      = [];
 let selectedAsset = null;   // GitHub release asset object
@@ -1088,25 +1089,70 @@ async function startFlash() {
    Download helper (fetch with progress)
 ════════════════════════════════════════════ */
 async function downloadAsset(asset) {
-  const res = await fetch(asset.browser_download_url);
-  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
+  const attempts = [];
 
-  const total   = parseInt(res.headers.get('content-length') || '0');
-  const rdReader = res.body.getReader();
-  const chunks  = [];
-  let received  = 0;
-
-  while (true) {
-    const { done, value } = await rdReader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-    if (total) setProgress(Math.round(5 + (received / total) * 18)); // 5–23%
+  const candidates = [];
+  if (asset && asset.url) {
+    candidates.push({
+      url: asset.url,
+      init: {
+        headers: {
+          Accept: 'application/octet-stream',
+          'X-GitHub-Api-Version': '2022-11-28'
+        },
+        cache: 'no-store'
+      },
+      label: 'GitHub asset API'
+    });
   }
 
-  // Merge chunks
-  const blob = new Blob(chunks);
-  return blob.arrayBuffer();
+  if (asset && asset.browser_download_url) {
+    candidates.push({
+      url: asset.browser_download_url,
+      init: { cache: 'no-store' },
+      label: 'GitHub release download URL'
+    });
+  }
+
+  candidates.push({
+    url: `${RAW_FIRMWARE_FALLBACK_URL}?_=${Date.now()}`,
+    init: { cache: 'no-store' },
+    label: 'raw latest.uf2 fallback'
+  });
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate.url, candidate.init);
+      if (!res.ok) {
+        attempts.push(`${candidate.label}: HTTP ${res.status}`);
+        continue;
+      }
+      if (!res.body) {
+        attempts.push(`${candidate.label}: empty response body`);
+        continue;
+      }
+
+      const total = parseInt(res.headers.get('content-length') || '0');
+      const rdReader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await rdReader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (total) setProgress(Math.round(5 + (received / total) * 18)); // 5–23%
+      }
+
+      const blob = new Blob(chunks);
+      return blob.arrayBuffer();
+    } catch (err) {
+      attempts.push(`${candidate.label}: ${err.message}`);
+    }
+  }
+
+  throw new Error('Download failed from all sources. ' + attempts.join(' | '));
 }
 
 /* ════════════════════════════════════════════
