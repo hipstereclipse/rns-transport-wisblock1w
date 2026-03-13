@@ -32,8 +32,11 @@ public:
 
     volatile bool rxFlag   = false;
     bool          txActive = false;
+    bool          hwReady  = false;  // true only after successful begin()
     float         lastRSSI = 0.0f;
     float         lastSNR  = 0.0f;
+    int           lastInitState = -1; // RadioLib error code from begin()
+    uint8_t       initAttempts  = 0;
 
     // Runtime-adjustable parameters (shadows of hardware state)
     float curFreqMHz = LORA_FREQ_MHZ;
@@ -66,6 +69,7 @@ public:
     bool begin(RNSTransport* txp) {
         transport = txp;
         instance  = this;
+        hwReady   = false;
         rnodeSeq  = (uint8_t)random(0, 16);
 
 #ifndef NATIVE_TEST
@@ -76,23 +80,53 @@ public:
         digitalWrite(PIN_LORA_ENABLE, HIGH);
         delay(180);
 
+        Serial.println(F("[DIAG] SX1262 begin: starting init sequence"));
+        Serial.print(F("[DIAG]   NSS=")); Serial.print(PIN_LORA_NSS);
+        Serial.print(F(" DIO1=")); Serial.print(PIN_LORA_DIO1);
+        Serial.print(F(" RST=")); Serial.print(PIN_LORA_RESET);
+        Serial.print(F(" BUSY=")); Serial.print(PIN_LORA_BUSY);
+        Serial.print(F(" EN=")); Serial.println(PIN_LORA_ENABLE);
+        Serial.print(F("[DIAG]   freq=")); Serial.print(curFreqMHz, 1);
+        Serial.print(F(" bw=")); Serial.print(curBwKHz, 1);
+        Serial.print(F(" sf=")); Serial.print(curSF);
+        Serial.print(F(" cr=")); Serial.print(curCR);
+        Serial.print(F(" tx=")); Serial.print(curTxDbm);
+        Serial.print(F(" sync=0x")); Serial.print(curSyncWord, HEX);
+        Serial.print(F(" pre=")); Serial.println(curPreamble);
+
         int state = RADIOLIB_ERR_UNKNOWN;
-        for (int attempt = 0; attempt < 2; attempt++) {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            initAttempts = attempt + 1;
+            Serial.print(F("[DIAG]   attempt ")); Serial.print(attempt + 1);
+            Serial.print(F("/3 ... "));
+
             state = lora.begin(
                 curFreqMHz, curBwKHz, curSF, curCR,
                 curSyncWord, curTxDbm, curPreamble, 0
             );
+            lastInitState = state;
+
+            Serial.print(F("rc=")); Serial.println(state);
+
             if (state == RADIOLIB_ERR_NONE) break;
 
-            // Retry once after another short power-cycle.
+            // Retry after power-cycle with increasing delays.
+            Serial.println(F("[DIAG]   power-cycling SX1262..."));
             digitalWrite(PIN_LORA_ENABLE, LOW);
-            delay(80);
+            delay(80 + attempt * 60);
             digitalWrite(PIN_LORA_ENABLE, HIGH);
-            delay(200);
+            delay(200 + attempt * 100);
         }
-        if (state != RADIOLIB_ERR_NONE) return false;
+        if (state != RADIOLIB_ERR_NONE) {
+            Serial.print(F("[DIAG] SX1262 init FAILED after "));
+            Serial.print(initAttempts);
+            Serial.print(F(" attempts, last rc="));
+            Serial.println(state);
+            return false;
+        }
 
         // WisBlock 1W specifics
+        Serial.println(F("[DIAG] SX1262 configuring DIO2/TCXO/DCDC..."));
         lora.setDio2AsRfSwitch(true);
         lora.setTCXO(1.8);
         lora.setRegulatorDCDC();
@@ -101,7 +135,13 @@ public:
 
         // Attach DIO1 interrupt for RX-complete
         lora.setPacketReceivedAction(dio1ISR);
-        lora.startReceive();
+        int rxState = lora.startReceive();
+        Serial.print(F("[DIAG] startReceive rc=")); Serial.println(rxState);
+
+        hwReady = true;
+        Serial.println(F("[DIAG] SX1262 init OK — radio is live"));
+#else
+        hwReady = true;
 #endif
         return true;
     }
@@ -157,14 +197,23 @@ public:
      */
     bool transmit(const uint8_t* data, uint16_t len) {
         if (!data || len == 0 || len > RNS_MTU) return false;
+        if (!hwReady) {
+            Serial.println(F("[DIAG] TX blocked: radio not initialized"));
+            return false;
+        }
 
 #ifndef NATIVE_TEST
+        uint32_t txStart = millis();
+
         // CAD at SF8/BW125 completes in ~17 ms; 200 ms is generous.
         static const uint32_t CAD_TIMEOUT_MS = 200;
 
         bool channelFree = false;
         for (int attempt = 0; attempt < 8; attempt++) {
-            if (lora.startChannelScan() != RADIOLIB_ERR_NONE) {
+            int scanRc = lora.startChannelScan();
+            if (scanRc != RADIOLIB_ERR_NONE) {
+                Serial.print(F("[DIAG] CAD start failed rc=")); Serial.print(scanRc);
+                Serial.print(F(" attempt=")); Serial.println(attempt);
                 delay(random(10, 50));
                 continue;
             }
@@ -177,9 +226,15 @@ public:
                 channelFree = true;
                 break;
             }
+            Serial.print(F("[DIAG] CAD busy attempt=")); Serial.print(attempt);
+            Serial.print(F(" rc=")); Serial.println(cad);
             delay(random(10, 50));
         }
-        if (!channelFree) return false;
+        if (!channelFree) {
+            Serial.print(F("[DIAG] TX aborted: channel busy after 8 CAD attempts ("));
+            Serial.print(millis() - txStart); Serial.println(F("ms)"));
+            return false;
+        }
 
         uint8_t txBuf[RNS_MTU + 1];
         const uint8_t* txData = data;
@@ -192,11 +247,24 @@ public:
         txLen = len + 1;
     #endif
 
+        Serial.print(F("[DIAG] TX start: ")); Serial.print(txLen);
+        Serial.print(F(" bytes, txPower=")); Serial.print(curTxDbm);
+        Serial.println(F(" dBm"));
+
         txActive = true;
         int state = lora.transmit(txData, txLen);
         txActive = false;
 
-        lora.startReceive();
+        uint32_t txElapsed = millis() - txStart;
+        Serial.print(F("[DIAG] TX done: rc=")); Serial.print(state);
+        Serial.print(F(" elapsed=")); Serial.print(txElapsed);
+        Serial.println(F("ms"));
+
+        int rxRc = lora.startReceive();
+        if (rxRc != RADIOLIB_ERR_NONE) {
+            Serial.print(F("[DIAG] startReceive after TX failed rc=")); Serial.println(rxRc);
+        }
+
         return (state == RADIOLIB_ERR_NONE);
 #else
         return true;

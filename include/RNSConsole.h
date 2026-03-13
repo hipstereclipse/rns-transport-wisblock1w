@@ -126,6 +126,11 @@ private:
 #ifndef NATIVE_TEST
         io->print(F("  Uptime:     ")); io->print(millis() / 1000); io->println(F(" s"));
 #endif
+        io->print(F("  Radio HW:   ")); io->println(radio->hwReady ? F("OK") : F("FAILED"));
+        if (!radio->hwReady) {
+            io->print(F("  Init error: ")); io->println(radio->lastInitState);
+            io->print(F("  Attempts:   ")); io->println(radio->initAttempts);
+        }
         io->print(F("  RX packets: ")); io->println(s.rxPackets);
         io->print(F("  TX packets: ")); io->println(s.txPackets);
         io->print(F("  Forwarded:  ")); io->println(s.fwdPackets);
@@ -226,6 +231,11 @@ private:
     // ── radio ─────────────────────────────────────────────
     void cmdRadio() {
         io->println(F("── Radio Configuration ──"));
+        io->print(F("  HW Status: ")); io->println(radio->hwReady ? F("OK (SX1262 live)") : F("FAILED (not initialized)"));
+        if (!radio->hwReady) {
+            io->print(F("  Init RC:   ")); io->println(radio->lastInitState);
+            io->print(F("  Attempts:  ")); io->println(radio->initAttempts);
+        }
         io->print(F("  Frequency: ")); io->print(radio->curFreqMHz, 1); io->println(F(" MHz"));
         io->print(F("  Bandwidth: ")); io->print(radio->curBwKHz, 1); io->println(F(" kHz"));
         io->print(F("  SF:        ")); io->println(radio->curSF);
@@ -405,6 +415,12 @@ private:
     void cmdAnnounce(const char* args) {
         if (!transport) {
             io->println(F("Transport not available."));
+            return;
+        }
+        if (!radio->hwReady) {
+            io->println(F("Announce blocked: radio hardware not initialized."));
+            io->print(F("  Init error code: ")); io->println(radio->lastInitState);
+            io->println(F("  Try power-cycling the device or check RAK13302 connection."));
             return;
         }
 

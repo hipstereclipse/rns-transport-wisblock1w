@@ -682,6 +682,16 @@ void setup() {
         }
     } else {
         Serial.println(F("FAILED — check RAK13302 connection"));
+        Serial.print(F("[DIAG] Radio init error code: "));
+        Serial.println(radio.lastInitState);
+        Serial.print(F("[DIAG] Init attempts: "));
+        Serial.println(radio.initAttempts);
+        Serial.println(F("[DIAG] Possible causes:"));
+        Serial.println(F("  -2  = chip not found (SPI wiring / power)"));
+        Serial.println(F("  -3  = chip version mismatch"));
+        Serial.println(F("  -6  = packet too long"));
+        Serial.println(F("  -707 = TCXO config failed"));
+        Serial.println(F("  -16 = SPI comm error"));
         Serial.println(F("[RNS] Console is still active; type 'dfu' to flash."));
     }
 
@@ -766,6 +776,7 @@ void loop() {
 
     // Periodic self-announce so peers can discover this node
     if (radioOk && now >= nextAnnounceAt) {
+        Serial.println(F("[DIAG] Periodic announce starting..."));
         if (transport.sendLocalAnnounce()) {
             Serial.println(F("[RNS] Announce sent"));
         } else {

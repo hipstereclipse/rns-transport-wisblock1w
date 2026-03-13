@@ -40,6 +40,10 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      const uint8_t* appData,
                                      uint16_t appDataLen) {
     if (!radio || !identity || !identity->initialized) return false;
+    if (!radio->hwReady) {
+        Serial.println(F("[DIAG] sendLocalAnnounce: radio HW not ready, skipping"));
+        return false;
+    }
 
     if (!announceHashCacheReady) {
         uint8_t publicKeyForHash[RNS_KEYSIZE];
