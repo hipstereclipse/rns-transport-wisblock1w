@@ -192,6 +192,25 @@
     flex-wrap: wrap;
     align-items: center;
   }
+  .version-tools {
+    margin-top: 0.55rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    font-size: 0.76rem;
+    color: var(--dim);
+  }
+  .version-tools label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+  }
+  .version-tools input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
   .badge {
     display: inline-flex;
     align-items: center;
@@ -783,6 +802,14 @@
       <span id="versionPrerelease"></span>
     </div>
 
+    <div class="version-tools" id="versionTools" style="display:none;">
+      <label>
+        <input type="checkbox" id="showOlderBuilds" onchange="toggleOlderBuilds(this.checked)">
+        Show older builds
+      </label>
+      <span id="versionCountHint"></span>
+    </div>
+
     <div class="alert alert-warn" id="noReleasesAlert">
       No firmware releases found yet — the first build may still be running on GitHub Actions.
       <br>
@@ -928,8 +955,11 @@
 ════════════════════════════════════════════ */
 const REPO = 'hipstereclipse/rns-transport-wisblock1w';
 const RAW_FIRMWARE_FALLBACK_URL = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2`;
+const MAX_RECENT_RELEASES = 8;
 
 let releases      = [];
+let allReleases   = [];
+let showOlderBuilds = false;
 let selectedAsset = null;   // GitHub release asset object
 let firmwareBlob  = null;   // ArrayBuffer ready to write
 let firmwareName  = '';
@@ -1008,6 +1038,12 @@ async function fetchReleases() {
     );
 
     if (!withFw.length) {
+      allReleases = [];
+      releases = [];
+      showOlderBuilds = false;
+      const tools = document.getElementById('versionTools');
+      if (tools) tools.style.display = 'none';
+
       const branchAssetUrl = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2?_=${Date.now()}`;
       releases = [{
         tag_name: 'main',
@@ -1033,28 +1069,24 @@ async function fetchReleases() {
       return;
     }
 
-    document.getElementById('releaseSub').textContent =
-      `${withFw.length} release${withFw.length > 1 ? 's' : ''} available`;
+    document.getElementById('noReleasesAlert').classList.remove('show');
 
-    sel.innerHTML = '';
-    withFw.forEach((rel, i) => {
-      const opt = document.createElement('option');
-      opt.value = i;
-      const pre = rel.prerelease ? ' [pre]' : '';
-      opt.textContent = `${rel.tag_name}${pre}  —  ${rel.name || rel.tag_name}`;
-      sel.appendChild(opt);
+    allReleases = withFw.sort((a, b) => {
+      const ta = new Date(a.published_at || a.created_at || 0).getTime();
+      const tb = new Date(b.published_at || b.created_at || 0).getTime();
+      return tb - ta;
     });
-    sel.disabled = false;
 
-    // Patch: store filtered list
-    releases = withFw;
-
-    // Auto-select latest
-    sel.value = '0';
-    onVersionChange();
+    applyReleaseList();
     advanceWizard(1);
 
   } catch (err) {
+    allReleases = [];
+    releases = [];
+    showOlderBuilds = false;
+    const tools = document.getElementById('versionTools');
+    if (tools) tools.style.display = 'none';
+
     const branchAssetUrl = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2?_=${Date.now()}`;
     releases = [{
       tag_name: 'main',
@@ -1079,6 +1111,59 @@ async function fetchReleases() {
     document.getElementById('noReleasesAlert').classList.add('show');
     console.error(err);
   }
+}
+
+function formatReleaseOption(rel) {
+  const tag = rel.tag_name || 'untagged';
+  const name = (rel.name || '').trim();
+  const suffix = rel.prerelease ? ' (pre)' : '';
+  if (!name || name === tag) return `${tag}${suffix}`;
+  return `${tag}${suffix} — ${name}`;
+}
+
+function applyReleaseList() {
+  const sel = document.getElementById('versionSelect');
+  const tools = document.getElementById('versionTools');
+  const hint = document.getElementById('versionCountHint');
+  const releaseSub = document.getElementById('releaseSub');
+
+  const total = allReleases.length;
+  releases = showOlderBuilds ? [...allReleases] : allReleases.slice(0, MAX_RECENT_RELEASES);
+
+  sel.innerHTML = '';
+  releases.forEach((rel, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = formatReleaseOption(rel);
+    sel.appendChild(opt);
+  });
+
+  sel.disabled = releases.length === 0;
+  tools.style.display = total > MAX_RECENT_RELEASES ? 'flex' : 'none';
+
+  if (total === 0) {
+    releaseSub.textContent = 'No firmware releases available.';
+    if (hint) hint.textContent = '';
+    selectedAsset = null;
+    updateFlashButton();
+    return;
+  }
+
+  if (showOlderBuilds || total <= MAX_RECENT_RELEASES) {
+    releaseSub.textContent = `${total} release${total === 1 ? '' : 's'} available`;
+    if (hint) hint.textContent = total > MAX_RECENT_RELEASES ? `Showing all ${total}` : '';
+  } else {
+    releaseSub.textContent = `${total} release${total === 1 ? '' : 's'} available`;
+    if (hint) hint.textContent = `Showing ${releases.length} recent`;
+  }
+
+  sel.value = '0';
+  onVersionChange();
+}
+
+function toggleOlderBuilds(enabled) {
+  showOlderBuilds = !!enabled;
+  applyReleaseList();
 }
 
 function onVersionChange() {
