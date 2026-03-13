@@ -43,21 +43,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          src = Path('platformio.ini')
-          dst = Path('platformio.ci.ini')
-          lines = src.read_text(encoding='utf-8').splitlines()
+          path = Path('platformio.ini')
+          lines = path.read_text(encoding='utf-8').splitlines()
           filtered = [ln for ln in lines if not ln.strip().startswith('extra_scripts')]
-          dst.write_text('\n'.join(filtered) + '\n', encoding='utf-8')
-          print('Wrote platformio.ci.ini without extra_scripts')
+          path.write_text('\n'.join(filtered) + '\n', encoding='utf-8')
+          print('Updated platformio.ini for CI (removed extra_scripts)')
           PY
 
       # ── Build ────────────────────────────────────────────────────────────────
-      # Build from CI-specific config that strips extra_scripts; UF2 conversion
-      # is handled explicitly in a later step.
+      # Build from platformio.ini modified for CI; UF2 conversion is handled
+      # explicitly in a later step.
       - name: Build firmware (wisblock_1w_transport)
         run: |
           platformio run -e wisblock_1w_transport \
-            --project-conf platformio.ci.ini \
             -v
 
       # ── Generate UF2 ────────────────────────────────────────────────────────
