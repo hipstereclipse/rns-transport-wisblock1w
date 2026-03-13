@@ -374,10 +374,19 @@ private:
         io->flush();
 #ifndef NATIVE_TEST
         delay(500);
-        // The Adafruit nRF52 bootloader enters DFU on double-reset,
-        // but we can also trigger it by writing a magic value to
-        // the GPREGRET register and resetting.
-        NRF_POWER->GPREGRET = 0x57;  // 'W' — DFU magic for Adafruit bootloader
+        // The Adafruit nRF52 bootloader enters DFU when GPREGRET == 0x57.
+        // Use SoftDevice API when SD is active, else direct register write.
+        // Both paths end with a DSB to guarantee the write commits before reset.
+        uint32_t rc = 0xFFFFFFFF;
+#if __has_include("nrf_soc.h")
+        rc  = sd_power_gpregret_clr(0, 0xFF);
+        rc |= sd_power_gpregret_set(0, 0x57);
+#endif
+        if (rc != 0) {
+            NRF_POWER->GPREGRET = 0x57;
+        }
+        __DSB();
+        __ISB();
         NVIC_SystemReset();
 #endif
     }
