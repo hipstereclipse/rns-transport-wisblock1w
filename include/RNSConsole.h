@@ -65,7 +65,7 @@ private:
         io->println(F("\r\n╔════════════════════════════════════════════╗"));
         io->println(F("║  RatTunnel Node — WisBlock 1W             ║"));
         io->println(F("║  " FW_DISPLAY_VERSION "                    ║"));
-        io->println(F("║  Reticulum LoRa Transport @ +30 dBm       ║"));
+            io->println(F("║  Reticulum LoRa Transport @ safe TX       ║"));
         io->println(F("╚════════════════════════════════════════════╝"));
     }
 
@@ -240,7 +240,12 @@ private:
             io->print(F("CR → 4/")); io->println(cr);
         } else if (strcmp(param, "txpower") == 0) {
             int dbm = atoi(value);
-            if (dbm < -9 || dbm > 22) { io->println(F("TX power must be -9 to 22 dBm")); return; }
+                if (dbm < -9 || dbm > LORA_TX_DBM_MAX_SAFE) {
+                    io->print(F("TX power must be -9 to "));
+                    io->print(LORA_TX_DBM_MAX_SAFE);
+                    io->println(F(" dBm"));
+                    return;
+                }
             radio->setTxPower((int8_t)dbm);
             io->print(F("TX → ")); io->print(dbm); io->println(F(" dBm"));
         } else if (strcmp(param, "sync") == 0 || strcmp(param, "syncword") == 0) {

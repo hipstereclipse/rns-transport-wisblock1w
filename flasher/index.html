@@ -776,7 +776,7 @@
           </div>
           <div class="repeater-field">
             <label for="repTx">TX power (dBm)</label>
-            <input id="repTx" type="number" step="1" min="-9" max="22" placeholder="22">
+            <input id="repTx" type="number" step="1" min="-9" max="17" placeholder="17">
           </div>
           <div class="repeater-field">
             <label for="repCr">Coding rate (denominator)</label>
@@ -2067,8 +2067,8 @@ async function applyRepeaterSettings(saveAfter = false) {
   }
 
   const txNum = tx ? Number(tx) : null;
-  if (tx && (!Number.isFinite(txNum) || txNum < -9 || txNum > 22)) {
-    showFlashAlert('error', 'TX power must be between -9 and 22 dBm.');
+  if (tx && (!Number.isFinite(txNum) || txNum < -9 || txNum > 17)) {
+    showFlashAlert('error', 'TX power must be between -9 and 17 dBm.');
     return;
   }
 

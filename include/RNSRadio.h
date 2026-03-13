@@ -194,6 +194,8 @@ public:
         curCR = cr;
     }
     void setTxPower(int8_t dbm) {
+        if (dbm > LORA_TX_DBM_MAX_SAFE) dbm = LORA_TX_DBM_MAX_SAFE;
+        if (dbm < -9) dbm = -9;
 #ifndef NATIVE_TEST
         lora.setOutputPower(dbm);
 #endif

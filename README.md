@@ -130,7 +130,7 @@ Once a release exists with valid assets, the web flasher will list it automatica
 | `radio` | Current LoRa parameters |
 | `routes` | Routing table summary |
 | `identity` | Device identity and keys |
-| `set freq|sf|bw|cr|txpower|syncword|preamble` | Live radio tuning |
+| `set freq|sf|bw|cr|txpower|syncword|preamble` | Live radio tuning (`txpower` capped to 17 dBm for stability) |
 | `profile rnode-eu|rnode-us|ratspeak-us` | One-shot Reticulum LoRa preset |
 | `save` | Persist current config |
 | `announce` | Trigger local announce |
@@ -157,6 +157,7 @@ Once a release exists with valid assets, the web flasher will list it automatica
 - In console, run `radio` to inspect current settings
 - Fast path: apply one-shot preset with `profile rnode-eu`, `profile rnode-us`, or `profile ratspeak-us`
 - Set values as needed, for example: `set freq 915`, `set sf 9`, `set bw 125`, `set cr 5`, `set txpower 17`, `set syncword 0x12`, `set preamble 18`
+- If `announce` causes reconnect/reboot, lower TX power first (17 dBm or less) and ensure stable USB power/cable
 - Run `save` to persist settings, then `announce` to broadcast immediately
 
 ### Flash button disabled

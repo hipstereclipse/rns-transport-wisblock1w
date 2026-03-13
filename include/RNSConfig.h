@@ -47,7 +47,8 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define LORA_BW_KHZ         125.0f
 #define LORA_SF             8
 #define LORA_CR             5        // coding rate 4/5
-#define LORA_TX_DBM         22       // SX1262 setting; PA adds ~8 dB → 30 dBm
+#define LORA_TX_DBM         17       // safer default for power stability (PA adds ~8 dB)
+#define LORA_TX_DBM_MAX_SAFE 17
 #define LORA_PREAMBLE       8
 #define LORA_SYNC_WORD      0x12     // private LoRa sync word
 
