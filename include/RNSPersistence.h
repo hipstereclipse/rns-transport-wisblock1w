@@ -27,7 +27,14 @@ struct RadioConfig {
     uint8_t sf;
     uint8_t cr;
     int8_t  txDbm;
+    uint8_t syncWord;
     uint32_t checksum;   ///< Simple XOR checksum for integrity
+};
+
+struct MorseBlinkConfigBlob {
+    uint8_t mode;
+    char    defaultMessage[17];
+    uint32_t checksum;
 };
 
 // ── Identity blob layout (fixed 160 bytes) ────────────────
@@ -139,6 +146,7 @@ public:
         radio.setSF(cfg.sf);
         radio.setCR(cfg.cr);
         radio.setTxPower(cfg.txDbm);
+        radio.setSyncWord(cfg.syncWord);
         return true;
 #else
         return false;
@@ -155,6 +163,7 @@ public:
         cfg.sf      = radio.curSF;
         cfg.cr      = radio.curCR;
         cfg.txDbm   = radio.curTxDbm;
+        cfg.syncWord = radio.curSyncWord;
         cfg.checksum = computeConfigChecksum(cfg);
 
         InternalFS.remove(CONFIG_FILE);
@@ -206,6 +215,58 @@ public:
 #endif
     }
 
+    bool loadMorseBlinkConfig(uint8_t& mode, char* defaultMessage, size_t maxLen) {
+#ifndef NATIVE_TEST
+        if (!fsReady || !defaultMessage || maxLen < 2) return false;
+
+        File f = InternalFS.open(MORSE_CONFIG_FILE, FILE_O_READ);
+        if (!f) return false;
+
+        MorseBlinkConfigBlob cfg;
+        if (f.read((uint8_t*)&cfg, sizeof(cfg)) != sizeof(cfg)) {
+            f.close();
+            return false;
+        }
+        f.close();
+
+        if (computeMorseBlinkChecksum(cfg) != cfg.checksum) return false;
+
+        mode = cfg.mode;
+        strncpy(defaultMessage, cfg.defaultMessage, maxLen - 1);
+        defaultMessage[maxLen - 1] = '\0';
+        return true;
+#else
+        (void)mode; (void)defaultMessage; (void)maxLen;
+        return false;
+#endif
+    }
+
+    bool saveMorseBlinkConfig(uint8_t mode, const char* defaultMessage) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+
+        MorseBlinkConfigBlob cfg;
+        memset(&cfg, 0, sizeof(cfg));
+        cfg.mode = mode;
+        if (defaultMessage) {
+            strncpy(cfg.defaultMessage, defaultMessage, sizeof(cfg.defaultMessage) - 1);
+            cfg.defaultMessage[sizeof(cfg.defaultMessage) - 1] = '\0';
+        }
+        cfg.checksum = computeMorseBlinkChecksum(cfg);
+
+        InternalFS.remove(MORSE_CONFIG_FILE);
+        File f = InternalFS.open(MORSE_CONFIG_FILE, FILE_O_WRITE);
+        if (!f) return false;
+
+        size_t written = f.write((uint8_t*)&cfg, sizeof(cfg));
+        f.close();
+        return written == sizeof(cfg);
+#else
+        (void)mode; (void)defaultMessage;
+        return false;
+#endif
+    }
+
     // ── Factory reset: erase all persisted data ───────────
     void factoryReset() {
 #ifndef NATIVE_TEST
@@ -213,6 +274,7 @@ public:
         InternalFS.remove(IDENTITY_FILE);
         InternalFS.remove(CONFIG_FILE);
         InternalFS.remove(ANNOUNCE_NAME_FILE);
+        InternalFS.remove(MORSE_CONFIG_FILE);
         InternalFS.remove(PATH_TABLE_FILE);
 #endif
     }
@@ -231,6 +293,14 @@ private:
         uint32_t cs = 0xA5A5A5A5;
         const uint8_t* p = (const uint8_t*)&c;
         for (size_t i = 0; i < offsetof(RadioConfig, checksum); i++)
+            cs ^= ((uint32_t)p[i] << ((i % 4) * 8));
+        return cs;
+    }
+
+    uint32_t computeMorseBlinkChecksum(const MorseBlinkConfigBlob& c) {
+        uint32_t cs = 0xC3C3C3C3;
+        const uint8_t* p = (const uint8_t*)&c;
+        for (size_t i = 0; i < offsetof(MorseBlinkConfigBlob, checksum); i++)
             cs ^= ((uint32_t)p[i] << ((i % 4) * 8));
         return cs;
     }

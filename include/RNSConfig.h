@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    2
-#define FW_VERSION_STRING   "1.0.2"
+#define FW_VERSION_PATCH    4
+#define FW_VERSION_STRING   "1.0.4"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.2"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.4"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -85,6 +85,7 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define IDENTITY_FILE        "/identity.bin"
 #define CONFIG_FILE          "/config.bin"
 #define ANNOUNCE_NAME_FILE   "/announce_name.txt"
+#define MORSE_CONFIG_FILE    "/morse.bin"
 #define PATH_TABLE_FILE      "/paths.bin"
 
 // ── Safe-boot: hold this pin LOW during reset to skip main app

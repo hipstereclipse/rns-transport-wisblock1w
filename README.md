@@ -1,4 +1,4 @@
-# RatTunnel V. 1.0.2 — WisBlock 1W
+# RatTunnel V. 1.0.4 — WisBlock 1W
 
 `RatTunnel` is a standalone Reticulum transport/repeater firmware for the RAKwireless WisBlock 1W stack (`RAK3401 + RAK13302`).
 The name **RatTunnel** is a nod to [Ratspeak](https://github.com/ratspeak/), a messaging app/platform built on **Reticulum**.
@@ -11,7 +11,7 @@ It is designed for safe field updates with:
 
 ## Current Status
 
-- Firmware brand/version: `RatTunnel V. 1.0.2`
+- Firmware brand/version: `RatTunnel V. 1.0.4`
 - Hardware target: WisBlock 1W (`nRF52840 + SX1262`)
 - Primary flashing path: Web flasher (`flasher/index.html`) served over HTTP
 - Secondary flashing path: UF2 drag-and-drop bootloader drive
@@ -89,6 +89,15 @@ python tools/serve_flasher.py --no-open
 6. If prompted, click `Write to device drive` and choose `RAK4631` bootloader drive
 7. Wait for success and automatic reboot
 
+### Repeater settings menu (connectivity)
+
+After serial connect and repeater detection, switch to **Repeater mode** to use the settings menu:
+- Choose a connectivity profile (`RNode EU` / `RNode US`) or keep `Custom`
+- Edit frequency/SF/BW/CR/TX/sync word and optional broadcast name
+- Use `Apply + Save` to write settings and persist in one step
+- Use `Announce now` to immediately test visibility from peers
+- Use `Verify Link` to run `radio`, `status`, and `announce` in one click with pass/fail hints
+
 ### Browser/API requirements
 
 - Supported: Chrome / Edge (desktop, Web Serial enabled)
@@ -121,7 +130,8 @@ Once a release exists with valid assets, the web flasher will list it automatica
 | `radio` | Current LoRa parameters |
 | `routes` | Routing table summary |
 | `identity` | Device identity and keys |
-| `set freq|sf|bw|cr|txpower` | Live radio tuning |
+| `set freq|sf|bw|cr|txpower|syncword` | Live radio tuning |
+| `profile rnode-eu|rnode-us` | One-shot Reticulum LoRa preset |
 | `save` | Persist current config |
 | `announce` | Trigger local announce |
 | `dfu` | Reboot to bootloader mode |
@@ -135,6 +145,19 @@ Once a release exists with valid assets, the web flasher will list it automatica
 - Ensure Chrome or Edge desktop is used
 - Close other serial terminal apps that may own the port
 - Replug USB cable and retry `Connect device`
+
+### `Read error: The device has been lost`
+- This usually means the USB serial link briefly dropped (cable movement, power dip, or device reset)
+- The flasher now attempts to auto-reconnect to previously authorized serial ports
+- If disconnects repeat, use a shorter/high-quality USB cable and a stable 5V supply (1.5A+ recommended)
+- Avoid running multiple serial tools at the same time (browser + terminal app)
+
+### Node does not appear on a known-good Reticulum LoRa device
+- Ensure on-air parameters match exactly on both sides: frequency, bandwidth, spreading factor, coding rate, and sync word
+- In console, run `radio` to inspect current settings
+- Fast path: apply one-shot preset with `profile rnode-eu` or `profile rnode-us`
+- Set values as needed, for example: `set freq 867.2`, `set sf 8`, `set bw 125`, `set cr 5`, `set syncword 0x12`
+- Run `save` to persist settings, then `announce` to broadcast immediately
 
 ### Flash button disabled
 - Select a release version or enable local file mode

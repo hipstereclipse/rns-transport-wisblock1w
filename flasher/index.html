@@ -737,6 +737,7 @@
       <div class="repeater-block">
         <div class="repeater-block-title">Quick actions</div>
         <div class="repeater-actions">
+          <button class="qbtn" id="verifyLinkBtn" onclick="verifyLink()">Verify Link</button>
           <button class="qbtn" onclick="runRepeaterAction('status')">Status</button>
           <button class="qbtn" onclick="runRepeaterAction('test')">Test reply</button>
           <button class="qbtn" onclick="runRepeaterAction('radio')">Radio</button>
@@ -752,6 +753,14 @@
       <div class="repeater-block">
         <div class="repeater-block-title">Radio settings</div>
         <div class="repeater-form">
+          <div class="repeater-field" style="grid-column:1 / -1;">
+            <label for="repProfile">Connectivity profile</label>
+            <select id="repProfile" onchange="applyConnectivityProfileToForm()" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:0.78rem;padding:0.45rem 0.55rem;outline:none;">
+              <option value="custom" selected>Custom</option>
+              <option value="rnode-eu">RNode EU (867.2 / SF8 / BW125 / CR5 / TX7 / 0x12)</option>
+              <option value="rnode-us">RNode US (915.0 / SF8 / BW125 / CR5 / TX7 / 0x12)</option>
+            </select>
+          </div>
           <div class="repeater-field">
             <label for="repFreq">Frequency (MHz)</label>
             <input id="repFreq" type="number" step="0.1" min="150" max="960" placeholder="915.0">
@@ -772,16 +781,50 @@
             <label for="repCr">Coding rate (denominator)</label>
             <input id="repCr" type="number" step="1" min="5" max="8" placeholder="5">
           </div>
+          <div class="repeater-field">
+            <label for="repSync">Sync word</label>
+            <input id="repSync" type="text" maxlength="6" placeholder="0x12">
+          </div>
           <div class="repeater-field" style="grid-column:1 / -1;">
             <label for="repName">Broadcast name</label>
             <input id="repName" type="text" maxlength="32" placeholder="RatTunnel Relay">
           </div>
         </div>
         <div class="repeater-actions" style="margin-top:0.55rem;">
-          <button class="qbtn" onclick="applyRepeaterSettings()">Apply settings</button>
+          <button class="qbtn" onclick="applyConnectivityProfileToForm(true)">Apply profile</button>
+          <button class="qbtn" onclick="loadSettingsFromStatus()">Load from live status</button>
+          <button class="qbtn" onclick="applyRepeaterSettings(false)">Apply settings</button>
+          <button class="qbtn" onclick="applyRepeaterSettings(true)">Apply + Save</button>
           <button class="qbtn" onclick="runRepeaterAction('radio')">Read current radio config</button>
         </div>
+        <div class="repeater-panel-foot" id="repProfileHint">Select a profile, tweak values if needed, then Apply + Save.</div>
         <div class="repeater-panel-foot">Tip: click Save config after applying settings to persist them across reboots.</div>
+      </div>
+
+      <div class="repeater-block">
+        <div class="repeater-block-title">Morse blinker</div>
+        <div class="repeater-form">
+          <div class="repeater-field">
+            <label for="repMorseMode">Blink behavior</label>
+            <select id="repMorseMode" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:0.78rem;padding:0.45rem 0.55rem;outline:none;">
+              <option value="off">Off</option>
+              <option value="errors" selected>Errors only</option>
+              <option value="incoming">Incoming only</option>
+              <option value="both">Errors + incoming</option>
+              <option value="default">Use default message</option>
+            </select>
+          </div>
+          <div class="repeater-field" style="grid-column:1 / -1;">
+            <label for="repMorseDefault">Default message (A-Z / 0-9)</label>
+            <input id="repMorseDefault" type="text" maxlength="16" placeholder="SOS">
+          </div>
+        </div>
+        <div class="repeater-actions" style="margin-top:0.55rem;">
+          <button class="qbtn" onclick="applyMorseBlinkSettings()">Apply Morse settings</button>
+          <button class="qbtn" onclick="runRepeaterAction('morse')">Read Morse config</button>
+          <button class="qbtn" onclick="runRepeaterAction('morse test')">Test blink</button>
+        </div>
+        <div class="repeater-panel-foot">Choose whether Morse blink indicates errors, incoming messages, or your saved default pattern.</div>
       </div>
     </div>
   </div>
@@ -999,11 +1042,22 @@ let reader  = null;
 let writer  = null;
 let looping = false;
 let connected = false;
+let disconnectInProgress = false;
+let userRequestedDisconnect = false;
+let reconnectTimer = null;
 let repeaterDetected = false;
 let rxProbeBuffer = '';
 let activeMode = 'flasher';
 let rxLineBuffer = '';
+let morseLineBuffer = '';
+let lastDecodedMorse = '';
 let autoRefreshTimer = null;
+
+const linkVerifyState = {
+  running: false,
+  announceSeen: false,
+  announceFailed: false,
+};
 
 const repeaterState = {
   firmware: '—',
@@ -1020,6 +1074,7 @@ const repeaterState = {
   sf: '—',
   bw: '—',
   cr: '—',
+  sync: '—',
   txp: '—',
   rssi: '—',
   snr: '—',
@@ -1037,6 +1092,12 @@ const repeaterCaps = {
   legacyDetected: false,
 };
 
+const CONNECTIVITY_PROFILES = {
+  custom: null,
+  'rnode-eu': { freq: 867.2, sf: 8, bw: 125, tx: 7, cr: 5, sync: 0x12 },
+  'rnode-us': { freq: 915.0, sf: 8, bw: 125, tx: 7, cr: 5, sync: 0x12 },
+};
+
 /* ════════════════════════════════════════════
    Boot
 ════════════════════════════════════════════ */
@@ -1051,6 +1112,7 @@ window.addEventListener('DOMContentLoaded', refreshEnvironmentNotice);
 window.addEventListener('DOMContentLoaded', refreshModeToggleUi);
 window.addEventListener('DOMContentLoaded', applyPrimaryModeUi);
 window.addEventListener('DOMContentLoaded', updateStatusUi);
+window.addEventListener('DOMContentLoaded', updateProfileHint);
 
 function buildNoCacheUrl(url) {
   const sep = url.includes('?') ? '&' : '?';
@@ -1600,7 +1662,10 @@ function markLegacyRepeater(reason = '') {
 
 function inspectDeviceOutput(text) {
   feedStatusParser(text);
-  rxProbeBuffer = (rxProbeBuffer + String(text || '')).slice(-2048);
+  const chunk = String(text || '');
+  if (/Local announce transmitted\./i.test(chunk)) linkVerifyState.announceSeen = true;
+  if (/Announce transmit failed/i.test(chunk)) linkVerifyState.announceFailed = true;
+  rxProbeBuffer = (rxProbeBuffer + chunk).slice(-2048);
   if (/(\[RNS\]|rns>|Transport Node|Reticulum transport|RatTunnel|Available Commands|Firmware:|Board: WisBlock)/i.test(rxProbeBuffer)) {
     markRepeaterDetected();
   }
@@ -1620,7 +1685,7 @@ function inspectDeviceOutput(text) {
   }
 
   // Only flag legacy if the device identifies with the old "RNS Transport Node vX.Y.Z" banner.
-  // "RatTunnel V. 1.0.2" is the current banner and must never trigger this path.
+  // "RatTunnel V. 1.0.4" is the current banner and must never trigger this path.
   const legacyVersion = rxProbeBuffer.match(/\bRNS Transport Node v(\d+\.\d+\.\d+)\b/i);
   if (legacyVersion && !/RatTunnel\s+V\./i.test(rxProbeBuffer)) {
     markLegacyRepeater(legacyVersion[1]);
@@ -1659,6 +1724,113 @@ function updateStatusUi() {
   if (repName && repeaterState.name && repeaterState.name !== '—' && repName.value.trim() === '') {
     repName.value = repeaterState.name;
   }
+
+  loadSettingsFromStatus(true);
+}
+
+function numberFromText(text) {
+  const m = String(text || '').match(/-?\d+(?:\.\d+)?/);
+  return m ? m[0] : '';
+}
+
+function parseSyncWord(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 0);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 0 || parsed > 255) return null;
+  return parsed;
+}
+
+function formatSyncWordHex(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 255) return '';
+  return `0x${n.toString(16).toUpperCase().padStart(2, '0')}`;
+}
+
+function detectProfileFromForm() {
+  const freq = Number(document.getElementById('repFreq')?.value || '');
+  const sf = Number(document.getElementById('repSf')?.value || '');
+  const bw = Number(document.getElementById('repBw')?.value || '');
+  const tx = Number(document.getElementById('repTx')?.value || '');
+  const cr = Number(document.getElementById('repCr')?.value || '');
+  const sync = parseSyncWord(document.getElementById('repSync')?.value || '');
+
+  for (const [name, profile] of Object.entries(CONNECTIVITY_PROFILES)) {
+    if (!profile) continue;
+    const freqMatch = Number.isFinite(freq) && Math.abs(freq - profile.freq) < 0.05;
+    if (freqMatch && sf === profile.sf && bw === profile.bw && tx === profile.tx && cr === profile.cr && sync === profile.sync) {
+      return name;
+    }
+  }
+  return 'custom';
+}
+
+function updateProfileHint() {
+  const profileEl = document.getElementById('repProfile');
+  const hintEl = document.getElementById('repProfileHint');
+  if (!profileEl || !hintEl) return;
+  const profileName = profileEl.value || 'custom';
+  if (profileName === 'rnode-eu') {
+    hintEl.textContent = 'Profile: RNode EU preset loaded. You can tweak fields before Apply + Save.';
+    return;
+  }
+  if (profileName === 'rnode-us') {
+    hintEl.textContent = 'Profile: RNode US preset loaded. You can tweak fields before Apply + Save.';
+    return;
+  }
+  hintEl.textContent = 'Custom profile. Match your peer exactly, then use Apply + Save.';
+}
+
+function applyConnectivityProfileToForm(force = false) {
+  const profileEl = document.getElementById('repProfile');
+  if (!profileEl) return;
+  const profileName = profileEl.value || 'custom';
+  const profile = CONNECTIVITY_PROFILES[profileName] || null;
+  if (!profile) {
+    updateProfileHint();
+    return;
+  }
+
+  const freqEl = document.getElementById('repFreq');
+  const sfEl = document.getElementById('repSf');
+  const bwEl = document.getElementById('repBw');
+  const txEl = document.getElementById('repTx');
+  const crEl = document.getElementById('repCr');
+  const syncEl = document.getElementById('repSync');
+
+  if (force || (freqEl && !freqEl.value.trim())) freqEl.value = String(profile.freq);
+  if (force || (sfEl && !sfEl.value.trim())) sfEl.value = String(profile.sf);
+  if (force || (bwEl && !bwEl.value.trim())) bwEl.value = String(profile.bw);
+  if (force || (txEl && !txEl.value.trim())) txEl.value = String(profile.tx);
+  if (force || (crEl && !crEl.value.trim())) crEl.value = String(profile.cr);
+  if (force || (syncEl && !syncEl.value.trim())) syncEl.value = formatSyncWordHex(profile.sync);
+
+  updateProfileHint();
+}
+
+function loadSettingsFromStatus(silent = false) {
+  const freqEl = document.getElementById('repFreq');
+  const sfEl = document.getElementById('repSf');
+  const bwEl = document.getElementById('repBw');
+  const txEl = document.getElementById('repTx');
+  const crEl = document.getElementById('repCr');
+  const syncEl = document.getElementById('repSync');
+  const profileEl = document.getElementById('repProfile');
+
+  if (freqEl && !freqEl.value.trim() && repeaterState.freq !== '—') freqEl.value = numberFromText(repeaterState.freq);
+  if (sfEl && !sfEl.value.trim() && repeaterState.sf !== '—') sfEl.value = numberFromText(repeaterState.sf);
+  if (bwEl && !bwEl.value.trim() && repeaterState.bw !== '—') bwEl.value = numberFromText(repeaterState.bw);
+  if (txEl && !txEl.value.trim() && repeaterState.txp !== '—') txEl.value = numberFromText(repeaterState.txp);
+  if (crEl && !crEl.value.trim() && repeaterState.cr !== '—') crEl.value = numberFromText(repeaterState.cr);
+  if (syncEl && !syncEl.value.trim() && repeaterState.sync !== '—') {
+    const parsed = parseSyncWord(repeaterState.sync);
+    if (parsed !== null) syncEl.value = formatSyncWordHex(parsed);
+  }
+
+  if (profileEl) profileEl.value = detectProfileFromForm();
+  updateProfileHint();
+
+  if (!silent) showFlashAlert('info', 'Loaded editable values from latest live status.');
 }
 
 function parseStatusLine(line) {
@@ -1686,6 +1858,7 @@ function parseStatusLine(line) {
     else if (key === 'bandwidth') repeaterState.bw = value;
     else if (key === 'sf') repeaterState.sf = value;
     else if (key === 'cr') repeaterState.cr = value;
+    else if (key === 'sync word') repeaterState.sync = value;
     else if (key === 'tx power') repeaterState.txp = value;
     else if (key === 'last rssi') repeaterState.rssi = value;
     else if (key === 'last snr') repeaterState.snr = value;
@@ -1790,7 +1963,56 @@ async function runRepeaterAction(cmd) {
   openRepeaterConsole();
 }
 
-async function applyRepeaterSettings() {
+async function verifyLink() {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'Verify Link requires current RatTunnel firmware in Repeater mode.');
+    return;
+  }
+  if (linkVerifyState.running) return;
+
+  const btn = document.getElementById('verifyLinkBtn');
+  linkVerifyState.running = true;
+  linkVerifyState.announceSeen = false;
+  linkVerifyState.announceFailed = false;
+  if (btn) btn.textContent = 'Verifying…';
+
+  try {
+    await sendCmd('radio');
+    await sleep(180);
+    await sendCmd('status');
+    await sleep(180);
+    await sendCmd('announce');
+    await sleep(260);
+
+    const radioPass = repeaterState.freq !== '—' && repeaterState.sf !== '—' && repeaterState.bw !== '—' && repeaterState.cr !== '—';
+    const statusPass = repeaterState.firmware !== '—' && repeaterState.uptime !== '—';
+    const announcePass = linkVerifyState.announceSeen && !linkVerifyState.announceFailed;
+
+    const failed = [];
+    if (!radioPass) failed.push('radio output incomplete');
+    if (!statusPass) failed.push('status output incomplete');
+    if (!announcePass) failed.push(linkVerifyState.announceFailed ? 'announce transmit failed' : 'announce confirmation not seen');
+
+    if (!failed.length) {
+      showFlashAlert('info', 'Verify Link: PASS. Radio/status/announce look healthy. If peers still do not see this node, match on-air params exactly (freq/SF/BW/CR/syncword).');
+    } else {
+      showFlashAlert('warn', `Verify Link: FAIL (${failed.join('; ')}). Hint: run Apply + Save in Radio settings, then retry.`);
+    }
+
+    openRepeaterConsole();
+  } catch (err) {
+    showFlashAlert('error', `Verify Link failed: ${err.message}`);
+  } finally {
+    linkVerifyState.running = false;
+    if (btn) btn.textContent = 'Verify Link';
+  }
+}
+
+async function applyRepeaterSettings(saveAfter = false) {
   if (!writer) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
@@ -1805,6 +2027,7 @@ async function applyRepeaterSettings() {
   const bw = document.getElementById('repBw').value.trim();
   const tx = document.getElementById('repTx').value.trim();
   const cr = document.getElementById('repCr').value.trim();
+  const sync = document.getElementById('repSync').value.trim();
   const name = document.getElementById('repName').value.trim();
 
   const commands = [];
@@ -1813,6 +2036,7 @@ async function applyRepeaterSettings() {
   if (bw) commands.push(`set bw ${bw}`);
   if (tx) commands.push(`set txpower ${tx}`);
   if (cr) commands.push(`set cr ${cr}`);
+  if (sync) commands.push(`set syncword ${sync}`);
   if (name) commands.push(`name ${name}`);
 
   if (!commands.length) {
@@ -1838,6 +2062,12 @@ async function applyRepeaterSettings() {
     return;
   }
 
+  const syncNum = sync ? parseSyncWord(sync) : null;
+  if (sync && syncNum === null) {
+    showFlashAlert('error', 'Sync word must be between 0 and 255 (decimal or hex like 0x12).');
+    return;
+  }
+
   if (name && name.length > 32) {
     showFlashAlert('error', 'Broadcast name must be 32 characters or fewer.');
     return;
@@ -1847,6 +2077,10 @@ async function applyRepeaterSettings() {
     await sendCmd(cmd);
     await sleep(120);
   }
+  if (saveAfter) {
+    await sendCmd('save');
+    await sleep(120);
+  }
   await sendCmd('radio');
   await sleep(120);
   await sendCmd('status');
@@ -1854,7 +2088,49 @@ async function applyRepeaterSettings() {
     await sleep(120);
     await sendCmd('announce');
   }
-  showFlashAlert('info', 'Settings sent. Review output and click Save config to persist changes.');
+  showFlashAlert('info', saveAfter
+    ? 'Settings applied and saved. Announce and status refreshed.'
+    : 'Settings sent. Review output and click Save config to persist changes.');
+  openRepeaterConsole();
+}
+
+async function applyMorseBlinkSettings() {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'This connected firmware is missing required repeater commands. Flash latest RatTunnel firmware first.');
+    return;
+  }
+
+  const modeEl = document.getElementById('repMorseMode');
+  const msgEl = document.getElementById('repMorseDefault');
+  const mode = (modeEl && modeEl.value ? modeEl.value : 'errors').trim().toLowerCase();
+  const msgRaw = msgEl ? msgEl.value.trim().toUpperCase() : '';
+  const msgClean = msgRaw.replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (!['off', 'errors', 'incoming', 'both', 'default'].includes(mode)) {
+    showFlashAlert('error', 'Invalid Morse mode selected.');
+    return;
+  }
+
+  if (msgClean.length > 16) {
+    showFlashAlert('error', 'Default Morse message must be 16 characters or fewer.');
+    return;
+  }
+
+  await sendCmd(`morse mode ${mode}`);
+  await sleep(120);
+  if (msgClean) {
+    await sendCmd(`morse default ${msgClean}`);
+    await sleep(120);
+  }
+  await sendCmd('save');
+  await sleep(120);
+  await sendCmd('morse');
+
+  showFlashAlert('info', 'Morse blinker settings applied and saved.');
   openRepeaterConsole();
 }
 
@@ -1874,13 +2150,18 @@ async function probeRepeaterFirmware() {
 ════════════════════════════════════════════ */
 async function toggleConnect() {
   if (connected) {
-    await doDisconnect();
+    await doDisconnect({ manual: true });
   } else {
     await doConnect();
   }
 }
 
 async function openSelectedPort(selectedPort) {
+  userRequestedDisconnect = false;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   port = selectedPort;
   await port.open({ baudRate: 115200 });
   connected = true;
@@ -1889,6 +2170,8 @@ async function openSelectedPort(selectedPort) {
   repeaterCaps.supportsName = false;
   repeaterCaps.legacyDetected = false;
   rxProbeBuffer = '';  // fresh probe window; never carry over state from a previous connection
+  morseLineBuffer = '';
+  lastDecodedMorse = '';
   updateConnChip(true);
   document.getElementById('consoleInput').disabled = false;
 
@@ -1975,25 +2258,60 @@ async function enterDfuMode() {
   }
 }
 
-async function doDisconnect() {
-  looping = false;
-  stopAutoRefresh();
-  try { if (reader) { await reader.cancel(); reader = null; } } catch (_) {}
-  try { if (writer) { await writer.close();  writer = null; } } catch (_) {}
-  try { if (port)   { await port.close();    port   = null; } } catch (_) {}
-  connected = false;
-  repeaterDetected = false;
-  repeaterCaps.compatible = false;
-  repeaterCaps.supportsAnnounce = false;
-  repeaterCaps.supportsName = false;
-  repeaterCaps.legacyDetected = false;
-  rxProbeBuffer = '';
-  activeMode = 'flasher';
-  updateConnChip(false);
-  document.getElementById('consoleInput').disabled = true;
-  sysLog('Serial disconnected.\n');
-  updateActionButtons();
-  updateRepeaterUi();
+function scheduleAutoReconnect(reason = '') {
+  if (userRequestedDisconnect || !('serial' in navigator)) return;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    if (connected || userRequestedDisconnect) return;
+    try {
+      const ports = await navigator.serial.getPorts();
+      if (!ports || !ports.length) return;
+      await openSelectedPort(ports[0]);
+      const detail = reason ? ` (${reason})` : '';
+      sysLog(`Serial auto-reconnected${detail}.\n`);
+    } catch (_) {}
+  }, 1500);
+}
+
+async function doDisconnect(opts = {}) {
+  const { manual = false, suppressLog = false, autoReconnectReason = '' } = opts;
+  if (disconnectInProgress) return;
+  disconnectInProgress = true;
+
+  try {
+    if (manual) userRequestedDisconnect = true;
+
+    looping = false;
+    stopAutoRefresh();
+    try { if (reader) { await reader.cancel(); reader = null; } } catch (_) {}
+    try { if (writer) { await writer.close();  writer = null; } } catch (_) {}
+    try { if (port)   { await port.close();    port   = null; } } catch (_) {}
+    connected = false;
+    repeaterDetected = false;
+    repeaterCaps.compatible = false;
+    repeaterCaps.supportsAnnounce = false;
+    repeaterCaps.supportsName = false;
+    repeaterCaps.legacyDetected = false;
+    rxProbeBuffer = '';
+    morseLineBuffer = '';
+    lastDecodedMorse = '';
+    activeMode = 'flasher';
+    updateConnChip(false);
+    document.getElementById('consoleInput').disabled = true;
+    if (!suppressLog) sysLog('Serial disconnected.\n');
+    updateActionButtons();
+    updateRepeaterUi();
+
+    if (!manual) {
+      scheduleAutoReconnect(autoReconnectReason);
+    }
+  } finally {
+    disconnectInProgress = false;
+  }
 }
 
 function updateConnChip(on) {
@@ -2001,14 +2319,14 @@ function updateConnChip(on) {
   const label = document.getElementById('connLabel');
   chip.className = 'conn-chip' + (on ? ' connected' : '');
   label.textContent = on ? 'Connected' : 'Connect device';
-  chip.onclick = on ? () => doDisconnect() : () => doConnect();
+  chip.onclick = on ? () => doDisconnect({ manual: true }) : () => doConnect();
   chip.title   = on ? 'Click to disconnect' : 'Connect for automatic DFU trigger (optional)';
   updateActionButtons();
 }
 
 if ('serial' in navigator) {
   navigator.serial.addEventListener('disconnect', e => {
-    if (port && e.target === port) { doDisconnect(); }
+    if (port && e.target === port) { doDisconnect({ autoReconnectReason: 'device reconnect' }); }
   });
 }
 
@@ -2023,7 +2341,15 @@ async function readLoop() {
       if (value) rxLog(value);
     }
   } catch (err) {
-    if (looping) sysLog(`Read error: ${err.message}\n`);
+    if (looping) {
+      const msg = String((err && err.message) || '');
+      if (/device has been lost|network error|disconnected|closed/i.test(msg)) {
+        sysLog('Read interrupted: serial device disconnected.\n');
+      } else {
+        sysLog(`Read error: ${msg}\n`);
+      }
+      await doDisconnect({ suppressLog: true, autoReconnectReason: 'read interruption' });
+    }
   }
 }
 
@@ -2520,8 +2846,73 @@ function toggleAdvanced() {
 
 function rxLog(text) {
   inspectDeviceOutput(text);
+  inspectMorseOutput(text);
   appendConsole('rx', text);
 }
+
+const MORSE_TABLE = {
+  '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D', '.': 'E', '..-.': 'F', '--.': 'G', '....': 'H', '..': 'I',
+  '.---': 'J', '-.-': 'K', '.-..': 'L', '--': 'M', '-.': 'N', '---': 'O', '.--.': 'P', '--.-': 'Q', '.-.': 'R',
+  '...': 'S', '-': 'T', '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X', '-.--': 'Y', '--..': 'Z',
+  '-----': '0', '.----': '1', '..---': '2', '...--': '3', '....-': '4', '.....': '5', '-....': '6', '--...': '7',
+  '---..': '8', '----.': '9', '.-.-.-': '.', '--..--': ',', '..--..': '?', '-.-.--': '!', '-..-.': '/', '-....-': '-',
+  '-.--.': '(', '-.--.-': ')', '.----.': "'", '.-..-.': '"', '.--.-.': '@', '---...': ':', '-.-.-.': ';', '-...-': '=',
+  '..--.-': '_', '.-.-.': '+', '...-..-': '$'
+};
+
+function normalizeMorseSource(line) {
+  const marker = line.match(/(?:morse|blink|beep|error\s*code)\s*[:=-]\s*(.+)$/i);
+  if (marker && marker[1]) return marker[1].trim();
+  return line.trim();
+}
+
+function extractMorseCandidate(line) {
+  const src = normalizeMorseSource(String(line || ''));
+  const direct = src.match(/^[.\-\s/|]{3,}$/);
+  if (direct) return src;
+
+  const embedded = src.match(/([.\-]{1,8}(?:\s+[.\-]{1,8})+(?:\s*[\/|]\s*[.\-]{1,8}(?:\s+[.\-]{1,8})*)*)/);
+  return embedded ? embedded[1].trim() : '';
+}
+
+function decodeMorse(morseText) {
+  if (!morseText) return '';
+  const words = morseText
+    .replace(/\s+/g, ' ')
+    .replace(/\|/g, '/')
+    .split('/')
+    .map(word => word.trim())
+    .filter(Boolean);
+
+  if (!words.length) return '';
+
+  const decodedWords = words.map(word => {
+    const letters = word.split(' ').filter(Boolean);
+    return letters.map(token => MORSE_TABLE[token] || '?').join('');
+  });
+
+  const decoded = decodedWords.join(' ').trim();
+  if (!decoded || /^\?+$/.test(decoded.replace(/\s+/g, ''))) return '';
+  return decoded;
+}
+
+function inspectMorseOutput(text) {
+  morseLineBuffer += String(text || '');
+  const lines = morseLineBuffer.split(/\r?\n/);
+  morseLineBuffer = lines.pop() || '';
+
+  for (const line of lines) {
+    const candidate = extractMorseCandidate(line);
+    if (!candidate) continue;
+    const decoded = decodeMorse(candidate);
+    if (!decoded) continue;
+    const key = `${candidate}=>${decoded}`;
+    if (key === lastDecodedMorse) continue;
+    lastDecodedMorse = key;
+    appendConsole('sys', `↳ Morse decoded: ${decoded}\n`);
+  }
+}
+
 function sysLog(text) {
   appendConsole('sys', text);
 }

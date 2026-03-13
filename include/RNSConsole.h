@@ -94,12 +94,14 @@ private:
         else if (strcmp(command, "stats")     == 0) cmdStatus();
         else if (strcmp(command, "radio")     == 0) cmdRadio();
         else if (strcmp(command, "set")       == 0) cmdSet(args);
+        else if (strcmp(command, "profile")   == 0) cmdProfile(args);
         else if (strcmp(command, "name")      == 0) cmdName(args);
         else if (strcmp(command, "save")      == 0) cmdSave();
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
         else if (strcmp(command, "dfu")       == 0) cmdDfu();
         else if (strcmp(command, "reboot")    == 0) cmdReboot();
         else if (strcmp(command, "announce")  == 0) cmdAnnounce();
+        else if (strcmp(command, "morse")     == 0) cmdMorse(args);
         else if (strcmp(command, "test")      == 0) cmdTest();
         else if (strcmp(command, "ping")      == 0) cmdTest();
         else if (strcmp(command, "version")   == 0) cmdVersion();
@@ -200,6 +202,9 @@ private:
         io->print(F("  CR:        4/")); io->println(radio->curCR);
         io->print(F("  TX Power:  ")); io->print(radio->curTxDbm);
                                         io->println(F(" dBm (SX1262 → +8 dB PA)"));
+        io->print(F("  Sync Word: 0x"));
+        if (radio->curSyncWord < 0x10) io->print('0');
+        io->println(radio->curSyncWord, HEX);
         io->print(F("  Last RSSI: ")); io->print(radio->lastRSSI); io->println(F(" dBm"));
         io->print(F("  Last SNR:  ")); io->print(radio->lastSNR); io->println(F(" dB"));
     }
@@ -237,13 +242,69 @@ private:
             if (dbm < -9 || dbm > 22) { io->println(F("TX power must be -9 to 22 dBm")); return; }
             radio->setTxPower((int8_t)dbm);
             io->print(F("TX → ")); io->print(dbm); io->println(F(" dBm"));
+        } else if (strcmp(param, "sync") == 0 || strcmp(param, "syncword") == 0) {
+            char* end = nullptr;
+            long sync = strtol(value, &end, 0);
+            if (!end || *end != '\0' || sync < 0 || sync > 255) {
+                io->println(F("Sync word must be 0-255 (hex allowed, e.g. 0x12)"));
+                return;
+            }
+            radio->setSyncWord((uint8_t)sync);
+            io->print(F("Sync word → 0x"));
+            if (sync < 0x10) io->print('0');
+            io->println((uint8_t)sync, HEX);
         } else {
-            io->println(F("Unknown param. Use: freq, sf, bw, cr, txpower"));
+            io->println(F("Unknown param. Use: freq, sf, bw, cr, txpower, syncword"));
         }
+    }
+
+    // ── profile <name> (one-shot presets) ─────────────────
+    void cmdProfile(const char* args) {
+        while (args && *args == ' ') args++;
+
+        if (!args || *args == '\0') {
+            io->println(F("Usage: profile <rnode-eu|rnode-us>"));
+            io->println(F("  rnode-eu: 867.2 MHz, BW125, SF8, CR5, TX7, sync 0x12"));
+            io->println(F("  rnode-us: 915.0 MHz, BW125, SF8, CR5, TX7, sync 0x12"));
+            return;
+        }
+
+        if (strcmp(args, "rnode-eu") == 0 || strcmp(args, "eu") == 0) {
+            radio->setFrequency(867.2f);
+            radio->setBandwidth(125.0f);
+            radio->setSF(8);
+            radio->setCR(5);
+            radio->setTxPower(7);
+            radio->setSyncWord(0x12);
+            io->println(F("Profile applied: rnode-eu"));
+            io->println(F("Tip: run 'save' to persist, then 'announce' to broadcast now."));
+            cmdRadio();
+            return;
+        }
+
+        if (strcmp(args, "rnode-us") == 0 || strcmp(args, "us") == 0) {
+            radio->setFrequency(915.0f);
+            radio->setBandwidth(125.0f);
+            radio->setSF(8);
+            radio->setCR(5);
+            radio->setTxPower(7);
+            radio->setSyncWord(0x12);
+            io->println(F("Profile applied: rnode-us"));
+            io->println(F("Tip: run 'save' to persist, then 'announce' to broadcast now."));
+            cmdRadio();
+            return;
+        }
+
+        io->print(F("Unknown profile: "));
+        io->println(args);
+        io->println(F("Use: profile <rnode-eu|rnode-us>"));
     }
 
     // ── save (persist current config to flash) ────────────
     void cmdSave();   // implemented in main.cpp (needs persistence ref)
+
+    // ── morse blink settings ──────────────────────────────
+    void cmdMorse(const char* args); // implemented in main.cpp
 
     // ── factory-reset ─────────────────────────────────────
     void cmdFactoryReset();  // implemented in main.cpp
@@ -318,13 +379,15 @@ private:
         io->println(F("  routes         Show routing table"));
         io->println(F("  identity       Display node identity hash + keys"));
         io->println(F("  radio          Current radio configuration"));
-        io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower)"));
+        io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower/syncword)"));
+        io->println(F("  profile <p>    One-shot radio preset (rnode-eu/rnode-us)"));
         io->println(F("  name <text>    Set/display broadcast announce name"));
         io->println(F("  save           Persist config to flash"));
         io->println(F("  factory-reset  Erase all persisted data"));
         io->println(F("  dfu            Reboot into bootloader (USB flashing)"));
         io->println(F("  reboot         Restart node"));
         io->println(F("  announce       Broadcast this node announce now"));
+        io->println(F("  morse          Configure Morse blinker (mode/default)"));
         io->println(F("  test|ping      Emit one-line node health response"));
         io->println(F("  version        Firmware version"));
         io->println(F("  help           This message"));

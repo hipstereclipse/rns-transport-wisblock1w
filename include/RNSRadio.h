@@ -41,6 +41,7 @@ public:
     uint8_t curSF    = LORA_SF;
     uint8_t curCR    = LORA_CR;
     int8_t  curTxDbm = LORA_TX_DBM;
+    uint8_t curSyncWord = LORA_SYNC_WORD;
 
     // ── DIO1 ISR (minimal — just set flag) ────────────────
     static RNSRadio* instance;
@@ -71,8 +72,8 @@ public:
         delay(100);
 
         int state = lora.begin(
-            LORA_FREQ_MHZ, LORA_BW_KHZ, LORA_SF, LORA_CR,
-            LORA_SYNC_WORD, LORA_TX_DBM, LORA_PREAMBLE, 0
+            curFreqMHz, curBwKHz, curSF, curCR,
+            curSyncWord, curTxDbm, LORA_PREAMBLE, 0
         );
         if (state != RADIOLIB_ERR_NONE) return false;
 
@@ -121,14 +122,32 @@ public:
      * @return true if transmission succeeded.
      *
      * Uses up to 8 CAD attempts with random backoff before giving up.
+     *
+     * SAFETY: lora.scanChannel() has no internal timeout — it spins
+     * while(!digitalRead(DIO1)) forever.  If the SX1262 never fires
+     * a CAD-done interrupt the watchdog will trigger a hard reset.
+     * We therefore use the non-blocking startChannelScan() + a
+     * millis()-bounded poll so each attempt is capped at CAD_TIMEOUT_MS,
+     * keeping the total worst-case time well under WDT_TIMEOUT_SEC.
      */
     bool transmit(const uint8_t* data, uint16_t len) {
         if (!data || len == 0 || len > RNS_MTU) return false;
 
 #ifndef NATIVE_TEST
+        // CAD at SF8/BW125 completes in ~17 ms; 200 ms is generous.
+        static const uint32_t CAD_TIMEOUT_MS = 200;
+
         bool channelFree = false;
         for (int attempt = 0; attempt < 8; attempt++) {
-            int cad = lora.scanChannel();
+            if (lora.startChannelScan() != RADIOLIB_ERR_NONE) {
+                delay(random(10, 50));
+                continue;
+            }
+            uint32_t cadStart = millis();
+            while (!digitalRead(PIN_LORA_DIO1)) {
+                if (millis() - cadStart >= CAD_TIMEOUT_MS) break;
+            }
+            int cad = lora.getChannelScanResult();
             if (cad == RADIOLIB_CHANNEL_FREE) {
                 channelFree = true;
                 break;
@@ -178,6 +197,12 @@ public:
         lora.setOutputPower(dbm);
 #endif
         curTxDbm = dbm;
+    }
+    void setSyncWord(uint8_t syncWord) {
+#ifndef NATIVE_TEST
+        lora.setSyncWord(syncWord);
+#endif
+        curSyncWord = syncWord;
     }
 };
 
