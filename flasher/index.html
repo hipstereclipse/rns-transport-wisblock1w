@@ -159,10 +159,11 @@
   .version-row {
     display: flex;
     gap: 0.6rem;
-    align-items: center;
+    align-items: stretch;
   }
   .version-select {
     flex: 1;
+    width: 100%;
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -203,9 +204,16 @@
     color: var(--dim);
   }
   .connect-actions {
-    margin-top: 0.45rem;
+    margin-top: 0.55rem;
     display: flex;
+    gap: 0.45rem;
     justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .connect-actions .qbtn {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.76rem;
+    min-height: 31px;
   }
   .version-tools label {
     display: inline-flex;
@@ -651,6 +659,14 @@
   @media (max-width: 480px) {
     body { padding: 1.2rem 0.75rem 3rem; }
     .logo h1 { font-size: 1.25rem; }
+    .connect-actions {
+      justify-content: stretch;
+    }
+    .connect-actions .conn-chip,
+    .connect-actions .qbtn {
+      flex: 1;
+      justify-content: center;
+    }
   }
 </style>
 </head>
@@ -795,13 +811,13 @@
       <select class="version-select" id="versionSelect" disabled onchange="onVersionChange()">
         <option value="">Loading…</option>
       </select>
+    </div>
+
+    <div class="connect-actions">
       <button class="conn-chip" id="connChip" onclick="toggleConnect()" title="Connect device for automatic DFU trigger">
         <span class="conn-dot"></span>
         <span id="connLabel">Connect device</span>
       </button>
-    </div>
-
-    <div class="connect-actions">
       <button class="qbtn" id="autoConnectBtn" onclick="autoConnectNow()">Auto-connect</button>
     </div>
 
@@ -962,7 +978,9 @@
    State
 ════════════════════════════════════════════ */
 const REPO = 'hipstereclipse/rns-transport-wisblock1w';
+const LOCAL_FIRMWARE_FALLBACK_URL = new URL('./firmware/latest.uf2', window.location.href).href;
 const RAW_FIRMWARE_FALLBACK_URL = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2`;
+const FALLBACK_FIRMWARE_URLS = [LOCAL_FIRMWARE_FALLBACK_URL, RAW_FIRMWARE_FALLBACK_URL];
 const MAX_RECENT_RELEASES = 8;
 const MIN_SUPPORTED_MAJOR = 1;
 
@@ -1034,6 +1052,61 @@ window.addEventListener('DOMContentLoaded', refreshModeToggleUi);
 window.addEventListener('DOMContentLoaded', applyPrimaryModeUi);
 window.addEventListener('DOMContentLoaded', updateStatusUi);
 
+function buildNoCacheUrl(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}_=${Date.now()}`;
+}
+
+async function probeFirmwareAsset(url) {
+  const noCacheUrl = buildNoCacheUrl(url);
+
+  try {
+    const head = await fetch(noCacheUrl, { method: 'HEAD', cache: 'no-store' });
+    if (head.ok) {
+      const size = parseInt(head.headers.get('content-length') || '0', 10);
+      const updatedAt = head.headers.get('last-modified');
+      return {
+        url: noCacheUrl,
+        size: Number.isFinite(size) && size > 0 ? size : null,
+        updatedAt: updatedAt ? new Date(updatedAt).toISOString() : new Date().toISOString()
+      };
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(noCacheUrl, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    const updatedAt = res.headers.get('last-modified');
+    return {
+      url: noCacheUrl,
+      size: ab.byteLength || null,
+      updatedAt: updatedAt ? new Date(updatedAt).toISOString() : new Date().toISOString()
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveMainBranchAssetMeta() {
+  for (const url of FALLBACK_FIRMWARE_URLS) {
+    const meta = await probeFirmwareAsset(url);
+    if (meta) return meta;
+  }
+
+  return {
+    url: buildNoCacheUrl(RAW_FIRMWARE_FALLBACK_URL),
+    size: null,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function formatAssetSize(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return 'size unknown';
+  return `${(n / 1024).toFixed(0)} KB`;
+}
+
 /* ════════════════════════════════════════════
    GitHub releases
 ════════════════════════════════════════════ */
@@ -1042,7 +1115,7 @@ async function fetchReleases() {
   sel.innerHTML = '<option value="">Loading…</option>';
   sel.disabled = true;
 
-  const branchAssetUrl = `${RAW_FIRMWARE_FALLBACK_URL}?_=${Date.now()}`;
+  const mainAssetMeta = await resolveMainBranchAssetMeta();
   mainReleaseEntry = {
     tag_name: 'main',
     name: 'Latest main branch build',
@@ -1052,9 +1125,9 @@ async function fetchReleases() {
     assets: [{
       name: 'latest.uf2',
       state: 'uploaded',
-      browser_download_url: branchAssetUrl,
-      updated_at: new Date().toISOString(),
-      size: 0
+      browser_download_url: mainAssetMeta.url,
+      updated_at: mainAssetMeta.updatedAt,
+      size: mainAssetMeta.size || 0
     }]
   };
 
@@ -1141,6 +1214,15 @@ function formatReleaseOption(rel) {
   return `${tag}${suffix} — ${name}`;
 }
 
+function defaultReleaseIndex() {
+  if (!releases.length) return -1;
+
+  const firstTagged = releases.findIndex(rel => rel && !rel._isMainBranchOption);
+  if (firstTagged >= 0) return firstTagged;
+
+  return 0;
+}
+
 function applyReleaseList() {
   const sel = document.getElementById('versionSelect');
   const tools = document.getElementById('versionTools');
@@ -1185,7 +1267,8 @@ function applyReleaseList() {
     if (hint) hint.textContent = `Showing ${shownTagged} recent${legacyCount ? ` · hiding ${legacyCount} legacy` : ''}`;
   }
 
-  sel.value = '0';
+  const preferredIndex = defaultReleaseIndex();
+  sel.value = preferredIndex >= 0 ? String(preferredIndex) : '0';
   onVersionChange();
 }
 
@@ -1221,7 +1304,7 @@ function onVersionChange() {
     const ext = selectedAsset.name.split('.').pop().toLowerCase();
     const buildId = extractBuildId(selectedAsset.name);
     document.getElementById('versionAsset').innerHTML =
-      `<span class="badge badge-blue">.${ext} · ${(selectedAsset.size/1024).toFixed(0)} KB${buildId ? ` · ${buildId}` : ''}</span>`;
+      `<span class="badge badge-blue">.${ext} · ${formatAssetSize(selectedAsset.size)}${buildId ? ` · ${buildId}` : ''}</span>`;
     document.getElementById('versionPrerelease').innerHTML = rel.prerelease
       ? '<span class="badge badge-yellow">pre-release</span>'
       : '<span class="badge badge-green">stable</span>';
@@ -2086,11 +2169,13 @@ async function downloadAsset(asset) {
     });
   }
 
-  candidates.push({
-    url: `${RAW_FIRMWARE_FALLBACK_URL}?_=${Date.now()}`,
-    init: { cache: 'no-store' },
-    label: 'raw latest.uf2 fallback'
-  });
+  for (const fallbackUrl of FALLBACK_FIRMWARE_URLS) {
+    candidates.push({
+      url: buildNoCacheUrl(fallbackUrl),
+      init: { cache: 'no-store' },
+      label: fallbackUrl === LOCAL_FIRMWARE_FALLBACK_URL ? 'local latest.uf2 fallback' : 'raw latest.uf2 fallback'
+    });
+  }
 
   for (const candidate of candidates) {
     try {
