@@ -1,0 +1,72 @@
+name: Build Firmware & Publish Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allow manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write      # needed to create/update releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Python / PlatformIO ─────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Build firmware (wisblock_1w_transport)
+        run: pio run -e wisblock_1w_transport
+
+      # ── Stage artifact ───────────────────────────────────────────────────────
+      - name: Get short commit SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename UF2 artifact
+        run: |
+          cp .pio/build/wisblock_1w_transport/firmware.uf2 \
+             rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+
+      # ── Publish rolling "latest" release ─────────────────────────────────────
+      # This creates (or updates) a release tagged "latest" every time main is
+      # pushed.  The web flasher calls /releases?per_page=30 and will see it.
+      - name: Publish "latest" GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest
+          name: "Latest Build (main)"
+          body: |
+            Automatically built from the `main` branch.
+
+            **Commit:** [`${{ steps.sha.outputs.short }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **Built:** ${{ github.event.head_commit.timestamp }}
+
+            Flash this firmware using the [web flasher](https://hipstereclipse.github.io/rns-transport-wisblock1w/flasher/).
+          artifacts: "rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2"
+          allowUpdates: true        # overwrite the release on every push
+          replacesArtifacts: true   # replace the previous .uf2 asset
+          makeLatest: true
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -541,9 +541,14 @@
     </div>
 
     <div class="alert alert-warn" id="noReleasesAlert">
-      No published releases found on GitHub yet.
-      Use the <strong>Local file</strong> option below or build from source with PlatformIO.
-      <br><a href="https://github.com/hipstereclipse/rns-transport-wisblock1w" target="_blank" style="color:var(--accent);">View repository →</a>
+      No firmware releases found yet — the first build may still be running on GitHub Actions.
+      <br>
+      <span style="display:flex;align-items:center;gap:0.8rem;margin-top:0.45rem;flex-wrap:wrap;">
+        <button onclick="fetchReleases()" style="padding:0.3rem 0.75rem;font-size:0.78rem;background:var(--accent);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:600;">↺ Retry</button>
+        <a href="https://github.com/hipstereclipse/rns-transport-wisblock1w/actions" target="_blank" style="color:var(--accent);font-size:0.82rem;">Check build status →</a>
+        <a href="https://github.com/hipstereclipse/rns-transport-wisblock1w/releases" target="_blank" style="color:var(--accent);font-size:0.82rem;">View releases →</a>
+      </span>
+      <br>Or use the <strong>Local file</strong> option below if you have a firmware file.
     </div>
 
     <!-- Local file fallback -->
