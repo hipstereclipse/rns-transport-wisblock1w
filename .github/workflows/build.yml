@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write      # needed to create/update releases
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # suppress Node.js 20 deprecation warnings
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,33 +29,47 @@ jobs:
       - name: Cache PlatformIO packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.platformio
-            .pio
+          path: ~/.platformio
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
           restore-keys: |
             pio-${{ runner.os }}-
 
-      - name: Install PlatformIO
-        run: pip install platformio
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+
+      # Pre-install the nordicnrf52 platform + all project lib deps so the
+      # build step never needs to download anything under time pressure.
+      - name: Install platform & library packages
+        run: pio pkg install -e wisblock_1w_transport
 
       # ── Build ────────────────────────────────────────────────────────────────
+      # Override extra_scripts to empty so the CI build does not try to run
+      # generate_uf2.py via SCons (we do that explicitly below instead).
       - name: Build firmware (wisblock_1w_transport)
-        run: pio run -e wisblock_1w_transport
+        run: |
+          pio run -e wisblock_1w_transport \
+            --project-option "extra_scripts=" \
+            -v
 
-      # ── Stage artifact ───────────────────────────────────────────────────────
+      # ── Generate UF2 ────────────────────────────────────────────────────────
       - name: Get short commit SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Rename UF2 artifact
+      - name: Convert HEX → UF2
         run: |
-          cp .pio/build/wisblock_1w_transport/firmware.uf2 \
-             rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+          python tools/generate_uf2.py \
+            .pio/build/wisblock_1w_transport/firmware.hex \
+            rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+
+      - name: Verify UF2 was created
+        run: |
+          ls -lh rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+          echo "UF2 artifact ready."
 
       # ── Publish rolling "latest" release ─────────────────────────────────────
-      # This creates (or updates) a release tagged "latest" every time main is
-      # pushed.  The web flasher calls /releases?per_page=30 and will see it.
+      # Creates (or updates) a release tagged "latest" on every push to main.
+      # The web flasher polls /releases and will immediately see the new asset.
       - name: Publish "latest" GitHub Release
         uses: ncipollo/release-action@v1
         with:
