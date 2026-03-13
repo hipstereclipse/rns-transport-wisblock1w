@@ -23,6 +23,19 @@ static void computeNameHash10(const char* fullName, uint8_t outHash[RNS_NAME_HAS
 #endif
 }
 
+static uint16_t encodeAnnounceNameMsgPack(const char* name, uint8_t* out, uint16_t outMax) {
+    if (!name || !out || outMax < 2) return 0;
+    size_t len = strlen(name);
+    if (len == 0) return 0;
+    if (len > 31) len = 31;
+    if ((uint16_t)(2 + len) > outMax) return 0;
+
+    out[0] = 0x91;
+    out[1] = (uint8_t)(0xA0 | (uint8_t)len);
+    memcpy(out + 2, name, len);
+    return (uint16_t)(2 + len);
+}
+
 bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      const uint8_t* appData,
                                      uint16_t appDataLen) {
@@ -38,9 +51,10 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
 
     const uint8_t* announceAppData = appData;
     uint16_t announceAppDataLen = appDataLen;
+    uint8_t msgpackName[34];
     if (!announceAppData) {
-        announceAppData = (const uint8_t*)announceName;
-        announceAppDataLen = (uint16_t)strlen(announceName);
+        announceAppDataLen = encodeAnnounceNameMsgPack(announceName, msgpackName, sizeof(msgpackName));
+        announceAppData = (announceAppDataLen > 0) ? msgpackName : nullptr;
     }
 
     const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;

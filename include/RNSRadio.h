@@ -43,6 +43,7 @@ public:
     int8_t  curTxDbm = LORA_TX_DBM;
     uint8_t curSyncWord = LORA_SYNC_WORD;
     uint16_t curPreamble = LORA_PREAMBLE;
+    uint8_t rnodeSeq = 0;
 
     // ── DIO1 ISR (minimal — just set flag) ────────────────
     static RNSRadio* instance;
@@ -65,6 +66,7 @@ public:
     bool begin(RNSTransport* txp) {
         transport = txp;
         instance  = this;
+        rnodeSeq  = (uint8_t)random(0, 16);
 
 #ifndef NATIVE_TEST
         // Gate 3V3_S rail on for RAK13302
@@ -98,9 +100,9 @@ public:
         rxFlag = false;
 
 #ifndef NATIVE_TEST
-        uint8_t buf[RNS_MTU];
+    uint8_t buf[RNS_MTU + 1];
         int len = lora.getPacketLength();
-        if (len <= 0 || len > RNS_MTU) {
+    if (len <= 0 || len > (RNS_MTU + 1)) {
             lora.startReceive();
             return;
         }
@@ -109,7 +111,17 @@ public:
         if (state == RADIOLIB_ERR_NONE) {
             lastRSSI = lora.getRSSI();
             lastSNR  = lora.getSNR();
-            if (transport) transport->ingestPacket(buf, (uint16_t)len);
+            const uint8_t* payload = buf;
+            uint16_t payloadLen = (uint16_t)len;
+#if RNODE_LORA_HEADER_ENABLED
+            if (payloadLen <= 1) {
+                lora.startReceive();
+                return;
+            }
+            payload = &buf[1];
+            payloadLen--;
+#endif
+            if (transport) transport->ingestPacket(payload, payloadLen);
         }
         lora.startReceive();
 #endif
@@ -157,8 +169,19 @@ public:
         }
         if (!channelFree) return false;
 
+        uint8_t txBuf[RNS_MTU + 1];
+        const uint8_t* txData = data;
+        uint16_t txLen = len;
+    #if RNODE_LORA_HEADER_ENABLED
+        txBuf[0] = (uint8_t)(((rnodeSeq & 0x0F) << 4) | (RNODE_LORA_HEADER_FLAGS_UNSPLIT & 0x0F));
+        rnodeSeq = (uint8_t)((rnodeSeq + 1) & 0x0F);
+        memcpy(txBuf + 1, data, len);
+        txData = txBuf;
+        txLen = len + 1;
+    #endif
+
         txActive = true;
-        int state = lora.transmit(data, len);
+        int state = lora.transmit(txData, txLen);
         txActive = false;
 
         lora.startReceive();

@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    4
-#define FW_VERSION_STRING   "1.0.4"
+#define FW_VERSION_PATCH    5
+#define FW_VERSION_STRING   "1.0.5"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.4"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.5"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -68,7 +68,11 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define RNS_PLAIN_MDU       464
 #define RNS_ENCRYPTED_MDU   383
 #define RNS_ANNOUNCE_CAP_PCT  2      // percent of airtime budget
-#define RNS_TRANSPORT_DEST_NAME "rnstransport.transport"
+#define RNS_TRANSPORT_DEST_NAME "lxmf.delivery"
+
+// RatDeck/RNode LoRa framing
+#define RNODE_LORA_HEADER_ENABLED 1
+#define RNODE_LORA_HEADER_FLAGS_UNSPLIT 0x00
 
 // ── Transport tuning (fits comfortably in 256 KB RAM) ────
 #define PATH_TABLE_MAX       64
