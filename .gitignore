@@ -1,0 +1,11 @@
+.pio/
+.vscode/
+*.o
+*.elf
+*.bin
+*.hex
+*.uf2
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
