@@ -478,6 +478,7 @@
     line-height: 1.45;
   }
   .repeater-copy strong { color: var(--green); }
+  .mode-btn { min-width: 135px; justify-content: center; }
 
   .repeater-panel {
     display: none;
@@ -596,7 +597,10 @@
 
   <div class="repeater-bar" id="repeaterBar">
     <div class="repeater-copy"><strong>Repeater detected.</strong> You can interact with the live firmware console from the web flasher.</div>
-    <button class="qbtn" id="openRepeaterBtn" onclick="openRepeaterConsole()">Open repeater console</button>
+    <div style="display:flex;gap:0.45rem;flex-wrap:wrap;">
+      <button class="qbtn" id="openRepeaterBtn" onclick="openRepeaterConsole()">Open repeater console</button>
+      <button class="qbtn mode-btn" id="firmwareModeBtn" onclick="toggleFlasherMode()">Firmware mode</button>
+    </div>
   </div>
 
   <div class="card repeater-panel" id="repeaterPanel">
@@ -844,6 +848,7 @@ let looping = false;
 let connected = false;
 let repeaterDetected = false;
 let rxProbeBuffer = '';
+let flasherMode = false;
 
 let cmdHistory = [], cmdIdx = -1;
 
@@ -858,6 +863,7 @@ if (!('serial' in navigator)) {
 window.addEventListener('DOMContentLoaded', fetchReleases);
 window.addEventListener('DOMContentLoaded', updateActionButtons);
 window.addEventListener('DOMContentLoaded', refreshEnvironmentNotice);
+window.addEventListener('DOMContentLoaded', applyPrimaryModeUi);
 
 /* ════════════════════════════════════════════
    GitHub releases
@@ -1095,17 +1101,64 @@ function updateActionButtons() {
 function updateRepeaterUi() {
   const bar = document.getElementById('repeaterBar');
   const btn = document.getElementById('openRepeaterBtn');
+  const modeBtn = document.getElementById('firmwareModeBtn');
   const panel = document.getElementById('repeaterPanel');
-  if (!bar || !btn || !panel) return;
+  if (!bar || !btn || !panel || !modeBtn) return;
   const show = connected && repeaterDetected;
   bar.classList.toggle('show', show);
   panel.classList.toggle('show', show);
   btn.disabled = !show;
+  modeBtn.disabled = !show;
+  applyPrimaryModeUi();
+}
+
+function shouldPreferRepeaterMode() {
+  return connected && repeaterDetected;
+}
+
+function setSectionVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = visible ? '' : 'none';
+}
+
+function applyPrimaryModeUi() {
+  const preferRepeater = shouldPreferRepeaterMode();
+  const showFlasher = !preferRepeater || flasherMode;
+
+  setSectionVisible('stepTrack', showFlasher);
+  setSectionVisible('cardVersion', showFlasher);
+  setSectionVisible('cardFlash', showFlasher);
+  setSectionVisible('contextNotice', showFlasher);
+
+  const modeBtn = document.getElementById('firmwareModeBtn');
+  if (modeBtn) {
+    modeBtn.textContent = showFlasher ? 'Back to repeater' : 'Firmware mode';
+  }
+
+  if (!showFlasher) {
+    hideFlashAlert();
+    document.getElementById('manualDfu').classList.remove('show');
+    document.getElementById('writeDriveSection').classList.remove('show');
+    showProgress(false);
+  }
+}
+
+function toggleFlasherMode(force = null) {
+  if (!shouldPreferRepeaterMode()) {
+    flasherMode = true;
+  } else if (typeof force === 'boolean') {
+    flasherMode = force;
+  } else {
+    flasherMode = !flasherMode;
+  }
+  applyPrimaryModeUi();
 }
 
 function markRepeaterDetected() {
   if (repeaterDetected) return;
   repeaterDetected = true;
+  flasherMode = false;
   updateRepeaterUi();
   sysLog('Repeater firmware detected on serial console.\n');
 }
@@ -1296,6 +1349,7 @@ async function doDisconnect() {
   connected = false;
   repeaterDetected = false;
   rxProbeBuffer = '';
+  flasherMode = false;
   updateConnChip(false);
   document.getElementById('consoleInput').disabled = true;
   sysLog('Serial disconnected.\n');
@@ -1338,6 +1392,7 @@ async function readLoop() {
    Main flash flow
 ════════════════════════════════════════════ */
 async function startFlash(eraseBeforeFlash = false) {
+  toggleFlasherMode(true);
   // Reset UI
   document.getElementById('flashBtn').disabled = true;
   document.getElementById('successPanel').classList.remove('show');
