@@ -151,7 +151,8 @@ void RNSConsole::cmdSave() {
     }
     bool ok1 = persistence->saveIdentity(*identity);
     bool ok2 = persistence->saveConfig(*radio);
-    if (ok1 && ok2) {
+    bool ok3 = persistence->saveAnnounceName(transport->getAnnounceName());
+    if (ok1 && ok2 && ok3) {
         io->println(F("Configuration saved to flash."));
     } else {
         io->println(F("Save failed (partial or full)."));
@@ -238,6 +239,14 @@ void setup() {
     // ── Transport engine ──────────────────────────────────
     transport.begin(&nodeIdentity, &radio);
     Serial.println(F("[RNS] Transport engine: OK"));
+
+    char loadedName[RNS_ANNOUNCE_NAME_MAX + 1] = {0};
+    if (persist.loadAnnounceName(loadedName, sizeof(loadedName))) {
+        if (transport.setAnnounceName(loadedName)) {
+            Serial.print(F("[RNS] Loaded broadcast name: "));
+            Serial.println(transport.getAnnounceName());
+        }
+    }
 
     // ── Radio ─────────────────────────────────────────────
     Serial.print(F("[RNS] Radio: "));

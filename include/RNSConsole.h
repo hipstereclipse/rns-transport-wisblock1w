@@ -94,6 +94,7 @@ private:
         else if (strcmp(command, "stats")     == 0) cmdStatus();
         else if (strcmp(command, "radio")     == 0) cmdRadio();
         else if (strcmp(command, "set")       == 0) cmdSet(args);
+        else if (strcmp(command, "name")      == 0) cmdName(args);
         else if (strcmp(command, "save")      == 0) cmdSave();
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
         else if (strcmp(command, "dfu")       == 0) cmdDfu();
@@ -125,9 +126,36 @@ private:
         io->print(F("  Duplicates: ")); io->println(s.duplicates);
         io->print(F("  Invalid:    ")); io->println(s.invalidPackets);
         io->print(F("  Paths:      ")); io->println(s.pathEntries);
+        io->print(F("  Broadcast name: ")); io->println(transport->getAnnounceName());
 #ifndef NATIVE_TEST
         io->print(F("  Free RAM:   ")); io->print(freeMemory()); io->println(F(" bytes"));
 #endif
+    }
+
+    // ── name [new name...] ──────────────────────────────
+    void cmdName(const char* args) {
+        if (!transport) {
+            io->println(F("Transport not available."));
+            return;
+        }
+
+        while (args && *args == ' ') args++;
+
+        if (!args || *args == '\0') {
+            io->print(F("Broadcast name: "));
+            io->println(transport->getAnnounceName());
+            io->println(F("Usage: name <text>"));
+            return;
+        }
+
+        if (!transport->setAnnounceName(args)) {
+            io->println(F("Invalid name. Use 1-32 visible characters."));
+            return;
+        }
+
+        io->print(F("Broadcast name → "));
+        io->println(transport->getAnnounceName());
+        io->println(F("Tip: run 'save' to persist this name, then 'announce' to broadcast now."));
     }
 
     // ── routes ────────────────────────────────────────────
@@ -291,6 +319,7 @@ private:
         io->println(F("  identity       Display node identity hash + keys"));
         io->println(F("  radio          Current radio configuration"));
         io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower)"));
+        io->println(F("  name <text>    Set/display broadcast announce name"));
         io->println(F("  save           Persist config to flash"));
         io->println(F("  factory-reset  Erase all persisted data"));
         io->println(F("  dfu            Reboot into bootloader (USB flashing)"));

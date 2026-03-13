@@ -12,6 +12,7 @@
 #include "RNSIdentity.h"
 #include "RNSTransport.h"
 #include "RNSRadio.h"
+#include <string.h>
 
 #ifndef NATIVE_TEST
 #include <Adafruit_LittleFS.h>
@@ -168,12 +169,50 @@ public:
 #endif
     }
 
+    bool loadAnnounceName(char* outName, size_t maxLen) {
+#ifndef NATIVE_TEST
+        if (!fsReady || !outName || maxLen < 2) return false;
+
+        File f = InternalFS.open(ANNOUNCE_NAME_FILE, FILE_O_READ);
+        if (!f) return false;
+
+        size_t readLen = f.read((uint8_t*)outName, maxLen - 1);
+        f.close();
+        if (readLen == 0) return false;
+
+        outName[readLen] = '\0';
+        while (readLen > 0 && (outName[readLen - 1] == '\r' || outName[readLen - 1] == '\n' || outName[readLen - 1] == ' ')) {
+            outName[--readLen] = '\0';
+        }
+        return readLen > 0;
+#else
+        return false;
+#endif
+    }
+
+    bool saveAnnounceName(const char* name) {
+#ifndef NATIVE_TEST
+        if (!fsReady || !name || !*name) return false;
+
+        InternalFS.remove(ANNOUNCE_NAME_FILE);
+        File f = InternalFS.open(ANNOUNCE_NAME_FILE, FILE_O_WRITE);
+        if (!f) return false;
+
+        size_t written = f.write((const uint8_t*)name, strlen(name));
+        f.close();
+        return written == strlen(name);
+#else
+        return false;
+#endif
+    }
+
     // ── Factory reset: erase all persisted data ───────────
     void factoryReset() {
 #ifndef NATIVE_TEST
         if (!fsReady) return;
         InternalFS.remove(IDENTITY_FILE);
         InternalFS.remove(CONFIG_FILE);
+        InternalFS.remove(ANNOUNCE_NAME_FILE);
         InternalFS.remove(PATH_TABLE_FILE);
 #endif
     }

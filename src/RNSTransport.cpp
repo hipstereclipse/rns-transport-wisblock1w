@@ -11,8 +11,15 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      uint16_t appDataLen) {
     if (!radio || !identity || !identity->initialized) return false;
 
+    const uint8_t* announceAppData = appData;
+    uint16_t announceAppDataLen = appDataLen;
+    if (!announceAppData) {
+        announceAppData = (const uint8_t*)announceName;
+        announceAppDataLen = (uint16_t)strlen(announceName);
+    }
+
     const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-    const uint16_t sigOffset = baseLen + appDataLen;
+    const uint16_t sigOffset = baseLen + announceAppDataLen;
     const uint16_t totalDataLen = sigOffset + RNS_SIGLENGTH;
     if (totalDataLen > RNS_MTU) return false;
 
@@ -35,8 +42,8 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     }
 
     // [optional appData]
-    if (appData && appDataLen > 0) {
-        memcpy(announceData + baseLen, appData, appDataLen);
+    if (announceAppData && announceAppDataLen > 0) {
+        memcpy(announceData + baseLen, announceAppData, announceAppDataLen);
     }
 
     // [signature 64B]

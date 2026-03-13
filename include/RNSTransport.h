@@ -59,6 +59,7 @@ private:
     PathEntry          pathTable[PATH_TABLE_MAX];
     HashCacheEntry     hashCache[HASH_CACHE_MAX];
     AnnounceQueueEntry announceQueue[ANNOUNCE_QUEUE_MAX];
+    char               announceName[RNS_ANNOUNCE_NAME_MAX + 1] = "RatTunnel";
 
 public:
     /**
@@ -71,7 +72,34 @@ public:
         memset(pathTable,     0, sizeof(pathTable));
         memset(hashCache,     0, sizeof(hashCache));
         memset(announceQueue, 0, sizeof(announceQueue));
+        strncpy(announceName, "RatTunnel", sizeof(announceName) - 1);
+        announceName[sizeof(announceName) - 1] = '\0';
     }
+
+    bool setAnnounceName(const char* name) {
+        if (!name) return false;
+
+        while (*name == ' ') name++;
+        if (*name == '\0') return false;
+
+        char cleaned[RNS_ANNOUNCE_NAME_MAX + 1];
+        size_t outPos = 0;
+        for (size_t i = 0; name[i] != '\0' && outPos < RNS_ANNOUNCE_NAME_MAX; i++) {
+            char c = name[i];
+            if (c == '\r' || c == '\n' || c == '\t') continue;
+            cleaned[outPos++] = c;
+        }
+
+        while (outPos > 0 && cleaned[outPos - 1] == ' ') outPos--;
+        if (outPos == 0) return false;
+
+        cleaned[outPos] = '\0';
+        strncpy(announceName, cleaned, sizeof(announceName) - 1);
+        announceName[sizeof(announceName) - 1] = '\0';
+        return true;
+    }
+
+    const char* getAnnounceName() const { return announceName; }
 
     /** @brief Run from main loop at TRANSPORT_LOOP_MS intervals. */
     void loop() {

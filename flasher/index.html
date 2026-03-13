@@ -732,6 +732,10 @@
             <label for="repCr">Coding rate (denominator)</label>
             <input id="repCr" type="number" step="1" min="5" max="8" placeholder="5">
           </div>
+          <div class="repeater-field" style="grid-column:1 / -1;">
+            <label for="repName">Broadcast name</label>
+            <input id="repName" type="text" maxlength="32" placeholder="RatTunnel Relay">
+          </div>
         </div>
         <div class="repeater-actions" style="margin-top:0.55rem;">
           <button class="qbtn" onclick="applyRepeaterSettings()">Apply settings</button>
@@ -960,6 +964,7 @@ const repeaterState = {
   txp: '—',
   rssi: '—',
   snr: '—',
+  name: '—',
   hash: '—',
   refreshAt: '—'
 };
@@ -1344,6 +1349,11 @@ function updateStatusUi() {
   setStatusField('stTxLink', `${repeaterState.txp} · RSSI ${repeaterState.rssi} · SNR ${repeaterState.snr}`);
   setStatusField('stHash', repeaterState.hash);
   setStatusField('stRefresh', repeaterState.refreshAt);
+
+  const repName = document.getElementById('repName');
+  if (repName && repeaterState.name && repeaterState.name !== '—' && repName.value.trim() === '') {
+    repName.value = repeaterState.name;
+  }
 }
 
 function parseStatusLine(line) {
@@ -1355,6 +1365,7 @@ function parseStatusLine(line) {
   if (/^Build:/i.test(t)) repeaterState.build = t.split(':').slice(1).join(':').trim();
   if (/^Board:/i.test(t)) repeaterState.board = t.split(':').slice(1).join(':').trim();
   if (/^Hash:/i.test(t)) repeaterState.hash = t.split(':').slice(1).join(':').trim();
+  if (/^Broadcast name:/i.test(t)) repeaterState.name = t.split(':').slice(1).join(':').trim();
 
   const keyVal = t.match(/^([A-Za-z\s\/]+):\s*(.+)$/);
   if (keyVal) {
@@ -1481,6 +1492,7 @@ async function applyRepeaterSettings() {
   const bw = document.getElementById('repBw').value.trim();
   const tx = document.getElementById('repTx').value.trim();
   const cr = document.getElementById('repCr').value.trim();
+  const name = document.getElementById('repName').value.trim();
 
   const commands = [];
   if (freq) commands.push(`set freq ${freq}`);
@@ -1488,6 +1500,7 @@ async function applyRepeaterSettings() {
   if (bw) commands.push(`set bw ${bw}`);
   if (tx) commands.push(`set txpower ${tx}`);
   if (cr) commands.push(`set cr ${cr}`);
+  if (name) commands.push(`name ${name}`);
 
   if (!commands.length) {
     showFlashAlert('warn', 'Enter at least one setting to apply.');
@@ -1512,6 +1525,11 @@ async function applyRepeaterSettings() {
     return;
   }
 
+  if (name && name.length > 32) {
+    showFlashAlert('error', 'Broadcast name must be 32 characters or fewer.');
+    return;
+  }
+
   for (const cmd of commands) {
     await sendCmd(cmd);
     await sleep(120);
@@ -1519,7 +1537,11 @@ async function applyRepeaterSettings() {
   await sendCmd('radio');
   await sleep(120);
   await sendCmd('status');
-  showFlashAlert('info', 'Settings sent. Review the radio output and click Save config if needed.');
+  if (name) {
+    await sleep(120);
+    await sendCmd('announce');
+  }
+  showFlashAlert('info', 'Settings sent. Review output and click Save config to persist changes.');
   openRepeaterConsole();
 }
 

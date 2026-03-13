@@ -57,6 +57,7 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define RNS_ADDR_LEN         16      // truncated SHA-256 destination hash
 #define RNS_NAME_HASH_LEN   10
 #define RNS_RANDOM_BLOB_LEN 10
+#define RNS_ANNOUNCE_NAME_MAX 32
 #define RNS_SIGLENGTH        64      // Ed25519 signature
 #define RNS_KEYSIZE          64      // X25519(32) + Ed25519(32)
 #define RNS_RATCHETSIZE      32
@@ -74,8 +75,8 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define DEDUP_EXPIRY_MS      (5UL  * 60UL   * 1000UL)  // 5 min
 #define ANNOUNCE_JITTER_MS   2000
 #define TRANSPORT_LOOP_MS    5
-#define ANNOUNCE_STARTUP_DELAY_MS  5000UL
-#define ANNOUNCE_INTERVAL_MS    (5UL * 60UL * 1000UL)
+#define ANNOUNCE_STARTUP_DELAY_MS  2000UL
+#define ANNOUNCE_INTERVAL_MS    (60UL * 1000UL)
 
 // ── Watchdog timeout (seconds) ───────────────────────────
 #define WDT_TIMEOUT_SEC      8
@@ -83,6 +84,7 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── LittleFS persistence ─────────────────────────────────
 #define IDENTITY_FILE        "/identity.bin"
 #define CONFIG_FILE          "/config.bin"
+#define ANNOUNCE_NAME_FILE   "/announce_name.txt"
 #define PATH_TABLE_FILE      "/paths.bin"
 
 // ── Safe-boot: hold this pin LOW during reset to skip main app
