@@ -202,6 +202,11 @@
     font-size: 0.76rem;
     color: var(--dim);
   }
+  .connect-actions {
+    margin-top: 0.45rem;
+    display: flex;
+    justify-content: flex-end;
+  }
   .version-tools label {
     display: inline-flex;
     align-items: center;
@@ -796,6 +801,10 @@
       </button>
     </div>
 
+    <div class="connect-actions">
+      <button class="qbtn" id="autoConnectBtn" onclick="autoConnectNow()">Auto-connect</button>
+    </div>
+
     <div class="version-meta" id="versionMeta" style="display:none;">
       <span id="versionDate"></span>
       <span id="versionAsset"></span>
@@ -852,7 +861,6 @@
     </div>
 
     <div class="flash-actions">
-      <button class="qbtn" id="autoConnectBtn" onclick="autoConnectNow()">Auto-connect</button>
       <button class="qbtn" id="enterDfuBtn" onclick="enterDfuMode()">Enter DFU mode</button>
       <button class="qbtn" id="eraseFlashBtn" onclick="startFlash(true)" disabled>Erase + Flash</button>
     </div>
