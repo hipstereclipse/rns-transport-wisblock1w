@@ -3,334 +3,279 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RNS Transport Node — Web Flasher</title>
+<title>RNS Transport Node — Flasher</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
 
   :root {
-    --bg: #0a0e17;
-    --surface: #111827;
-    --surface2: #1a2332;
-    --border: #2a3444;
-    --text: #e2e8f0;
-    --text-dim: #7a8ba3;
-    --accent: #22d3ee;
-    --accent-glow: rgba(34, 211, 238, 0.15);
-    --green: #34d399;
-    --green-glow: rgba(52, 211, 153, 0.15);
-    --red: #f87171;
-    --red-glow: rgba(248, 113, 113, 0.15);
-    --yellow: #fbbf24;
-    --yellow-glow: rgba(251, 191, 36, 0.15);
-    --orange: #fb923c;
-    --mono: 'JetBrains Mono', monospace;
-    --sans: 'Space Grotesk', system-ui, sans-serif;
-    --radius: 10px;
+    --bg:           #080c14;
+    --surface:      #0f1623;
+    --surface2:     #16202e;
+    --border:       #232f42;
+    --text:         #dde6f0;
+    --dim:          #6b7d96;
+    --accent:       #38bdf8;
+    --accent-glow:  rgba(56, 189, 248, 0.18);
+    --green:        #4ade80;
+    --green-glow:   rgba(74, 222, 128, 0.18);
+    --red:          #f87171;
+    --red-glow:     rgba(248, 113, 113, 0.18);
+    --yellow:       #facc15;
+    --yellow-glow:  rgba(250, 204, 21, 0.18);
+    --mono:         'JetBrains Mono', monospace;
+    --sans:         'Inter', system-ui, sans-serif;
+    --r:            12px;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
   body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--sans);
     min-height: 100vh;
-    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 4rem;
   }
 
-  .container {
-    max-width: 920px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-  }
+  /* ── Layout ───────────────────────────────── */
+  .wrap { width: 100%; max-width: 560px; }
 
   /* ── Header ───────────────────────────────── */
-  header {
+  .logo {
     text-align: center;
     margin-bottom: 2.5rem;
-    position: relative;
   }
-  header::before {
-    content: '';
-    position: absolute;
-    top: -60px; left: 50%; transform: translateX(-50%);
-    width: 400px; height: 400px;
-    background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
+  .logo-icon {
+    font-size: 2.8rem;
+    margin-bottom: 0.4rem;
   }
-  header h1 {
-    font-size: 2rem;
+  .logo h1 {
+    font-size: 1.5rem;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+  }
+  .logo h1 span { color: var(--accent); }
+  .logo p {
+    color: var(--dim);
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+  }
+
+  /* ── Unsupported banner ───────────────────── */
+  .unsupported {
+    display: none;
+    background: var(--red-glow);
+    border: 1px solid var(--red);
+    border-radius: var(--r);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.85rem;
+  }
+  .unsupported.show { display: block; }
+  .unsupported strong { color: var(--red); }
+
+  /* ── Wizard steps ─────────────────────────── */
+  .step-track {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 0;
+  }
+  .step-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
     position: relative;
     z-index: 1;
   }
-  header h1 span { color: var(--accent); }
-  .subtitle {
-    color: var(--text-dim);
-    font-size: 0.95rem;
-    margin-top: 0.4rem;
-    position: relative; z-index: 1;
+  .step-node::before {
+    content: '';
+    position: absolute;
+    top: 17px;
+    left: calc(-50% + 18px);
+    right: calc(50% + 18px);
+    height: 2px;
+    background: var(--border);
+    z-index: 0;
   }
-  .version-badge {
-    display: inline-block;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.2rem 0.8rem;
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    color: var(--accent);
-    margin-top: 0.8rem;
-    position: relative; z-index: 1;
-  }
+  .step-node:first-child::before { display: none; }
+  .step-node.done::before  { background: var(--green); }
+  .step-node.active::before { background: var(--accent); }
 
-  /* ── Browser warning ──────────────────────── */
-  .browser-warning {
-    background: var(--red-glow);
-    border: 1px solid var(--red);
-    border-radius: var(--radius);
-    padding: 1rem 1.5rem;
-    margin-bottom: 1.5rem;
-    display: none;
+  .step-bubble {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--dim);
+    position: relative; z-index: 1;
+    transition: all 0.2s;
   }
-  .browser-warning.show { display: block; }
-  .browser-warning h3 { color: var(--red); font-size: 0.95rem; margin-bottom: 0.3rem; }
-  .browser-warning p { font-size: 0.85rem; color: var(--text-dim); }
+  .step-node.done  .step-bubble { border-color: var(--green); color: var(--green); background: var(--green-glow); }
+  .step-node.active .step-bubble { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); box-shadow: 0 0 0 4px var(--accent-glow); }
+  .step-label {
+    font-size: 0.7rem;
+    margin-top: 0.4rem;
+    color: var(--dim);
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .step-node.active .step-label { color: var(--accent); }
+  .step-node.done   .step-label { color: var(--green); }
 
   /* ── Cards ────────────────────────────────── */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--r);
     padding: 1.5rem;
-    margin-bottom: 1.2rem;
+    margin-bottom: 1rem;
     transition: border-color 0.2s;
   }
-  .card:hover { border-color: #3a4a5a; }
-  .card h2 {
-    font-size: 1.1rem;
+  .card-title {
+    font-size: 1rem;
     font-weight: 600;
-    margin-bottom: 1rem;
+    margin-bottom: 0.2rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
   }
-  .card h2 .step {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    background: var(--accent-glow);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-size: 0.8rem;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-
-  /* ── Buttons ──────────────────────────────── */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.65rem 1.3rem;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    font-family: var(--sans);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-primary {
-    background: var(--accent);
-    color: var(--bg);
-    border-color: var(--accent);
-  }
-  .btn-primary:hover:not(:disabled) {
-    background: #06b6d4;
-    box-shadow: 0 0 20px var(--accent-glow);
-  }
-  .btn-secondary {
-    background: transparent;
-    color: var(--text);
-    border-color: var(--border);
-  }
-  .btn-secondary:hover:not(:disabled) {
-    background: var(--surface2);
-    border-color: #4a5a6a;
-  }
-  .btn-danger {
-    background: transparent;
-    color: var(--red);
-    border-color: var(--red);
-  }
-  .btn-danger:hover:not(:disabled) { background: var(--red-glow); }
-  .btn-green {
-    background: var(--green);
-    color: var(--bg);
-    border-color: var(--green);
-  }
-  .btn-green:hover:not(:disabled) {
-    background: #10b981;
-    box-shadow: 0 0 20px var(--green-glow);
-  }
-  .btn-group { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-
-  /* ── Status indicator ─────────────────────── */
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.6rem 1rem;
-    background: var(--surface2);
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    font-size: 0.85rem;
-  }
-  .status-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    flex-shrink: 0;
-  }
-  .status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
-  .status-dot.error     { background: var(--red);   box-shadow: 0 0 8px var(--red-glow); }
-  .status-dot.busy      { background: var(--yellow); animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: 0.4; } }
-  .status-text  { flex: 1; }
-  .status-detail { color: var(--text-dim); font-family: var(--mono); font-size: 0.75rem; }
-
-  /* ── Terminal ─────────────────────────────── */
-  .terminal {
-    background: #060a10;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    margin-top: 1rem;
-  }
-  .terminal-header {
-    background: var(--surface2);
-    padding: 0.5rem 1rem;
-    font-size: 0.75rem;
-    color: var(--text-dim);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-  }
-  .terminal-header-left { display: flex; align-items: center; gap: 0.8rem; }
-  .terminal-body {
-    padding: 1rem;
-    height: 320px;
-    overflow-y: auto;
-    font-family: var(--mono);
-    font-size: 0.8rem;
+  .card-sub {
+    font-size: 0.825rem;
+    color: var(--dim);
+    margin-bottom: 1.1rem;
     line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-all;
   }
-  .terminal-body .rx  { color: var(--green); }
-  .terminal-body .tx  { color: var(--accent); }
-  .terminal-body .sys { color: var(--yellow); }
-  .terminal-body .err { color: var(--red); }
-  .terminal-input {
+
+  /* ── Version picker ───────────────────────── */
+  .version-row {
     display: flex;
-    border-top: 1px solid var(--border);
+    gap: 0.6rem;
+    align-items: center;
   }
-  .terminal-input span {
-    padding: 0.6rem 0.8rem;
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 0.8rem;
-    background: var(--surface2);
-    user-select: none;
-  }
-  .terminal-input input {
+  .version-select {
     flex: 1;
-    background: transparent;
-    border: none;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
     color: var(--text);
     font-family: var(--mono);
-    font-size: 0.8rem;
-    padding: 0.6rem 0.4rem;
+    font-size: 0.85rem;
+    padding: 0.65rem 0.9rem;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7d96' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.9rem center;
+    padding-right: 2.2rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
     outline: none;
   }
+  .version-select:focus { border-color: var(--accent); }
+  .version-select option { background: var(--surface2); }
+  .version-select:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* ── Quick commands ──────────────────────── */
-  .quick-cmds {
-    display: flex;
-    gap: 0.4rem;
-    flex-wrap: wrap;
+  .version-meta {
     margin-top: 0.6rem;
+    font-size: 0.775rem;
+    color: var(--dim);
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
     align-items: center;
   }
-  .quick-cmds-label { font-size: 0.75rem; color: var(--text-dim); }
-  .quick-cmd {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.25rem 0.6rem;
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
     font-family: var(--mono);
-    font-size: 0.75rem;
-    color: var(--accent);
-    cursor: pointer;
-    transition: all 0.15s;
+    font-weight: 600;
+    border: 1px solid;
   }
-  .quick-cmd:hover { background: var(--accent-glow); border-color: var(--accent); }
+  .badge-green { color: var(--green); border-color: rgba(74,222,128,0.35); background: var(--green-glow); }
+  .badge-yellow { color: var(--yellow); border-color: rgba(250,204,21,0.35); background: var(--yellow-glow); }
+  .badge-blue { color: var(--accent); border-color: rgba(56,189,248,0.35); background: var(--accent-glow); }
 
-  /* ── Firmware selector ────────────────────── */
-  .release-item {
+  /* ── Big flash button ─────────────────────── */
+  .flash-btn-wrap { margin: 0.5rem 0; }
+  .flash-btn {
+    width: 100%;
+    padding: 1rem;
+    border-radius: var(--r);
+    border: none;
+    background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+    color: #000c1a;
+    font-family: var(--sans);
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: -0.01em;
+    transition: all 0.15s;
     display: flex;
     align-items: center;
-    gap: 0.8rem;
-    padding: 0.8rem 1rem;
+    justify-content: center;
+    gap: 0.6rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .flash-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    box-shadow: 0 0 32px rgba(56,189,248,0.35);
+    transform: translateY(-1px);
+  }
+  .flash-btn:active:not(:disabled) { transform: translateY(0); }
+  .flash-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  .flash-btn.success {
+    background: linear-gradient(135deg, #16a34a, #4ade80);
+    box-shadow: 0 0 32px rgba(74,222,128,0.3);
+  }
+  .flash-btn.error {
+    background: linear-gradient(135deg, #dc2626, #f87171);
+  }
+
+  /* ── Progress ring ────────────────────────── */
+  .progress-section { margin-top: 1rem; display: none; }
+  .progress-section.show { display: block; }
+  .progress-bar-track {
+    height: 6px;
     background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.15s;
+    border-radius: 3px;
+    overflow: hidden;
     margin-bottom: 0.5rem;
   }
-  .release-item:hover   { border-color: var(--accent); background: var(--accent-glow); }
-  .release-item.selected { border-color: var(--green);  background: var(--green-glow); }
-  .release-tag {
-    font-family: var(--mono);
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--accent);
-    min-width: 80px;
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.3s ease;
+    background: linear-gradient(90deg, var(--accent), var(--green));
   }
-  .release-item.selected .release-tag { color: var(--green); }
-  .release-name { flex: 1; font-size: 0.85rem; }
-  .release-date { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
-  .asset-chip {
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-    font-family: var(--mono);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-  }
-  .asset-chip.uf2 { color: var(--yellow); border-color: rgba(251,191,36,0.4); }
-  .asset-chip.bin { color: var(--orange); border-color: rgba(251,146,60,0.4); }
-  .asset-chip.hex { color: var(--accent); border-color: rgba(34,211,238,0.4); }
-
-  .firmware-loading {
+  .progress-steps { display: flex; flex-direction: column; gap: 0.35rem; }
+  .pstep {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    padding: 1rem;
-    color: var(--text-dim);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    color: var(--dim);
+    transition: color 0.2s;
   }
-  .spinner {
-    width: 16px; height: 16px;
+  .pstep.active { color: var(--text); }
+  .pstep.done   { color: var(--green); }
+  .pstep.error  { color: var(--red); }
+  .pstep-icon { font-size: 0.9rem; width: 1.1rem; text-align: center; flex-shrink: 0; }
+  .pstep-spinner {
+    width: 14px; height: 14px;
     border: 2px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;
@@ -339,1013 +284,1006 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .no-releases {
-    padding: 1rem;
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 0.85rem;
-  }
-  .no-releases a { color: var(--accent); text-decoration: none; }
-  .no-releases a:hover { text-decoration: underline; }
-
-  /* ── Selected firmware bar ───────────────── */
-  .firmware-selected-bar {
+  /* ── Manual DFU fallback ──────────────────── */
+  .manual-dfu {
     display: none;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0.7rem 1rem;
-    background: var(--green-glow);
-    border: 1px solid rgba(52,211,153,0.35);
-    border-radius: 8px;
-    font-size: 0.85rem;
+    margin-top: 1rem;
+    padding: 1rem 1.1rem;
+    background: var(--yellow-glow);
+    border: 1px solid rgba(250,204,21,0.35);
+    border-radius: var(--r);
+    font-size: 0.82rem;
+    line-height: 1.6;
   }
-  .firmware-selected-bar.show { display: flex; }
-  .firmware-selected-bar .icon { color: var(--green); font-size: 1.1rem; }
-  .firmware-selected-bar .fw-name { flex: 1; font-weight: 600; }
-  .firmware-selected-bar .fw-size { color: var(--text-dim); font-family: var(--mono); font-size: 0.75rem; }
+  .manual-dfu.show { display: block; }
+  .manual-dfu strong { color: var(--yellow); }
+  .manual-dfu ol { margin: 0.5rem 0 0 1.2rem; }
+  .manual-dfu li { margin-bottom: 0.25rem; }
 
-  /* ── File drop zone ───────────────────────── */
-  .drop-zone {
-    border: 2px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 2rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
+  /* ── Write-to-drive section ───────────────── */
+  .write-drive {
+    display: none;
     margin-top: 1rem;
   }
-  .drop-zone:hover, .drop-zone.dragover {
-    border-color: var(--accent);
+  .write-drive.show { display: block; }
+  .drive-btn {
+    width: 100%;
+    padding: 0.8rem;
+    border-radius: 10px;
+    border: 2px dashed var(--accent);
     background: var(--accent-glow);
-  }
-  .drop-zone.has-file {
-    border-color: var(--green);
-    border-style: solid;
-    background: var(--green-glow);
-  }
-  .drop-zone .icon  { font-size: 2rem; margin-bottom: 0.5rem; }
-  .drop-zone .label { font-weight: 600; }
-  .drop-zone .hint  { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.3rem; }
-  .drop-zone input[type=file] { display: none; }
-
-  /* ── Progress bar ─────────────────────────── */
-  .progress-wrap { margin-top: 1rem; display: none; }
-  .progress-wrap.show { display: block; }
-  .progress-label {
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    margin-bottom: 0.4rem;
+    color: var(--accent);
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .drive-btn:hover:not(:disabled) {
+    background: rgba(56,189,248,0.25);
+    border-color: #7dd3fc;
+  }
+  .drive-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .drive-hint { font-size: 0.78rem; color: var(--dim); text-align: center; margin-top: 0.45rem; }
+
+  /* ── Success state ────────────────────────── */
+  .success-panel {
+    display: none;
+    text-align: center;
+    padding: 1.5rem 1rem;
+  }
+  .success-panel.show { display: block; }
+  .success-icon { font-size: 3rem; margin-bottom: 0.6rem; }
+  .success-panel h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.3rem; }
+  .success-panel p { font-size: 0.85rem; color: var(--dim); }
+
+  /* ── Inline alert ─────────────────────────── */
+  .alert {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin-top: 0.8rem;
+    display: none;
+  }
+  .alert.show { display: block; }
+  .alert-info  { background: var(--accent-glow); border: 1px solid rgba(56,189,248,0.35); color: var(--text); }
+  .alert-warn  { background: var(--yellow-glow); border: 1px solid rgba(250,204,21,0.35); color: var(--text); }
+  .alert-error { background: var(--red-glow);    border: 1px solid rgba(248,113,113,0.35); color: var(--red); }
+  .alert-ok    { background: var(--green-glow);  border: 1px solid rgba(74,222,128,0.35); color: var(--green); }
+
+  /* ── Advanced toggle ──────────────────────── */
+  .advanced-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-family: var(--sans);
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 0.6rem;
+    border-radius: 8px;
+    transition: color 0.15s;
+    margin-bottom: 0.3rem;
+  }
+  .advanced-toggle:hover { color: var(--text); }
+  .chevron { transition: transform 0.2s; }
+  .advanced-toggle.open .chevron { transform: rotate(180deg); }
+
+  /* ── Console (advanced) ───────────────────── */
+  .console-wrap { display: none; }
+  .console-wrap.show { display: block; }
+  .console-bar {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  .console-header {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.75rem;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
     justify-content: space-between;
   }
-  .progress-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--green));
-    border-radius: 3px;
-    width: 0%;
-    transition: width 0.3s;
-  }
-
-  /* ── Info boxes ───────────────────────────── */
-  .info-box {
-    display: flex;
-    gap: 0.6rem;
-    padding: 0.8rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    margin-top: 1rem;
-  }
-  .info-box.tip  { background: var(--green-glow);  border: 1px solid rgba(52,211,153,0.3); }
-  .info-box.warn { background: var(--yellow-glow); border: 1px solid rgba(251,191,36,0.3); }
-  .info-box.info { background: var(--accent-glow); border: 1px solid rgba(34,211,238,0.3); }
-  .info-box .icon { flex-shrink: 0; }
-
-  /* ── Stepper ──────────────────────────────── */
-  .stepper {
-    display: flex;
-    gap: 0.3rem;
-    margin-bottom: 1.5rem;
-    padding: 0.3rem;
-    background: var(--surface);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
-  .stepper-item {
-    flex: 1;
-    text-align: center;
-    padding: 0.5rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--text-dim);
-    transition: all 0.2s;
-  }
-  .stepper-item.active { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(34,211,238,0.3); }
-  .stepper-item.done   { color: var(--green); }
-
-  /* ── DFU steps ───────────────────────────── */
-  .dfu-steps { list-style: none; margin-top: 0.8rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  .dfu-steps li {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    font-size: 0.85rem;
-    padding: 0.6rem 0.8rem;
-    background: var(--surface2);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
-  .dfu-steps li .num {
+  .console-body {
+    padding: 0.8rem;
+    height: 220px;
+    overflow-y: auto;
     font-family: var(--mono);
-    font-size: 0.75rem;
-    color: var(--accent);
-    background: var(--accent-glow);
-    border: 1px solid rgba(34,211,238,0.3);
-    border-radius: 50%;
-    width: 20px; height: 20px;
-    display: inline-flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    margin-top: 0.1rem;
+    font-size: 0.77rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
-  .dfu-steps li.done-step { border-color: rgba(52,211,153,0.3); background: var(--green-glow); }
-  .dfu-steps li.done-step .num { color: var(--green); background: rgba(52,211,153,0.15); border-color: rgba(52,211,153,0.4); }
-
-  /* ── Download overlay ────────────────────── */
-  .dl-overlay {
-    display: none;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 0.7rem 1rem;
-    background: var(--accent-glow);
-    border: 1px solid rgba(34,211,238,0.3);
-    border-radius: 8px;
-    margin-top: 0.8rem;
-    font-size: 0.85rem;
-  }
-  .dl-overlay.show { display: flex; }
-  .dl-bar-wrap { flex: 1; }
-  .dl-bar { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
-  .dl-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.2s; }
-  .dl-label { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.3rem; }
-
-  /* ── Tabs ────────────────────────────────── */
-  .tab-bar {
+  .console-body .rx  { color: var(--green); }
+  .console-body .tx  { color: var(--accent); }
+  .console-body .sys { color: var(--yellow); }
+  .console-body .err { color: var(--red); }
+  .console-input {
     display: flex;
-    gap: 0.3rem;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
   }
-  .tab {
-    padding: 0.45rem 1rem;
-    font-size: 0.85rem;
-    font-weight: 500;
+  .console-input span {
+    padding: 0.5rem 0.7rem;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.77rem;
+    user-select: none;
+  }
+  .console-input input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.77rem;
+    padding: 0.5rem 0.3rem;
+    outline: none;
+  }
+  .quick-row {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+  }
+  .qbtn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.55rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--accent);
     cursor: pointer;
-    color: var(--text-dim);
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all 0.15s;
+    transition: all 0.12s;
   }
-  .tab:hover  { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .qbtn:hover { background: var(--accent-glow); border-color: var(--accent); }
 
-  /* ── Responsive ───────────────────────────── */
-  @media (max-width: 600px) {
-    .container { padding: 1rem; }
-    header h1 { font-size: 1.4rem; }
-    .btn { padding: 0.55rem 1rem; font-size: 0.85rem; }
-    .release-item { flex-wrap: wrap; }
+  /* ── Connect chip ─────────────────────────── */
+  .conn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--dim);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .conn-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .conn-chip.connected { border-color: var(--green); color: var(--green); background: var(--green-glow); cursor: default; }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+  /* ── Footnote ─────────────────────────────── */
+  .footnote {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--dim);
+    margin-top: 1.5rem;
+  }
+  .footnote a { color: var(--accent); text-decoration: none; }
+  .footnote a:hover { text-decoration: underline; }
+
+  @media (max-width: 480px) {
+    body { padding: 1.2rem 0.75rem 3rem; }
+    .logo h1 { font-size: 1.25rem; }
   }
 </style>
 </head>
 <body>
-<div class="container">
+<div class="wrap">
 
-  <header>
-    <h1>RNS Transport <span>Node</span></h1>
-    <p class="subtitle">WisBlock 1W Web Flasher — browser-based firmware deployment</p>
-    <span class="version-badge" id="headerBadge">nRF52840 · RAK4631</span>
-  </header>
-
-  <div class="browser-warning" id="browserWarning">
-    <h3>⚠ Browser Not Supported</h3>
-    <p>Web Serial API is required. Please use <strong>Google Chrome 89+</strong> or <strong>Microsoft Edge 89+</strong> on desktop. Safari and Firefox do not support Web Serial.</p>
+  <!-- Header -->
+  <div class="logo">
+    <div class="logo-icon">📡</div>
+    <h1>RNS Transport <span>Flasher</span></h1>
+    <p>WisBlock 1W · nRF52840</p>
   </div>
 
-  <div class="stepper" id="stepper">
-    <div class="stepper-item active" data-step="1">① Connect</div>
-    <div class="stepper-item" data-step="2">② Firmware</div>
-    <div class="stepper-item" data-step="3">③ Console</div>
-    <div class="stepper-item" data-step="4">④ Flash</div>
+  <!-- Browser check -->
+  <div class="unsupported" id="unsupported">
+    <strong>⚠ Unsupported Browser</strong><br>
+    This tool requires <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> (version 89+) on a desktop computer. Safari and Firefox are not supported.
   </div>
 
-  <!-- ── Step 1: Connect ──────────────────────── -->
-  <div class="card" id="cardConnect">
-    <h2><span class="step">1</span> Connect Device</h2>
-    <p style="font-size:0.9rem; color:var(--text-dim); margin-bottom:1rem;">
-      Plug your WisBlock 1W into USB, then click Connect to open the serial port.
-    </p>
-    <div class="status-bar" id="statusBar">
-      <div class="status-dot" id="statusDot"></div>
-      <span class="status-text" id="statusText">Not connected</span>
-      <span class="status-detail" id="statusDetail"></span>
+  <!-- Step track -->
+  <div class="step-track" id="stepTrack">
+    <div class="step-node active" id="sn1">
+      <div class="step-bubble" id="sb1">1</div>
+      <div class="step-label">Choose version</div>
     </div>
-    <div class="btn-group">
-      <button class="btn btn-primary" id="btnConnect" onclick="connectDevice()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-        Connect
+    <div class="step-node" id="sn2">
+      <div class="step-bubble" id="sb2">2</div>
+      <div class="step-label">Connect</div>
+    </div>
+    <div class="step-node" id="sn3">
+      <div class="step-bubble" id="sb3">3</div>
+      <div class="step-label">Flash</div>
+    </div>
+  </div>
+
+  <!-- ── Card 1: Version ── -->
+  <div class="card" id="cardVersion">
+    <div class="card-title">⚡ Pick a firmware version</div>
+    <div class="card-sub" id="releaseSub">Fetching latest releases from GitHub…</div>
+
+    <div class="version-row">
+      <select class="version-select" id="versionSelect" disabled onchange="onVersionChange()">
+        <option value="">Loading…</option>
+      </select>
+      <button class="conn-chip" id="connChip" onclick="toggleConnect()" title="Connect device for automatic DFU trigger">
+        <span class="conn-dot"></span>
+        <span id="connLabel">Connect device</span>
       </button>
-      <button class="btn btn-danger" id="btnDisconnect" onclick="disconnectDevice()" disabled>
-        Disconnect
-      </button>
-    </div>
-    <div class="info-box info" style="margin-top:0.8rem;">
-      <span class="icon">ℹ️</span>
-      <span>Connection is optional for firmware download — you can select and save firmware without a device attached.</span>
-    </div>
-  </div>
-
-  <!-- ── Step 2: Firmware Selection ─────────── -->
-  <div class="card" id="cardFirmware">
-    <h2><span class="step">2</span> Select Firmware Version</h2>
-    <p style="font-size:0.9rem; color:var(--text-dim); margin-bottom:0.8rem;">
-      Releases are fetched automatically from
-      <a href="https://github.com/hipstereclipse/rns-transport-wisblock1w/releases" target="_blank" style="color:var(--accent);text-decoration:none;">GitHub</a>.
-      Select a version to auto-download it, or upload a local build.
-    </p>
-
-    <div class="tab-bar">
-      <div class="tab active" onclick="switchTab('releases')" id="tabReleases">GitHub Releases</div>
-      <div class="tab"        onclick="switchTab('local')"    id="tabLocal">Local File</div>
     </div>
 
-    <!-- ── Releases tab ── -->
-    <div id="panelReleases">
-      <div id="releaseListWrap">
-        <div class="firmware-loading" id="releaseLoading">
-          <div class="spinner"></div>
-          Fetching releases from GitHub…
-        </div>
-        <div id="releaseItems"></div>
-        <div id="noReleases" class="no-releases" style="display:none;">
-          <p style="font-size:1.5rem;margin-bottom:0.5rem;">📦</p>
-          <p><strong>No releases published yet.</strong></p>
-          <p style="margin-top:0.3rem;">
-            Once a GitHub Release is created with <code style="font-family:var(--mono);font-size:0.8rem;">.uf2</code>,
-            <code style="font-family:var(--mono);font-size:0.8rem;">.bin</code>, or
-            <code style="font-family:var(--mono);font-size:0.8rem;">.hex</code> assets they will appear here automatically.
-            <br>Build from source with PlatformIO and use the Local File tab below in the meantime.
-          </p>
-          <p style="margin-top:0.6rem;">
-            <a href="https://github.com/hipstereclipse/rns-transport-wisblock1w" target="_blank">View repository →</a>
-          </p>
-        </div>
-      </div>
-
-      <!-- Download progress -->
-      <div class="dl-overlay" id="dlOverlay">
-        <div class="spinner"></div>
-        <div class="dl-bar-wrap">
-          <div class="dl-bar"><div class="dl-bar-fill" id="dlBarFill"></div></div>
-          <div class="dl-label" id="dlLabel">Downloading…</div>
-        </div>
-        <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.75rem;" onclick="cancelDownload()">Cancel</button>
-      </div>
-
-      <!-- Selected release summary -->
-      <div class="firmware-selected-bar" id="fwSelectedBar" style="margin-top:0.8rem;">
-        <span class="icon">✓</span>
-        <span class="fw-name" id="fwSelectedName">—</span>
-        <span class="fw-size" id="fwSelectedSize"></span>
-        <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.75rem;" onclick="clearSelectedFirmware()">Clear</button>
-      </div>
-
-      <div style="display:flex;gap:0.5rem;margin-top:0.8rem;flex-wrap:wrap;">
-        <button class="btn btn-secondary" onclick="fetchReleases(true)" id="btnRefreshReleases">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          Refresh
-        </button>
-        <button class="btn btn-green" id="btnDownloadFlash" onclick="downloadAndPrepareFlash()" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download Selected
-        </button>
-      </div>
+    <div class="version-meta" id="versionMeta" style="display:none;">
+      <span id="versionDate"></span>
+      <span id="versionAsset"></span>
+      <span id="versionPrerelease"></span>
     </div>
 
-    <!-- ── Local file tab ── -->
-    <div id="panelLocal" style="display:none;">
-      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        <div class="icon"  id="dropIcon">📦</div>
-        <div class="label" id="dropLabel">Drop firmware file here or click to browse</div>
-        <div class="hint">Accepts .bin, .hex, or .uf2 files</div>
-        <input type="file" id="fileInput" accept=".bin,.hex,.uf2" onchange="handleFileSelect(event)">
-      </div>
-      <div class="firmware-selected-bar" id="fwSelectedBarLocal" style="margin-top:0.8rem;">
-        <span class="icon">✓</span>
-        <span class="fw-name" id="fwSelectedNameLocal">—</span>
-        <span class="fw-size" id="fwSelectedSizeLocal"></span>
-        <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;font-size:0.75rem;" onclick="clearSelectedFirmware()">Clear</button>
+    <div class="alert alert-warn" id="noReleasesAlert">
+      No published releases found on GitHub yet.
+      Use the <strong>Local file</strong> option below or build from source with PlatformIO.
+      <br><a href="https://github.com/hipstereclipse/rns-transport-wisblock1w" target="_blank" style="color:var(--accent);">View repository →</a>
+    </div>
+
+    <!-- Local file fallback -->
+    <div style="margin-top:1rem;">
+      <label style="font-size:0.78rem;color:var(--dim);display:flex;align-items:center;gap:0.4rem;cursor:pointer;">
+        <input type="checkbox" id="useLocalFile" onchange="toggleLocalFile()" style="accent-color:var(--accent);">
+        Use a local firmware file instead
+      </label>
+      <div id="localFileWrap" style="display:none;margin-top:0.6rem;">
+        <label style="display:flex;align-items:center;gap:0.6rem;padding:0.65rem 0.9rem;background:var(--surface2);border:1px dashed var(--border);border-radius:8px;cursor:pointer;font-size:0.82rem;transition:border-color 0.15s;" id="localFileLabel">
+          <span>📂</span>
+          <span id="localFileName">Click to browse (.uf2 / .bin / .hex)</span>
+          <input type="file" id="localFileInput" accept=".uf2,.bin,.hex" onchange="onLocalFile(event)" style="display:none;">
+        </label>
       </div>
     </div>
   </div>
 
-  <!-- ── Step 3: Console ──────────────────────── -->
-  <div class="card" id="cardConsole">
-    <h2><span class="step">3</span> Serial Console</h2>
-    <p style="font-size:0.9rem; color:var(--text-dim); margin-bottom:0.5rem;">
-      Interact with the node in real time.
-      <kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:0 0.3rem;font-family:var(--mono);font-size:0.75rem;">↑</kbd>
-      <kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:0 0.3rem;font-family:var(--mono);font-size:0.75rem;">↓</kbd>
-      to navigate command history.
-    </p>
-    <div class="terminal">
-      <div class="terminal-header">
-        <div class="terminal-header-left">
-          <span>USB Serial — 115200 baud</span>
-          <span id="rxByteCount" style="color:var(--text-dim);">0 bytes</span>
-        </div>
-        <div style="display:flex;gap:0.4rem;">
-          <button class="btn btn-secondary" style="padding:0.2rem 0.6rem;font-size:0.7rem;" onclick="saveTerminalLog()">Save log</button>
-          <button class="btn btn-secondary" style="padding:0.2rem 0.6rem;font-size:0.7rem;" onclick="clearTerminal()">Clear</button>
-        </div>
-      </div>
-      <div class="terminal-body" id="terminalBody"></div>
-      <div class="terminal-input">
-        <span>rns&gt;</span>
-        <input type="text" id="terminalInput" placeholder="Type command and press Enter…" onkeydown="handleTerminalKey(event)" disabled>
-      </div>
-    </div>
-    <div class="quick-cmds">
-      <span class="quick-cmds-label">Quick:</span>
-      <span class="quick-cmd" onclick="sendCmd('status')">status</span>
-      <span class="quick-cmd" onclick="sendCmd('radio')">radio</span>
-      <span class="quick-cmd" onclick="sendCmd('identity')">identity</span>
-      <span class="quick-cmd" onclick="sendCmd('routes')">routes</span>
-      <span class="quick-cmd" onclick="sendCmd('peers')">peers</span>
-      <span class="quick-cmd" onclick="sendCmd('stats')">stats</span>
-      <span class="quick-cmd" onclick="sendCmd('help')">help</span>
-      <span class="quick-cmd" onclick="sendCmd('reboot')">reboot</span>
-      <span class="quick-cmd" onclick="sendCmd('dfu')">dfu</span>
-    </div>
-  </div>
-
-  <!-- ── Step 4: Flash ────────────────────────── -->
+  <!-- ── Card 2: Flash ── -->
   <div class="card" id="cardFlash">
-    <h2><span class="step">4</span> Flash Firmware</h2>
-    <p style="font-size:0.9rem; color:var(--text-dim); margin-bottom:0.5rem;">
-      The nRF52840 uses a UF2 bootloader. Switch the device into DFU mode and it appears as
-      a USB drive — drop the <code style="font-family:var(--mono);font-size:0.8rem;">.uf2</code> file onto it to flash instantly.
-    </p>
-
-    <div class="info-box warn" style="margin-bottom:0.8rem;">
-      <span class="icon">🛡️</span>
-      <span><strong>Safe flashing:</strong> The bootloader cannot be overwritten. An interrupted transfer leaves the previous firmware intact. Your device cannot be bricked.</span>
+    <div class="card-title">🚀 Flash firmware</div>
+    <div class="card-sub">
+      The device will reboot into DFU mode, and the firmware will be written automatically. No drag-and-drop needed.
     </div>
 
-    <div class="status-bar" id="flashStatusBar">
-      <div class="status-dot" id="flashDot"></div>
-      <span class="status-text" id="flashStatus">No firmware selected</span>
+    <div class="flash-btn-wrap">
+      <button class="flash-btn" id="flashBtn" onclick="startFlash()" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span id="flashBtnLabel">Select version above</span>
+      </button>
     </div>
 
-    <ul class="dfu-steps">
-      <li id="dfuStep1"><span class="num">1</span><span>Select or download a firmware build (Step 2 above)</span></li>
-      <li id="dfuStep2"><span class="num">2</span><span>Connect to the device via USB (Step 1 above)</span></li>
-      <li id="dfuStep3"><span class="num">3</span><span>Click <strong>Enter DFU Mode</strong> — the device will reboot into the bootloader</span></li>
-      <li id="dfuStep4"><span class="num">4</span><span>A USB drive named <code style="font-family:var(--mono);font-size:0.8rem;">RAK4631</code> (or similar) will appear on your computer</span></li>
-      <li id="dfuStep5"><span class="num">5</span><span>Copy or drag the <code style="font-family:var(--mono);font-size:0.8rem;">.uf2</code> file onto that drive — device flashes and restarts automatically</span></li>
-    </ul>
-
-    <div class="progress-wrap" id="progressWrap">
-      <div class="progress-label">
-        <span id="progressLabel">Preparing…</span>
-        <span id="progressPercent">0%</span>
+    <!-- Progress -->
+    <div class="progress-section" id="progressSection">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progressFill"></div>
       </div>
-      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-steps" id="progressSteps">
+        <div class="pstep" id="ps1"><span class="pstep-icon">○</span><span>Download firmware</span></div>
+        <div class="pstep" id="ps2"><span class="pstep-icon">○</span><span>Enter DFU bootloader</span></div>
+        <div class="pstep" id="ps3"><span class="pstep-icon">○</span><span>Write firmware to device</span></div>
+        <div class="pstep" id="ps4"><span class="pstep-icon">○</span><span>Verify &amp; restart</span></div>
+      </div>
     </div>
 
-    <div class="btn-group" style="margin-top:1rem;">
-      <button class="btn btn-primary" id="btnFlash" onclick="startFlash()" disabled>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        Flash Firmware
-      </button>
-      <button class="btn btn-secondary" id="btnDfu" onclick="triggerDfu()" disabled>
-        Enter DFU Mode
-      </button>
-      <button class="btn btn-secondary" id="btnSaveUF2" onclick="saveSelectedFile()" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Save Firmware File
-      </button>
+    <!-- Manual DFU fallback (shown when no serial connection) -->
+    <div class="manual-dfu" id="manualDfu">
+      <strong>Put device into DFU mode manually:</strong>
+      <ol>
+        <li>Double-tap the <strong>reset button</strong> on the WisBlock.</li>
+        <li>A USB drive named <code style="font-family:var(--mono);font-size:0.85em;">RAK4631</code> (or similar) will appear on your computer.</li>
+        <li>Click <strong>"Write to device drive"</strong> below and select that drive.</li>
+      </ol>
     </div>
 
-    <div class="info-box tip" id="dfuInstructions" style="display:none; margin-top:0.8rem;">
-      <span class="icon">📋</span>
-      <span>
-        <strong>DFU Mode Active.</strong> The device should now appear as a USB drive named
-        <code style="font-family:var(--mono);">RAK4631</code> or similar.
-        Drag your <code style="font-family:var(--mono);">.uf2</code> file onto that drive.
-        The device flashes and restarts automatically.
-        If no USB drive appears, double-tap the physical reset button.
-      </span>
+    <!-- File System API write button -->
+    <div class="write-drive" id="writeDriveSection">
+      <button class="drive-btn" id="writeDriveBtn" onclick="writeToDrive()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Write to device drive
+      </button>
+      <div class="drive-hint">A folder picker will open — select the <strong>RAK4631</strong> USB drive</div>
+    </div>
+
+    <!-- Success -->
+    <div class="success-panel" id="successPanel">
+      <div class="success-icon">✅</div>
+      <h3>Flash complete!</h3>
+      <p>Your device is restarting with the new firmware.</p>
+    </div>
+
+    <div class="alert" id="flashAlert"></div>
+  </div>
+
+  <!-- Advanced / Console -->
+  <button class="advanced-toggle" id="advToggle" onclick="toggleAdvanced()">
+    <span>Advanced — Serial Console</span>
+    <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+  <div class="console-wrap" id="consoleWrap">
+    <div class="card" style="padding:0;">
+      <div class="console-bar">
+        <div class="console-header">
+          <span>Serial console — 115200 baud</span>
+          <div style="display:flex;gap:0.3rem;">
+            <button class="qbtn" onclick="saveLog()">Save log</button>
+            <button class="qbtn" onclick="clearConsole()">Clear</button>
+          </div>
+        </div>
+        <div class="console-body" id="consoleBody"></div>
+        <div class="console-input">
+          <span>rns&gt;</span>
+          <input type="text" id="consoleInput" placeholder="Type command…" onkeydown="onConsoleKey(event)" disabled>
+        </div>
+      </div>
+      <div style="padding:0.6rem 0.9rem;">
+        <div class="quick-row">
+          <span class="qbtn" onclick="sendCmd('status')">status</span>
+          <span class="qbtn" onclick="sendCmd('radio')">radio</span>
+          <span class="qbtn" onclick="sendCmd('identity')">identity</span>
+          <span class="qbtn" onclick="sendCmd('routes')">routes</span>
+          <span class="qbtn" onclick="sendCmd('peers')">peers</span>
+          <span class="qbtn" onclick="sendCmd('stats')">stats</span>
+          <span class="qbtn" onclick="sendCmd('help')">help</span>
+          <span class="qbtn" onclick="sendCmd('reboot')">reboot</span>
+        </div>
+      </div>
     </div>
   </div>
 
-  <footer>
-    RNS Transport Node — WisBlock 1W &nbsp;·&nbsp;
-    <a href="https://reticulum.network/" target="_blank">Reticulum Network</a> &nbsp;·&nbsp;
+  <div class="footnote">
     <a href="https://github.com/hipstereclipse/rns-transport-wisblock1w" target="_blank">GitHub</a> &nbsp;·&nbsp;
+    <a href="https://reticulum.network/" target="_blank">Reticulum</a> &nbsp;·&nbsp;
     <a href="https://www.rakwireless.com/" target="_blank">RAKwireless</a>
-  </footer>
+  </div>
 
-</div>
+</div><!-- /.wrap -->
+
 <script>
-// ── State ─────────────────────────────────────────────────
-let port = null;
-let reader = null;
-let writer = null;
-let readLoopActive = false;
-let selectedFile = null;        // File or Blob
-let selectedFileName = '';
-let selectedFileSize = 0;
-let isConnected = false;
-let rxBytes = 0;
-let cmdHistory = [];
-let cmdHistoryIdx = -1;
-let downloadController = null;
-let releases = [];
-let selectedRelease = null;
-let selectedAsset = null;
+'use strict';
+/* ════════════════════════════════════════════
+   State
+════════════════════════════════════════════ */
+const REPO = 'hipstereclipse/rns-transport-wisblock1w';
 
-const GITHUB_REPO = 'hipstereclipse/rns-transport-wisblock1w';
+let releases      = [];
+let selectedAsset = null;   // GitHub release asset object
+let firmwareBlob  = null;   // ArrayBuffer ready to write
+let firmwareName  = '';
 
-// ── Browser check ─────────────────────────────────────────
+let port    = null;
+let reader  = null;
+let writer  = null;
+let looping = false;
+let connected = false;
+
+let cmdHistory = [], cmdIdx = -1;
+
+/* ════════════════════════════════════════════
+   Boot
+════════════════════════════════════════════ */
 if (!('serial' in navigator)) {
-  document.getElementById('browserWarning').classList.add('show');
-  document.getElementById('btnConnect').disabled = true;
+  document.getElementById('unsupported').classList.add('show');
+  document.getElementById('flashBtn').disabled = true;
 }
 
-// ── Boot ──────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  fetchReleases(false);
-  termLog('sys', 'RNS Transport Node — Web Flasher\n');
-  termLog('sys', 'Connect your device to begin, or select firmware below.\n\n');
-});
+window.addEventListener('DOMContentLoaded', fetchReleases);
 
-// ── Tab switch ────────────────────────────────────────────
-function switchTab(tab) {
-  document.getElementById('panelReleases').style.display = tab === 'releases' ? '' : 'none';
-  document.getElementById('panelLocal').style.display    = tab === 'local'    ? '' : 'none';
-  document.getElementById('tabReleases').className = 'tab' + (tab === 'releases' ? ' active' : '');
-  document.getElementById('tabLocal').className    = 'tab' + (tab === 'local'    ? ' active' : '');
-}
-
-// ── GitHub releases fetch ─────────────────────────────────
-async function fetchReleases(manual) {
-  const loadingEl  = document.getElementById('releaseLoading');
-  const itemsEl    = document.getElementById('releaseItems');
-  const noneEl     = document.getElementById('noReleases');
-  const refreshBtn = document.getElementById('btnRefreshReleases');
-
-  loadingEl.style.display = 'flex';
-  itemsEl.innerHTML        = '';
-  noneEl.style.display     = 'none';
-  refreshBtn.disabled      = true;
-  refreshBtn.innerHTML     = '<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> Refreshing…';
+/* ════════════════════════════════════════════
+   GitHub releases
+════════════════════════════════════════════ */
+async function fetchReleases() {
+  const sel = document.getElementById('versionSelect');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  sel.disabled = true;
 
   try {
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=20&_t=${Date.now()}`;
-    const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
-    if (!res.ok) throw new Error(`GitHub API responded with ${res.status}`);
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO}/releases?per_page=30&_=${Date.now()}`,
+      { headers: { Accept: 'application/vnd.github+json' } }
+    );
+    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
     releases = await res.json();
 
-    loadingEl.style.display = 'none';
-    if (!releases.length) {
-      noneEl.style.display = 'block';
-    } else {
-      releases.forEach((rel, i) => renderReleaseItem(rel, i, itemsEl));
+    // Keep only releases that have at least one firmware asset
+    const withFw = releases.filter(r =>
+      (r.assets || []).some(a => /\.(uf2|bin|hex)$/i.test(a.name) && a.state === 'uploaded')
+    );
+
+    if (!withFw.length) {
+      document.getElementById('noReleasesAlert').classList.add('show');
+      document.getElementById('releaseSub').textContent = 'No firmware releases found.';
+      sel.innerHTML = '<option value="">— No releases published —</option>';
+      return;
     }
 
-    if (releases.length) {
-      document.getElementById('headerBadge').textContent =
-        `latest: ${releases[0].tag_name} · nRF52840`;
-    }
-    if (manual) termLog('sys', `GitHub: ${releases.length} release(s) found.\n`);
+    document.getElementById('releaseSub').textContent =
+      `${withFw.length} release${withFw.length > 1 ? 's' : ''} available`;
 
-  } catch (err) {
-    loadingEl.style.display = 'none';
-    noneEl.style.display    = 'block';
-    noneEl.innerHTML = `
-      <p style="font-size:1.5rem;margin-bottom:0.5rem;">⚠️</p>
-      <p><strong>Could not fetch releases.</strong></p>
-      <p style="margin-top:0.3rem;font-size:0.8rem;color:var(--text-dim);">${escHtml(err.message)}</p>
-      <p style="margin-top:0.6rem;"><a href="https://github.com/${GITHUB_REPO}/releases" target="_blank">View on GitHub →</a></p>`;
-    if (manual) termLog('err', `Release fetch failed: ${err.message}\n`);
-  } finally {
-    refreshBtn.disabled  = false;
-    refreshBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Refresh';
-  }
-}
-
-function renderReleaseItem(rel, idx, container) {
-  const assets   = (rel.assets || []).filter(a => /\.(uf2|bin|hex)$/i.test(a.name) && a.state === 'uploaded');
-  const preferred = assets.find(a => /\.uf2$/i.test(a.name))
-    || assets.find(a => /\.bin$/i.test(a.name))
-    || assets.find(a => /\.hex$/i.test(a.name))
-    || null;
-
-  const date    = new Date(rel.published_at || rel.created_at);
-  const dateStr = date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  const chips   = assets.map(a => {
-    const ext = a.name.split('.').pop().toLowerCase();
-    return `<span class="asset-chip ${ext}">.${ext}</span>`;
-  }).join('');
-
-  const div = document.createElement('div');
-  div.className = 'release-item';
-  div.id = `rel-${idx}`;
-  div.innerHTML = `
-    <div>
-      <div class="release-tag">${escHtml(rel.tag_name)}</div>
-      ${rel.prerelease ? '<div style="font-size:0.7rem;color:var(--orange);margin-top:0.1rem;">pre-release</div>' : ''}
-    </div>
-    <div style="flex:1;min-width:0;">
-      <div class="release-name">${escHtml(rel.name || rel.tag_name)}</div>
-      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.2rem;">
-        ${chips || '<span style="font-size:0.75rem;color:var(--text-dim);">no firmware assets</span>'}
-      </div>
-    </div>
-    <div class="release-date">${dateStr}</div>
-    <div style="color:${preferred ? 'var(--green)' : 'var(--text-dim)'};opacity:${preferred ? 1 : 0.4};font-size:0.85rem;">${preferred ? '●' : '○'}</div>
-  `;
-
-  if (assets.length > 1) {
-    // Show per-asset buttons
-    const row = document.createElement('div');
-    row.style.cssText = 'width:100%;display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--border);';
-    assets.forEach(asset => {
-      const ext = asset.name.split('.').pop().toLowerCase();
-      const b   = document.createElement('button');
-      b.className = 'btn btn-secondary';
-      b.style.cssText = 'padding:0.25rem 0.7rem;font-size:0.75rem;font-family:var(--mono);';
-      b.textContent   = asset.name;
-      b.onclick = (e) => { e.stopPropagation(); selectRelease(idx, asset, div); };
-      row.appendChild(b);
+    sel.innerHTML = '';
+    withFw.forEach((rel, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      const pre = rel.prerelease ? ' [pre]' : '';
+      opt.textContent = `${rel.tag_name}${pre}  —  ${rel.name || rel.tag_name}`;
+      sel.appendChild(opt);
     });
-    div.appendChild(row);
-    div.style.flexWrap = 'wrap';
-    div.style.cursor   = 'default';
-  } else if (preferred) {
-    div.onclick = () => selectRelease(idx, preferred, div);
-  } else {
-    div.style.opacity = '0.55';
-    div.style.cursor  = 'default';
-    div.title = 'No flashable firmware assets in this release';
-  }
+    sel.disabled = false;
 
-  container.appendChild(div);
-}
+    // Patch: store filtered list
+    releases = withFw;
 
-function selectRelease(idx, asset, el) {
-  document.querySelectorAll('.release-item').forEach(r => r.classList.remove('selected'));
-  el.classList.add('selected');
-  selectedRelease = releases[idx];
-  selectedAsset   = asset;
-  document.getElementById('btnDownloadFlash').disabled = false;
-  termLog('sys', `Selected: ${selectedRelease.tag_name} — ${asset.name} (${(asset.size / 1024).toFixed(1)} KB)\n`);
-}
-
-// ── Download ──────────────────────────────────────────────
-async function downloadAndPrepareFlash() {
-  if (!selectedAsset) return;
-
-  const overlay     = document.getElementById('dlOverlay');
-  const barFill     = document.getElementById('dlBarFill');
-  const dlLabel     = document.getElementById('dlLabel');
-  const downloadBtn = document.getElementById('btnDownloadFlash');
-
-  overlay.classList.add('show');
-  downloadBtn.disabled = true;
-  downloadController   = new AbortController();
-
-  termLog('sys', `Downloading ${selectedAsset.name} from GitHub…\n`);
-
-  try {
-    const res = await fetch(selectedAsset.browser_download_url, { signal: downloadController.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const total    = parseInt(res.headers.get('content-length') || '0');
-    const rdReader = res.body.getReader();
-    const chunks   = [];
-    let received   = 0;
-
-    while (true) {
-      const { done, value } = await rdReader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-      if (total) {
-        barFill.style.width = `${(received / total) * 100}%`;
-        dlLabel.textContent = `${(received / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KB`;
-      } else {
-        dlLabel.textContent = `${(received / 1024).toFixed(1)} KB received…`;
-      }
-    }
-
-    const blob       = new Blob(chunks);
-    selectedFile     = blob;
-    selectedFileName = selectedAsset.name;
-    selectedFileSize = blob.size;
-
-    termLog('sys', `Download complete: ${selectedFileName} (${(blob.size / 1024).toFixed(1)} KB)\n`);
-    setFirmwareSelected(selectedFileName, blob.size, 'releases');
-    updateFlashReadiness();
+    // Auto-select latest
+    sel.value = '0';
+    onVersionChange();
+    advanceWizard(1);
 
   } catch (err) {
-    if (err.name === 'AbortError') {
-      termLog('sys', 'Download cancelled.\n');
-    } else {
-      termLog('err', `Download failed: ${err.message}\n`);
-      termLog('sys', 'Note: GitHub release assets require CORS. If blocked, use "Save Firmware File" from the direct browser download link below.\n');
-      // Fallback: open the download URL directly in the browser
-      if (selectedAsset) {
-        const a = document.createElement('a');
-        a.href = selectedAsset.browser_download_url;
-        a.download = selectedAsset.name;
-        a.target = '_blank';
-        a.click();
-        termLog('sys', `Opened download for ${selectedAsset.name} in browser. Once downloaded, use the Local File tab to load it.\n`);
-      }
-    }
-  } finally {
-    overlay.classList.remove('show');
-    barFill.style.width  = '0%';
-    downloadBtn.disabled = false;
-    downloadController   = null;
+    document.getElementById('releaseSub').textContent = 'Could not reach GitHub.';
+    sel.innerHTML = '<option value="">— fetch failed —</option>';
+    document.getElementById('noReleasesAlert').classList.add('show');
+    console.error(err);
   }
 }
 
-function cancelDownload() {
-  if (downloadController) downloadController.abort();
+function onVersionChange() {
+  const sel = document.getElementById('versionSelect');
+  const idx = parseInt(sel.value);
+  if (isNaN(idx)) { selectedAsset = null; updateFlashButton(); return; }
+
+  const rel    = releases[idx];
+  const assets = (rel.assets || []).filter(a => /\.(uf2|bin|hex)$/i.test(a.name) && a.state === 'uploaded');
+  // Prefer .uf2 > .bin > .hex
+  selectedAsset = assets.find(a => /\.uf2$/i.test(a.name))
+    || assets.find(a => /\.bin$/i.test(a.name))
+    || assets.find(a => /\.hex$/i.test(a.name));
+
+  firmwareBlob = null; // reset cached download
+  firmwareName = selectedAsset ? selectedAsset.name : '';
+
+  // Metadata row
+  const metaEl = document.getElementById('versionMeta');
+  metaEl.style.display = selectedAsset ? 'flex' : 'none';
+  if (selectedAsset) {
+    const date = new Date(rel.published_at || rel.created_at);
+    document.getElementById('versionDate').textContent =
+      date.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+    const ext = selectedAsset.name.split('.').pop().toLowerCase();
+    document.getElementById('versionAsset').innerHTML =
+      `<span class="badge badge-blue">.${ext} · ${(selectedAsset.size/1024).toFixed(0)} KB</span>`;
+    document.getElementById('versionPrerelease').innerHTML = rel.prerelease
+      ? '<span class="badge badge-yellow">pre-release</span>'
+      : '<span class="badge badge-green">stable</span>';
+  }
+
+  // If this release has multiple firmware assets, let user pick
+  renderAssetPicker(assets, rel);
+  updateFlashButton();
 }
 
-// ── File handling ─────────────────────────────────────────
-const dropZone = document.getElementById('dropZone');
-dropZone.addEventListener('dragover',  e  => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
-  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-});
+function renderAssetPicker(assets, rel) {
+  // Remove previous picker if any
+  const old = document.getElementById('assetPicker');
+  if (old) old.remove();
+  if (assets.length <= 1) return;
 
-function handleFileSelect(e) {
-  if (e.target.files.length) handleFile(e.target.files[0]);
+  const row = document.createElement('div');
+  row.id = 'assetPicker';
+  row.style.cssText = 'display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center;';
+  const lbl = document.createElement('span');
+  lbl.textContent = 'Asset:';
+  lbl.style.cssText = 'font-size:0.77rem;color:var(--dim);';
+  row.appendChild(lbl);
+  assets.forEach(asset => {
+    const b = document.createElement('button');
+    b.className = 'qbtn';
+    b.textContent = asset.name;
+    if (selectedAsset && asset.name === selectedAsset.name)
+      b.style.cssText = 'border-color:var(--accent);color:var(--accent);';
+    b.onclick = () => {
+      selectedAsset = asset;
+      firmwareBlob  = null;
+      firmwareName  = asset.name;
+      renderAssetPicker(assets, rel);
+      updateFlashButton();
+    };
+    row.appendChild(b);
+  });
+  document.getElementById('versionMeta').after(row);
 }
 
-function handleFile(file) {
+/* ════════════════════════════════════════════
+   Local file override
+════════════════════════════════════════════ */
+function toggleLocalFile() {
+  const use = document.getElementById('useLocalFile').checked;
+  document.getElementById('localFileWrap').style.display = use ? 'block' : 'none';
+  if (!use) {
+    firmwareBlob = null;
+    onVersionChange();
+  }
+  updateFlashButton();
+}
+
+function onLocalFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
   const ext = file.name.split('.').pop().toLowerCase();
-  if (!['bin', 'hex', 'uf2'].includes(ext)) {
-    termLog('err', `Unsupported file type: .${ext}\n`);
+  if (!['uf2','bin','hex'].includes(ext)) {
+    showFlashAlert('error', `Unsupported file type: .${ext}`);
     return;
   }
-  selectedFile     = file;
-  selectedFileName = file.name;
-  selectedFileSize = file.size;
-  termLog('sys', `Local file loaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)\n`);
-  setFirmwareSelected(file.name, file.size, 'local');
-  updateFlashReadiness();
+  const reader = new FileReader();
+  reader.onload = ev => {
+    firmwareBlob = ev.target.result;
+    firmwareName = file.name;
+    selectedAsset = null;
+    document.getElementById('localFileName').textContent = `✅ ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+    updateFlashButton();
+    sysLog(`Local file loaded: ${file.name}\n`);
+  };
+  reader.readAsArrayBuffer(file);
 }
 
-function setFirmwareSelected(name, size, source) {
-  if (source === 'releases') {
-    const bar = document.getElementById('fwSelectedBar');
-    bar.classList.add('show');
-    document.getElementById('fwSelectedName').textContent = name;
-    document.getElementById('fwSelectedSize').textContent = `${(size / 1024).toFixed(1)} KB`;
+/* ════════════════════════════════════════════
+   Flash button state
+════════════════════════════════════════════ */
+function updateFlashButton() {
+  const btn   = document.getElementById('flashBtn');
+  const label = document.getElementById('flashBtnLabel');
+  const useLocal = document.getElementById('useLocalFile').checked;
+
+  if (useLocal && firmwareBlob) {
+    btn.disabled = false;
+    label.textContent = `Flash  ${firmwareName}`;
+  } else if (!useLocal && selectedAsset) {
+    btn.disabled = false;
+    label.textContent = `Flash  ${selectedAsset.tag_name || ''}  ${selectedAsset.name}`;
   } else {
-    const bar = document.getElementById('fwSelectedBarLocal');
-    bar.style.display = 'flex';
-    document.getElementById('fwSelectedNameLocal').textContent = name;
-    document.getElementById('fwSelectedSizeLocal').textContent = `${(size / 1024).toFixed(1)} KB`;
-    dropZone.classList.add('has-file');
-    document.getElementById('dropIcon').textContent  = '✅';
-    document.getElementById('dropLabel').textContent = name;
-  }
-  updateFlashStatus();
-}
-
-function clearSelectedFirmware() {
-  selectedFile = null; selectedFileName = ''; selectedFileSize = 0;
-  document.getElementById('fwSelectedBar').classList.remove('show');
-  document.getElementById('fwSelectedBarLocal').style.display = 'none';
-  dropZone.classList.remove('has-file');
-  document.getElementById('dropIcon').textContent  = '📦';
-  document.getElementById('dropLabel').textContent = 'Drop firmware file here or click to browse';
-  document.getElementById('fileInput').value = '';
-  document.querySelectorAll('.release-item').forEach(r => r.classList.remove('selected'));
-  selectedRelease = null; selectedAsset = null;
-  document.getElementById('btnDownloadFlash').disabled = true;
-  updateFlashReadiness();
-  termLog('sys', 'Firmware selection cleared.\n');
-}
-
-// ── Flash readiness ───────────────────────────────────────
-function updateFlashReadiness() {
-  const hasFile = !!selectedFile;
-  document.getElementById('btnFlash').disabled   = !(hasFile && isConnected);
-  document.getElementById('btnSaveUF2').disabled = !hasFile;
-  updateFlashStatus();
-  updateDfuSteps();
-}
-
-function updateFlashStatus() {
-  const dot  = document.getElementById('flashDot');
-  const text = document.getElementById('flashStatus');
-  if (selectedFile && isConnected) {
-    dot.className    = 'status-dot connected';
-    text.textContent = `Ready to flash: ${selectedFileName}`;
-  } else if (selectedFile) {
-    dot.className    = 'status-dot busy';
-    text.textContent = `Firmware ready — connect device to flash`;
-  } else if (isConnected) {
-    dot.className    = 'status-dot busy';
-    text.textContent = 'Device connected — select firmware (Step 2)';
-  } else {
-    dot.className    = 'status-dot';
-    text.textContent = 'No firmware selected';
+    btn.disabled = true;
+    label.textContent = 'Select version above';
   }
 }
 
-function updateDfuSteps() {
-  setStepDone('dfuStep1', !!selectedFile);
-  setStepDone('dfuStep2', isConnected);
+/* ════════════════════════════════════════════
+   Serial connect / disconnect
+════════════════════════════════════════════ */
+async function toggleConnect() {
+  if (connected) {
+    await doDisconnect();
+  } else {
+    await doConnect();
+  }
 }
 
-function setStepDone(id, done) {
-  const el = document.getElementById(id);
-  if (done) el.classList.add('done-step');
-  else      el.classList.remove('done-step');
-}
-
-// ── Save file locally ─────────────────────────────────────
-function saveSelectedFile() {
-  if (!selectedFile) return;
-  const url = URL.createObjectURL(selectedFile);
-  const a   = document.createElement('a');
-  a.href = url; a.download = selectedFileName; a.click();
-  URL.revokeObjectURL(url);
-  termLog('sys', `File saved: ${selectedFileName}\n`);
-}
-
-// ── Connect ───────────────────────────────────────────────
-async function connectDevice() {
+async function doConnect() {
+  if (!('serial' in navigator)) return;
   try {
     port = await navigator.serial.requestPort({
       filters: [
-        { usbVendorId: 0x239A },  // Adafruit / RAK UF2 bootloader
-        { usbVendorId: 0x1915 },  // Nordic Semiconductor
-        { usbVendorId: 0x2341 },  // Arduino
-        { usbVendorId: 0x10C4 },  // Silicon Labs CP210x
-        { usbVendorId: 0x0403 },  // FTDI
+        { usbVendorId: 0x239A },
+        { usbVendorId: 0x1915 },
+        { usbVendorId: 0x10C4 },
+        { usbVendorId: 0x0403 },
+        { usbVendorId: 0x2341 },
       ]
     });
     await port.open({ baudRate: 115200 });
-    isConnected = true;
+    connected = true;
+    updateConnChip(true);
+    document.getElementById('consoleInput').disabled = false;
 
-    updateStatus('connected', 'Connected', port.getInfo ? formatPortInfo(port.getInfo()) : '');
-    document.getElementById('btnConnect').disabled    = true;
-    document.getElementById('btnDisconnect').disabled = false;
-    document.getElementById('terminalInput').disabled = false;
-    document.getElementById('btnDfu').disabled        = false;
-    document.getElementById('terminalInput').focus();
-    setStep(3);
-    updateFlashReadiness();
+    const dec = new TextDecoderStream();
+    port.readable.pipeTo(dec.writable);
+    reader = dec.readable.getReader();
 
-    const textDecoder = new TextDecoderStream();
-    port.readable.pipeTo(textDecoder.writable);
-    reader = textDecoder.readable.getReader();
+    const enc = new TextEncoderStream();
+    enc.readable.pipeTo(port.writable);
+    writer = enc.writable.getWriter();
 
-    const textEncoder = new TextEncoderStream();
-    textEncoder.readable.pipeTo(port.writable);
-    writer = textEncoder.writable.getWriter();
-
-    readLoopActive = true;
+    looping = true;
     readLoop();
     await writer.write('\r\n');
-    termLog('sys', 'Connected. Type commands or use the quick-send buttons above.\n');
-
+    sysLog('Serial connected.\n');
+    advanceWizard(2);
   } catch (err) {
-    if (err.name !== 'NotFoundError') {
-      termLog('err', `Connection error: ${err.message}\n`);
-      updateStatus('error', 'Connection failed');
-    }
+    if (err.name !== 'NotFoundError') sysLog(`Connect error: ${err.message}\n`);
   }
 }
 
-// ── Disconnect ────────────────────────────────────────────
-async function disconnectDevice() {
-  readLoopActive = false;
-  try {
-    if (reader) { await reader.cancel(); reader = null; }
-    if (writer) { await writer.close();  writer = null; }
-    if (port)   { await port.close();    port   = null; }
-  } catch (e) {}
-
-  isConnected = false;
-  updateStatus('', 'Disconnected');
-  document.getElementById('btnConnect').disabled    = false;
-  document.getElementById('btnDisconnect').disabled = true;
-  document.getElementById('terminalInput').disabled = true;
-  document.getElementById('btnDfu').disabled        = true;
-  setStep(1);
-  updateFlashReadiness();
+async function doDisconnect() {
+  looping = false;
+  try { if (reader) { await reader.cancel(); reader = null; } } catch (_) {}
+  try { if (writer) { await writer.close();  writer = null; } } catch (_) {}
+  try { if (port)   { await port.close();    port   = null; } } catch (_) {}
+  connected = false;
+  updateConnChip(false);
+  document.getElementById('consoleInput').disabled = true;
+  sysLog('Serial disconnected.\n');
 }
 
-// ── Read loop ─────────────────────────────────────────────
+function updateConnChip(on) {
+  const chip  = document.getElementById('connChip');
+  const label = document.getElementById('connLabel');
+  chip.className = 'conn-chip' + (on ? ' connected' : '');
+  label.textContent = on ? 'Connected' : 'Connect device';
+  chip.onclick = on ? () => doDisconnect() : () => doConnect();
+  chip.title   = on ? 'Click to disconnect' : 'Connect for automatic DFU trigger (optional)';
+}
+
+if ('serial' in navigator) {
+  navigator.serial.addEventListener('disconnect', e => {
+    if (port && e.target === port) { doDisconnect(); }
+  });
+}
+
+/* ════════════════════════════════════════════
+   Read loop
+════════════════════════════════════════════ */
 async function readLoop() {
   try {
-    while (readLoopActive && reader) {
+    while (looping && reader) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value) {
-        rxBytes += value.length;
-        const el = document.getElementById('rxByteCount');
-        el.textContent = rxBytes > 1024
-          ? `${(rxBytes / 1024).toFixed(1)} KB`
-          : `${rxBytes} B`;
-        termLog('rx', value);
-      }
+      if (value) rxLog(value);
     }
   } catch (err) {
-    if (readLoopActive) {
-      termLog('err', `Read error: ${err.message}\n`);
-      disconnectDevice();
-    }
+    if (looping) sysLog(`Read error: ${err.message}\n`);
   }
 }
 
-// ── Terminal ──────────────────────────────────────────────
-function termLog(cls, text) {
-  const body = document.getElementById('terminalBody');
+/* ════════════════════════════════════════════
+   Main flash flow
+════════════════════════════════════════════ */
+async function startFlash() {
+  // Reset UI
+  document.getElementById('flashBtn').disabled = true;
+  document.getElementById('successPanel').classList.remove('show');
+  document.getElementById('manualDfu').classList.remove('show');
+  document.getElementById('writeDriveSection').classList.remove('show');
+  hideFlashAlert();
+  showProgress(true);
+  setStep(1);
+
+  advanceWizard(3);
+
+  try {
+    /* ── 1. Download / prepare firmware ── */
+    setPStep(1, 'active');
+    let buf = firmwareBlob;
+    if (!buf) {
+      // Need to download from GitHub
+      if (!selectedAsset) throw new Error('No firmware selected.');
+      buf = await downloadAsset(selectedAsset);
+      firmwareBlob = buf;
+      firmwareName = selectedAsset.name;
+    }
+    setPStep(1, 'done');
+    setProgress(25);
+
+    /* ── 2. Enter DFU mode ── */
+    setPStep(2, 'active');
+    let dfuTriggered = false;
+
+    if (connected && writer) {
+      try {
+        sysLog('Sending DFU command…\n');
+        await writer.write('dfu\r\n');
+        // Give device a moment to disconnect
+        await sleep(2500);
+        dfuTriggered = true;
+        sysLog('DFU command sent.\n');
+      } catch (e) {
+        sysLog(`DFU serial trigger failed: ${e.message}\n`);
+      }
+    }
+
+    if (!dfuTriggered) {
+      // Show manual DFU instructions and wait for user to click write
+      setPStep(2, 'active');
+      document.getElementById('manualDfu').classList.add('show');
+      document.getElementById('writeDriveSection').classList.add('show');
+      showFlashAlert('info',
+        'No device connected. Follow the instructions below and click "Write to device drive" when the RAK4631 USB drive appears.');
+      return; // Will resume via writeToDrive()
+    }
+
+    setProgress(50);
+    setPStep(2, 'done');
+
+    /* ── 3. Write firmware ── */
+    setPStep(3, 'active');
+    const written = await tryWriteToDrive(buf, firmwareName);
+    if (!written) {
+      // showDirectoryPicker fell through (e.g. user cancelled) — show manual button
+      document.getElementById('writeDriveSection').classList.add('show');
+      showFlashAlert('info', 'Select the RAK4631 USB drive in the picker to complete flashing.');
+      return;
+    }
+
+    setProgress(85);
+    setPStep(3, 'done');
+
+    /* ── 4. Done ── */
+    setPStep(4, 'active');
+    await sleep(600);
+    setPStep(4, 'done');
+    setProgress(100);
+    flashSuccess();
+
+  } catch (err) {
+    showFlashAlert('error', err.message);
+    document.getElementById('flashBtn').disabled = false;
+    sysLog(`Flash error: ${err.message}\n`);
+  }
+}
+
+/* ════════════════════════════════════════════
+   Download helper (fetch with progress)
+════════════════════════════════════════════ */
+async function downloadAsset(asset) {
+  const res = await fetch(asset.browser_download_url);
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
+
+  const total   = parseInt(res.headers.get('content-length') || '0');
+  const rdReader = res.body.getReader();
+  const chunks  = [];
+  let received  = 0;
+
+  while (true) {
+    const { done, value } = await rdReader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total) setProgress(Math.round(5 + (received / total) * 18)); // 5–23%
+  }
+
+  // Merge chunks
+  const blob = new Blob(chunks);
+  return blob.arrayBuffer();
+}
+
+/* ════════════════════════════════════════════
+   File System Access API — write to UF2 drive
+════════════════════════════════════════════ */
+async function tryWriteToDrive(buf, name) {
+  if (!('showDirectoryPicker' in window)) return false;
+  try {
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await writeBufferToDir(dir, buf, name);
+    return true;
+  } catch (err) {
+    if (err.name === 'AbortError') return false;  // user cancelled
+    throw err;
+  }
+}
+
+async function writeToDrive() {
+  if (!firmwareBlob) {
+    showFlashAlert('error', 'No firmware loaded yet. Wait for download to complete.');
+    return;
+  }
+  if (!('showDirectoryPicker' in window)) {
+    showFlashAlert('warn',
+      'Your browser does not support the File System Access API. Please drag the saved .uf2 file onto the RAK4631 drive manually.');
+    saveFile();
+    return;
+  }
+  try {
+    document.getElementById('writeDriveBtn').disabled = true;
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    setPStep(3, 'active');
+    await writeBufferToDir(dir, firmwareBlob, firmwareName);
+    setProgress(85);
+    setPStep(3, 'done');
+    setPStep(4, 'active');
+    await sleep(600);
+    setPStep(4, 'done');
+    setProgress(100);
+    flashSuccess();
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showFlashAlert('error', err.message);
+    }
+    document.getElementById('writeDriveBtn').disabled = false;
+  }
+}
+
+async function writeBufferToDir(dir, buf, name) {
+  const ext = name.split('.').pop().toLowerCase();
+  // nRF52840 UF2 bootloader expects a UF2 file at the root of the drive.
+  // .bin/.hex files are not directly accepted; advise only for UF2.
+  if (ext !== 'uf2') {
+    showFlashAlert('warn',
+      `The file is a .${ext}. The nRF52840 UF2 bootloader only accepts .uf2 files. ` +
+      'Please select a .uf2 release asset or convert your binary with the included generate_uf2.py tool.');
+    throw new Error(`Only .uf2 files can be written directly to the bootloader drive.`);
+  }
+  const fileHandle = await dir.getFileHandle(name, { create: true });
+  const writable   = await fileHandle.createWritable();
+  await writable.write(buf);
+  await writable.close();
+  sysLog(`Written ${name} to drive.\n`);
+}
+
+/* ════════════════════════════════════════════
+   Save file to Downloads (fallback)
+════════════════════════════════════════════ */
+function saveFile() {
+  if (!firmwareBlob) return;
+  const blob = firmwareBlob instanceof ArrayBuffer ? new Blob([firmwareBlob]) : firmwareBlob;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = firmwareName; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ════════════════════════════════════════════
+   Success
+════════════════════════════════════════════ */
+function flashSuccess() {
+  document.getElementById('successPanel').classList.add('show');
+  document.getElementById('manualDfu').classList.remove('show');
+  document.getElementById('writeDriveSection').classList.remove('show');
+  hideFlashAlert();
+  const btn = document.getElementById('flashBtn');
+  btn.classList.add('success');
+  btn.disabled = false;
+  document.getElementById('flashBtnLabel').textContent = '✓ Flash complete — click to flash again';
+  advanceWizard(3);
+  // Reset for next flash
+  setTimeout(() => {
+    btn.classList.remove('success');
+    updateFlashButton();
+  }, 8000);
+}
+
+/* ════════════════════════════════════════════
+   Wizard step advancement
+════════════════════════════════════════════ */
+function advanceWizard(n) {
+  for (let i = 1; i <= 3; i++) {
+    const node   = document.getElementById(`sn${i}`);
+    const bubble = document.getElementById(`sb${i}`);
+    node.className   = 'step-node' + (i < n ? ' done' : (i === n ? ' active' : ''));
+    bubble.textContent = i < n ? '✓' : String(i);
+  }
+}
+
+/* ════════════════════════════════════════════
+   Progress UI
+════════════════════════════════════════════ */
+function showProgress(on) {
+  document.getElementById('progressSection').classList.toggle('show', on);
+}
+
+function setProgress(pct) {
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function setPStep(n, state) {
+  const el   = document.getElementById(`ps${n}`);
+  const icon = el.querySelector('.pstep-icon');
+  // Remove spinner if present
+  el.querySelectorAll('.pstep-spinner').forEach(s => s.remove());
+  el.className = 'pstep ' + state;
+  if (state === 'active') {
+    icon.style.display = 'none';
+    const spin = document.createElement('span');
+    spin.className = 'pstep-spinner';
+    el.insertBefore(spin, el.querySelector('span:last-child'));
+  } else {
+    icon.style.display = '';
+    icon.textContent = state === 'done' ? '✓' : state === 'error' ? '✗' : '○';
+  }
+}
+
+function setStep(n) { /* stepper unused in new design — wizard handles it */ }
+
+/* ════════════════════════════════════════════
+   Alerts
+════════════════════════════════════════════ */
+function showFlashAlert(type, msg) {
+  const el = document.getElementById('flashAlert');
+  el.className      = `alert alert-${type} show`;
+  el.innerHTML      = escHtml(msg);
+  el.style.display  = '';
+}
+function hideFlashAlert() {
+  const el = document.getElementById('flashAlert');
+  el.classList.remove('show');
+}
+
+/* ════════════════════════════════════════════
+   Console
+════════════════════════════════════════════ */
+function toggleAdvanced() {
+  const wrap   = document.getElementById('consoleWrap');
+  const toggle = document.getElementById('advToggle');
+  const open   = !wrap.classList.contains('show');
+  wrap.classList.toggle('show', open);
+  toggle.classList.toggle('open', open);
+}
+
+function rxLog(text) {
+  appendConsole('rx', text);
+}
+function sysLog(text) {
+  appendConsole('sys', text);
+}
+function appendConsole(cls, text) {
+  const body = document.getElementById('consoleBody');
   const span = document.createElement('span');
-  span.className   = cls;
-  span.textContent = text;
+  span.className = cls; span.textContent = text;
   body.appendChild(span);
   while (body.children.length > 2000) body.removeChild(body.firstChild);
   body.scrollTop = body.scrollHeight;
 }
-
-function clearTerminal() {
-  document.getElementById('terminalBody').innerHTML = '';
-  rxBytes = 0;
-  document.getElementById('rxByteCount').textContent = '0 bytes';
+function clearConsole() {
+  document.getElementById('consoleBody').innerHTML = '';
 }
-
-function saveTerminalLog() {
-  const text = document.getElementById('terminalBody').innerText;
+function saveLog() {
+  const text = document.getElementById('consoleBody').innerText;
   const blob = new Blob([text], { type: 'text/plain' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  a.href = url; a.download = `rns-console-${Date.now()}.log`; a.click();
+  a.href = url; a.download = `rns-log-${Date.now()}.txt`; a.click();
   URL.revokeObjectURL(url);
 }
-
 async function sendCmd(cmd) {
   if (!writer || !cmd) return;
-  termLog('tx', `> ${cmd}\n`);
+  appendConsole('tx', `> ${cmd}\n`);
   await writer.write(cmd + '\r\n');
 }
-
-async function handleTerminalKey(e) {
+async function onConsoleKey(e) {
   const input = e.target;
   if (e.key === 'Enter') {
-    const cmd = input.value.trim();
-    input.value   = '';
-    cmdHistoryIdx = -1;
+    const cmd = input.value.trim(); input.value = ''; cmdIdx = -1;
     if (cmd) {
       if (cmdHistory[0] !== cmd) cmdHistory.unshift(cmd);
-      if (cmdHistory.length > 100) cmdHistory.pop();
+      if (cmdHistory.length > 80) cmdHistory.pop();
       await sendCmd(cmd);
     }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    if (cmdHistory.length) {
-      cmdHistoryIdx = Math.min(cmdHistoryIdx + 1, cmdHistory.length - 1);
-      input.value   = cmdHistory[cmdHistoryIdx];
-      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
-    }
+    if (cmdHistory.length) { cmdIdx = Math.min(cmdIdx+1, cmdHistory.length-1); input.value = cmdHistory[cmdIdx]; }
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
-    if (cmdHistoryIdx > 0) {
-      cmdHistoryIdx--;
-      input.value = cmdHistory[cmdHistoryIdx];
-    } else {
-      cmdHistoryIdx = -1;
-      input.value   = '';
-    }
+    cmdIdx > 0 ? (input.value = cmdHistory[--cmdIdx]) : (cmdIdx = -1, input.value = '');
   }
 }
 
-// ── Flash ─────────────────────────────────────────────────
-async function startFlash() {
-  if (!selectedFile || !isConnected) return;
-  const ext = selectedFileName.split('.').pop().toLowerCase();
-
-  if (ext === 'uf2') {
-    termLog('sys', '\n── UF2 Flashing Workflow ──\n');
-    termLog('sys', 'Step 1: Entering DFU bootloader mode…\n');
-    await triggerDfu();
-    termLog('sys', 'Step 2: A USB drive should now appear on your computer.\n');
-    termLog('sys', 'Step 3: Saving the firmware file automatically…\n');
-    saveSelectedFile();
-    termLog('sys', 'Step 4: Drag the saved .uf2 file onto the USB drive. Done!\n');
-    document.getElementById('dfuInstructions').style.display = 'flex';
-    return;
-  }
-
-  // .bin / .hex
-  termLog('sys', '\n── Binary/Hex Flashing ──\n');
-  showProgress(true);
-  updateProgress('Entering DFU mode…', 10);
-  try {
-    await writer.write('dfu\r\n');
-    updateProgress('Waiting for bootloader…', 30);
-    await new Promise(r => setTimeout(r, 3000));
-    updateProgress('Bootloader ready — drag .uf2 to USB drive or use companion script', 100);
-    termLog('sys', 'Device is in DFU bootloader mode.\n');
-    termLog('sys', 'Run: python tools/ota_update.py --hex firmware.hex\n\n');
-    document.getElementById('dfuInstructions').style.display = 'flex';
-    saveSelectedFile();
-  } catch (err) {
-    termLog('err', `Flash error: ${err.message}\n`);
-    termLog('sys', 'Previous firmware is still intact.\n');
-    updateProgress('Error — device is safe', 0);
-  }
-}
-
-async function triggerDfu() {
-  if (!writer) {
-    termLog('err', 'Not connected. Connect the device first.\n');
-    return;
-  }
-  termLog('sys', 'Sending DFU command…\n');
-  try {
-    await writer.write('dfu\r\n');
-    termLog('sys', 'DFU command sent. Device rebooting into bootloader.\n');
-    document.getElementById('dfuInstructions').style.display = 'flex';
-    updateStatus('busy', 'Device rebooting into DFU…');
-    setStepDone('dfuStep3', true);
-  } catch (err) {
-    termLog('err', `DFU trigger failed: ${err.message}\n`);
-    termLog('sys', 'Try double-tapping the physical reset button.\n');
-  }
-}
-
-// ── UI helpers ────────────────────────────────────────────
-function updateStatus(state, text, detail) {
-  document.getElementById('statusDot').className    = 'status-dot' + (state ? ' ' + state : '');
-  document.getElementById('statusText').textContent = text;
-  document.getElementById('statusDetail').textContent = detail || '';
-}
-
-function formatPortInfo(info) {
-  if (!info) return '';
-  const parts = [];
-  if (info.usbVendorId)  parts.push(`VID:${info.usbVendorId.toString(16).toUpperCase().padStart(4,'0')}`);
-  if (info.usbProductId) parts.push(`PID:${info.usbProductId.toString(16).toUpperCase().padStart(4,'0')}`);
-  return parts.join(' · ');
-}
-
-function setStep(n) {
-  document.querySelectorAll('.stepper-item').forEach(el => {
-    const s = parseInt(el.dataset.step);
-    el.className = 'stepper-item' + (s === n ? ' active' : (s < n ? ' done' : ''));
-  });
-}
-
-function showProgress(show) {
-  document.getElementById('progressWrap').classList.toggle('show', show);
-}
-
-function updateProgress(label, percent) {
-  document.getElementById('progressLabel').textContent   = label;
-  document.getElementById('progressPercent').textContent = `${Math.round(percent)}%`;
-  document.getElementById('progressFill').style.width    = `${percent}%`;
-}
-
-function escHtml(str) {
-  return String(str).replace(/[&<>"']/g, c =>
+/* ════════════════════════════════════════════
+   Helpers
+════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
-
-// ── Hardware disconnect event ─────────────────────────────
-if ('serial' in navigator) {
-  navigator.serial.addEventListener('disconnect', e => {
-    if (port && e.target === port) {
-      termLog('sys', '\n[Device disconnected]\n');
-      disconnectDevice();
-    }
-  });
-}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 </script>
 </body>
 </html>
