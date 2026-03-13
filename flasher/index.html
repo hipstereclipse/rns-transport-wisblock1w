@@ -962,6 +962,7 @@ let releases      = [];
 let allReleases   = [];
 let showOlderBuilds = false;
 let mainReleaseEntry = null;
+let showAllAssets = false;
 let selectedAsset = null;   // GitHub release asset object
 let firmwareBlob  = null;   // ArrayBuffer ready to write
 let firmwareName  = '';
@@ -1191,11 +1192,13 @@ function onVersionChange() {
   if (isNaN(idx)) { selectedAsset = null; updateFlashButton(); return; }
 
   const rel    = releases[idx];
-  const assets = (rel.assets || []).filter(a => /\.(uf2|bin|hex)$/i.test(a.name) && a.state === 'uploaded');
+  const assets = sortFirmwareAssets((rel.assets || []).filter(a => /\.(uf2|bin|hex)$/i.test(a.name) && a.state === 'uploaded'));
+  showAllAssets = false;
   // Prefer .uf2 > .bin > .hex
   selectedAsset = assets.find(a => /\.uf2$/i.test(a.name))
     || assets.find(a => /\.bin$/i.test(a.name))
     || assets.find(a => /\.hex$/i.test(a.name));
+  if (selectedAsset) selectedAsset._releaseTag = rel.tag_name;
 
   firmwareBlob = null; // reset cached download
   firmwareName = selectedAsset ? selectedAsset.name : '';
@@ -1208,8 +1211,9 @@ function onVersionChange() {
     document.getElementById('versionDate').textContent =
       date.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
     const ext = selectedAsset.name.split('.').pop().toLowerCase();
+    const buildId = extractBuildId(selectedAsset.name);
     document.getElementById('versionAsset').innerHTML =
-      `<span class="badge badge-blue">.${ext} · ${(selectedAsset.size/1024).toFixed(0)} KB</span>`;
+      `<span class="badge badge-blue">.${ext} · ${(selectedAsset.size/1024).toFixed(0)} KB${buildId ? ` · ${buildId}` : ''}</span>`;
     document.getElementById('versionPrerelease').innerHTML = rel.prerelease
       ? '<span class="badge badge-yellow">pre-release</span>'
       : '<span class="badge badge-green">stable</span>';
@@ -1233,29 +1237,77 @@ function renderAssetPicker(assets, rel) {
   if (old) old.remove();
   if (assets.length <= 1) return;
 
+  const sortedAssets = sortFirmwareAssets(assets);
+  const visibleAssets = showAllAssets ? sortedAssets : sortedAssets.slice(0, 1);
+
   const row = document.createElement('div');
   row.id = 'assetPicker';
   row.style.cssText = 'display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.6rem;align-items:center;';
   const lbl = document.createElement('span');
-  lbl.textContent = 'Asset:';
+  lbl.textContent = showAllAssets ? 'Asset:' : 'Asset (latest):';
   lbl.style.cssText = 'font-size:0.77rem;color:var(--dim);';
   row.appendChild(lbl);
-  assets.forEach(asset => {
+  visibleAssets.forEach(asset => {
     const b = document.createElement('button');
     b.className = 'qbtn';
-    b.textContent = asset.name;
+    b.textContent = formatAssetButtonLabel(asset);
     if (selectedAsset && asset.name === selectedAsset.name)
       b.style.cssText = 'border-color:var(--accent);color:var(--accent);';
     b.onclick = () => {
+      asset._releaseTag = rel.tag_name;
       selectedAsset = asset;
       firmwareBlob  = null;
       firmwareName  = asset.name;
-      renderAssetPicker(assets, rel);
+      renderAssetPicker(sortedAssets, rel);
       updateFlashButton();
     };
     row.appendChild(b);
   });
+
+  if (!showAllAssets && sortedAssets.length > 1) {
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'qbtn';
+    moreBtn.textContent = `Show all ${sortedAssets.length} assets`;
+    moreBtn.onclick = () => {
+      showAllAssets = true;
+      renderAssetPicker(sortedAssets, rel);
+    };
+    row.appendChild(moreBtn);
+  }
+
+  if (showAllAssets && sortedAssets.length > 1) {
+    const lessBtn = document.createElement('button');
+    lessBtn.className = 'qbtn';
+    lessBtn.textContent = 'Hide older assets';
+    lessBtn.onclick = () => {
+      showAllAssets = false;
+      renderAssetPicker(sortedAssets, rel);
+    };
+    row.appendChild(lessBtn);
+  }
+
   document.getElementById('versionMeta').after(row);
+}
+
+function sortFirmwareAssets(assets) {
+  return [...assets].sort((a, b) => {
+    const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+    const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+    if (tb !== ta) return tb - ta;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+}
+
+function extractBuildId(assetName) {
+  const m = String(assetName || '').match(/-([0-9a-f]{7,40})\.(uf2|bin|hex)$/i);
+  return m ? m[1].slice(0, 7) : '';
+}
+
+function formatAssetButtonLabel(asset) {
+  const build = extractBuildId(asset.name);
+  const ext = String(asset.name || '').split('.').pop().toLowerCase();
+  if (build) return `${build} (.${ext})`;
+  return asset.name;
 }
 
 /* ════════════════════════════════════════════
@@ -1304,7 +1356,9 @@ function updateFlashButton() {
     label.textContent = `Flash  ${firmwareName}`;
   } else if (!useLocal && selectedAsset) {
     btn.disabled = false;
-    label.textContent = `Flash  ${selectedAsset.tag_name || ''}  ${selectedAsset.name}`;
+    const releaseTag = selectedAsset._releaseTag || 'release';
+    const buildId = extractBuildId(selectedAsset.name);
+    label.textContent = buildId ? `Flash  ${releaseTag} · ${buildId}` : `Flash  ${releaseTag}`;
   } else {
     btn.disabled = true;
     label.textContent = 'Select version above';
