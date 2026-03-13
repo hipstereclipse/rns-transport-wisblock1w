@@ -9,6 +9,10 @@
 #include <SHA256.h>
 #endif
 
+#ifndef NATIVE_TEST
+static uint32_t announceDebugCounter = 0;
+#endif
+
 static void computeNameHash10(const char* fullName, uint8_t outHash[RNS_NAME_HASH_LEN]) {
 #ifndef NATIVE_TEST
     SHA256 sha;
@@ -39,9 +43,20 @@ static uint16_t encodeAnnounceNameMsgPack(const char* name, uint8_t* out, uint16
 bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      const uint8_t* appData,
                                      uint16_t appDataLen) {
+#ifndef NATIVE_TEST
+    const uint32_t dbgId = ++announceDebugCounter;
+    const uint32_t t0 = millis();
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.println(F(" STEP0 enter sendLocalAnnounce"));
+#endif
+
     if (!radio || !identity || !identity->initialized) return false;
 
     if (!announceHashCacheReady) {
+#ifndef NATIVE_TEST
+        Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+        Serial.println(F(" STEP1 build hash cache"));
+#endif
         uint8_t publicKeyForHash[RNS_KEYSIZE];
         identity->getPublicKey(publicKeyForHash);
         RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, publicKeyForHash, cachedTransportDestHash);
@@ -57,10 +72,23 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
         announceAppData = (announceAppDataLen > 0) ? msgpackName : nullptr;
     }
 
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" STEP2 appDataLen=")); Serial.print(announceAppDataLen);
+    Serial.print(F(" name='")); Serial.print(announceName); Serial.println(F("'"));
+#endif
+
     const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
     const uint16_t sigOffset = baseLen + announceAppDataLen;
     const uint16_t totalDataLen = sigOffset + RNS_SIGLENGTH;
     if (totalDataLen > RNS_MTU) return false;
+
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" STEP3 lens base=")); Serial.print(baseLen);
+    Serial.print(F(" sigOff=")); Serial.print(sigOffset);
+    Serial.print(F(" total=")); Serial.println(totalDataLen);
+#endif
 
     static uint8_t announceData[RNS_MTU];
     memset(announceData, 0, totalDataLen);
@@ -86,6 +114,10 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     }
 
     // [signature 64B]
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.println(F(" STEP4 signing"));
+#endif
     identity->sign(announceData, sigOffset, announceData + sigOffset);
 
     RNSPacket pkt;
@@ -102,27 +134,66 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     pkt.dataLen = totalDataLen;
 
     static uint8_t outBuf[RNS_MTU];
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.println(F(" STEP5 serialize"));
+#endif
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
+
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" STEP6 serialized outLen=")); Serial.println(outLen);
+#endif
 
     int8_t originalTx = radio->curTxDbm;
     int8_t announceTx = (originalTx > LORA_TX_DBM_ANNOUNCE_SAFE)
         ? LORA_TX_DBM_ANNOUNCE_SAFE
         : originalTx;
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" STEP7 tx original=")); Serial.print(originalTx);
+    Serial.print(F(" capped=")); Serial.println(announceTx);
+#endif
     if (announceTx != originalTx) {
         radio->setTxPower(announceTx);
+#ifndef NATIVE_TEST
+        Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+        Serial.println(F(" STEP8 tx power capped applied"));
+#endif
     }
 
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.println(F(" STEP9 radio->transmit begin"));
+#endif
     bool ok = radio->transmit(outBuf, outLen);
+
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" STEP10 radio->transmit end ok=")); Serial.println(ok ? F("true") : F("false"));
+#endif
 
     if (announceTx != originalTx) {
         radio->setTxPower(originalTx);
+#ifndef NATIVE_TEST
+        Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+        Serial.println(F(" STEP11 tx power restored"));
+#endif
     }
 
     if (ok) {
         stats.txPackets++;
+#ifndef NATIVE_TEST
+        Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+        Serial.print(F(" DONE success dtMs=")); Serial.println(millis() - t0);
+#endif
         return true;
     }
+#ifndef NATIVE_TEST
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" DONE fail dtMs=")); Serial.println(millis() - t0);
+#endif
     return false;
 }
 

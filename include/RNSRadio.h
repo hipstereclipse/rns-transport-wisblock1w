@@ -159,27 +159,62 @@ public:
         if (!data || len == 0 || len > RNS_MTU) return false;
 
 #ifndef NATIVE_TEST
+        const bool dbgAnnounce = ((data[0] & 0x03) == ANNOUNCE);
+        const uint32_t txStartMs = millis();
+        if (dbgAnnounce) {
+            Serial.print(F("[ANNDBG] RADIO TX enter len="));
+            Serial.print(len);
+            Serial.print(F(" sf=")); Serial.print(curSF);
+            Serial.print(F(" bw=")); Serial.print(curBwKHz, 1);
+            Serial.print(F(" tx=")); Serial.println(curTxDbm);
+        }
+
         // CAD at SF8/BW125 completes in ~17 ms; 200 ms is generous.
         static const uint32_t CAD_TIMEOUT_MS = 200;
 
         bool channelFree = false;
         for (int attempt = 0; attempt < 8; attempt++) {
+            if (dbgAnnounce) {
+                Serial.print(F("[ANNDBG] RADIO CAD attempt="));
+                Serial.println(attempt + 1);
+            }
             if (lora.startChannelScan() != RADIOLIB_ERR_NONE) {
+                if (dbgAnnounce) {
+                    Serial.println(F("[ANNDBG] RADIO CAD startChannelScan failed"));
+                }
                 delay(random(10, 50));
                 continue;
             }
             uint32_t cadStart = millis();
+            bool cadTimedOut = false;
             while (!digitalRead(PIN_LORA_DIO1)) {
-                if (millis() - cadStart >= CAD_TIMEOUT_MS) break;
+                if (millis() - cadStart >= CAD_TIMEOUT_MS) {
+                    cadTimedOut = true;
+                    break;
+                }
             }
             int cad = lora.getChannelScanResult();
+            if (dbgAnnounce) {
+                Serial.print(F("[ANNDBG] RADIO CAD result="));
+                Serial.print(cad);
+                Serial.print(F(" timeout="));
+                Serial.print(cadTimedOut ? F("yes") : F("no"));
+                Serial.print(F(" dtMs="));
+                Serial.println(millis() - cadStart);
+            }
             if (cad == RADIOLIB_CHANNEL_FREE) {
                 channelFree = true;
                 break;
             }
             delay(random(10, 50));
         }
-        if (!channelFree) return false;
+        if (!channelFree) {
+            if (dbgAnnounce) {
+                Serial.print(F("[ANNDBG] RADIO TX abort: channel not free dtMs="));
+                Serial.println(millis() - txStartMs);
+            }
+            return false;
+        }
 
         uint8_t txBuf[RNS_MTU + 1];
         const uint8_t* txData = data;
@@ -195,6 +230,15 @@ public:
         txActive = true;
         int state = lora.transmit(txData, txLen);
         txActive = false;
+
+        if (dbgAnnounce) {
+            Serial.print(F("[ANNDBG] RADIO TX state="));
+            Serial.print(state);
+            Serial.print(F(" txLen="));
+            Serial.print(txLen);
+            Serial.print(F(" dtMs="));
+            Serial.println(millis() - txStartMs);
+        }
 
         lora.startReceive();
         return (state == RADIOLIB_ERR_NONE);

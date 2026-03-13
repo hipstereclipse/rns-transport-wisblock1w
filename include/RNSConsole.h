@@ -399,6 +399,13 @@ private:
             return;
         }
 
+#ifndef NATIVE_TEST
+        uint32_t t0 = millis();
+        Serial.print(F("[ANNDBG] CONSOLE announce cmd enter args='"));
+        Serial.print(args ? args : "");
+        Serial.println(F("'"));
+#endif
+
         const uint8_t* appData = nullptr;
         uint16_t appDataLen = 0;
         uint8_t appDataBuf[80] = {0};
@@ -413,7 +420,8 @@ private:
             appDataLen = (uint16_t)inLen;
         }
 
-        if (transport->sendLocalAnnounce(nullptr, appData, appDataLen)) {
+        bool ok = transport->sendLocalAnnounce(nullptr, appData, appDataLen);
+        if (ok) {
             io->println(F("Local announce transmitted."));
             if (appData && appDataLen > 0) {
                 io->print(F("Announce payload: "));
@@ -422,6 +430,13 @@ private:
         } else {
             io->println(F("Announce transmit failed (radio busy/offline)."));
         }
+
+#ifndef NATIVE_TEST
+        Serial.print(F("[ANNDBG] CONSOLE announce cmd exit ok="));
+        Serial.print(ok ? F("true") : F("false"));
+        Serial.print(F(" dtMs="));
+        Serial.println(millis() - t0);
+#endif
     }
 
     // ── test / ping: one-line health response ───────────
