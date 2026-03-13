@@ -39,13 +39,25 @@ jobs:
           pip install --upgrade platformio
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      - name: Prepare CI PlatformIO config
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src = Path('platformio.ini')
+          dst = Path('platformio.ci.ini')
+          lines = src.read_text(encoding='utf-8').splitlines()
+          filtered = [ln for ln in lines if not ln.strip().startswith('extra_scripts')]
+          dst.write_text('\n'.join(filtered) + '\n', encoding='utf-8')
+          print('Wrote platformio.ci.ini without extra_scripts')
+          PY
+
       # ── Build ────────────────────────────────────────────────────────────────
-      # Override extra_scripts to empty so the CI build does not try to run
-      # generate_uf2.py via SCons (we do that explicitly below instead).
+      # Build from CI-specific config that strips extra_scripts; UF2 conversion
+      # is handled explicitly in a later step.
       - name: Build firmware (wisblock_1w_transport)
         run: |
-            platformio run -e wisblock_1w_transport \
-            --project-option "extra_scripts=" \
+          platformio run -e wisblock_1w_transport \
+            --project-conf platformio.ci.ini \
             -v
 
       # ── Generate UF2 ────────────────────────────────────────────────────────
