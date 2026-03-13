@@ -459,6 +459,34 @@
     flex-wrap: wrap;
   }
 
+  .mode-switch {
+    margin: 0 0 1rem;
+    padding: 0.75rem;
+    border-radius: var(--r);
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .mode-switch-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .mode-switch .qbtn {
+    padding: 0.35rem 0.8rem;
+    font-size: 0.75rem;
+  }
+  .mode-switch .qbtn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+  }
+  .mode-switch-hint {
+    margin-top: 0.45rem;
+    color: var(--dim);
+    font-size: 0.76rem;
+    line-height: 1.35;
+  }
+
   .repeater-bar {
     display: none;
     margin: 0 0 1rem;
@@ -620,11 +648,18 @@
 
   <div class="unsupported" id="contextNotice"></div>
 
+  <div class="mode-switch" id="modeSwitch">
+    <div class="mode-switch-row">
+      <button class="qbtn active" id="modeFlasherBtn" onclick="setActiveMode('flasher')">Flasher mode</button>
+      <button class="qbtn" id="modeRepeaterBtn" onclick="setActiveMode('repeater')" disabled>Repeater mode</button>
+    </div>
+    <div class="mode-switch-hint" id="modeHint">Repeater mode unlocks after serial connect + repeater firmware detection.</div>
+  </div>
+
   <div class="repeater-bar" id="repeaterBar">
     <div class="repeater-copy"><strong>Repeater detected.</strong> You can interact with the live firmware console from the web flasher.</div>
     <div style="display:flex;gap:0.45rem;flex-wrap:wrap;">
       <button class="qbtn" id="openRepeaterBtn" onclick="openRepeaterConsole()">Open repeater console</button>
-      <button class="qbtn mode-btn" id="firmwareModeBtn" onclick="toggleFlasherMode()">Firmware mode</button>
     </div>
   </div>
 
@@ -903,7 +938,7 @@ let looping = false;
 let connected = false;
 let repeaterDetected = false;
 let rxProbeBuffer = '';
-let flasherMode = false;
+let activeMode = 'flasher';
 let rxLineBuffer = '';
 let autoRefreshTimer = null;
 
@@ -942,6 +977,7 @@ if (!('serial' in navigator)) {
 window.addEventListener('DOMContentLoaded', fetchReleases);
 window.addEventListener('DOMContentLoaded', updateActionButtons);
 window.addEventListener('DOMContentLoaded', refreshEnvironmentNotice);
+window.addEventListener('DOMContentLoaded', refreshModeToggleUi);
 window.addEventListener('DOMContentLoaded', applyPrimaryModeUi);
 window.addEventListener('DOMContentLoaded', updateStatusUi);
 
@@ -1181,20 +1217,46 @@ function updateActionButtons() {
 function updateRepeaterUi() {
   const bar = document.getElementById('repeaterBar');
   const btn = document.getElementById('openRepeaterBtn');
-  const modeBtn = document.getElementById('firmwareModeBtn');
   const panel = document.getElementById('repeaterPanel');
-  if (!bar || !btn || !panel || !modeBtn) return;
-  const show = connected && repeaterDetected;
-  bar.classList.toggle('show', show);
-  panel.classList.toggle('show', show);
-  btn.disabled = !show;
-  modeBtn.disabled = !show;
-  if (!show) stopAutoRefresh();
+  if (!bar || !btn || !panel) return;
+  btn.disabled = !(connected && repeaterDetected);
   applyPrimaryModeUi();
 }
 
-function shouldPreferRepeaterMode() {
+function canUseRepeaterMode() {
   return connected && repeaterDetected;
+}
+
+function refreshModeToggleUi() {
+  const flasherBtn = document.getElementById('modeFlasherBtn');
+  const repeaterBtn = document.getElementById('modeRepeaterBtn');
+  const hint = document.getElementById('modeHint');
+  if (!flasherBtn || !repeaterBtn || !hint) return;
+
+  const repeaterReady = canUseRepeaterMode();
+  repeaterBtn.disabled = !repeaterReady;
+
+  flasherBtn.classList.toggle('active', activeMode === 'flasher');
+  repeaterBtn.classList.toggle('active', activeMode === 'repeater' && repeaterReady);
+
+  if (repeaterReady) {
+    hint.textContent = 'Repeater mode available. Use it for live status and repeater controls.';
+  } else if (connected) {
+    hint.textContent = 'Connected. Waiting to detect repeater firmware before enabling Repeater mode.';
+  } else {
+    hint.textContent = 'Repeater mode unlocks after serial connect + repeater firmware detection.';
+  }
+}
+
+function setActiveMode(mode) {
+  if (mode === 'repeater' && !canUseRepeaterMode()) {
+    showFlashAlert('warn', 'Repeater mode is unavailable until a connected repeater is detected.');
+    activeMode = 'flasher';
+  } else {
+    activeMode = (mode === 'repeater') ? 'repeater' : 'flasher';
+    hideFlashAlert();
+  }
+  applyPrimaryModeUi();
 }
 
 function setSectionVisible(id, visible) {
@@ -1204,18 +1266,24 @@ function setSectionVisible(id, visible) {
 }
 
 function applyPrimaryModeUi() {
-  const preferRepeater = shouldPreferRepeaterMode();
-  const showFlasher = !preferRepeater || flasherMode;
+  if (activeMode === 'repeater' && !canUseRepeaterMode()) {
+    activeMode = 'flasher';
+  }
+
+  const showFlasher = activeMode === 'flasher';
+  const showRepeater = activeMode === 'repeater' && canUseRepeaterMode();
 
   setSectionVisible('stepTrack', showFlasher);
   setSectionVisible('cardVersion', showFlasher);
   setSectionVisible('cardFlash', showFlasher);
   setSectionVisible('contextNotice', showFlasher);
 
-  const modeBtn = document.getElementById('firmwareModeBtn');
-  if (modeBtn) {
-    modeBtn.textContent = showFlasher ? 'Back to repeater' : 'Firmware mode';
-  }
+  const repeaterBar = document.getElementById('repeaterBar');
+  const repeaterPanel = document.getElementById('repeaterPanel');
+  if (repeaterBar) repeaterBar.style.display = showRepeater ? 'flex' : 'none';
+  if (repeaterPanel) repeaterPanel.style.display = showRepeater ? 'block' : 'none';
+
+  refreshModeToggleUi();
 
   if (!showFlasher) {
     hideFlashAlert();
@@ -1223,23 +1291,23 @@ function applyPrimaryModeUi() {
     document.getElementById('writeDriveSection').classList.remove('show');
     showProgress(false);
   }
+
+  if (!showRepeater) {
+    stopAutoRefresh();
+  }
 }
 
 function toggleFlasherMode(force = null) {
-  if (!shouldPreferRepeaterMode()) {
-    flasherMode = true;
-  } else if (typeof force === 'boolean') {
-    flasherMode = force;
-  } else {
-    flasherMode = !flasherMode;
+  if (typeof force === 'boolean') {
+    setActiveMode(force ? 'flasher' : 'repeater');
+    return;
   }
-  applyPrimaryModeUi();
+  setActiveMode(activeMode === 'flasher' ? 'repeater' : 'flasher');
 }
 
 function markRepeaterDetected() {
   if (repeaterDetected) return;
   repeaterDetected = true;
-  flasherMode = false;
   updateRepeaterUi();
   refreshRepeaterSnapshot();
   sysLog('Repeater firmware detected on serial console.\n');
@@ -1574,7 +1642,7 @@ async function doDisconnect() {
   connected = false;
   repeaterDetected = false;
   rxProbeBuffer = '';
-  flasherMode = false;
+  activeMode = 'flasher';
   updateConnChip(false);
   document.getElementById('consoleInput').disabled = true;
   sysLog('Serial disconnected.\n');
