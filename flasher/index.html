@@ -1001,6 +1001,13 @@ const repeaterState = {
 
 let cmdHistory = [], cmdIdx = -1;
 
+const repeaterCaps = {
+  compatible: false,
+  supportsAnnounce: false,
+  supportsName: false,
+  legacyDetected: false,
+};
+
 /* ════════════════════════════════════════════
    Boot
 ════════════════════════════════════════════ */
@@ -1309,12 +1316,12 @@ function updateRepeaterUi() {
   const btn = document.getElementById('openRepeaterBtn');
   const panel = document.getElementById('repeaterPanel');
   if (!bar || !btn || !panel) return;
-  btn.disabled = !(connected && repeaterDetected);
+  btn.disabled = !canUseRepeaterMode();
   applyPrimaryModeUi();
 }
 
 function canUseRepeaterMode() {
-  return connected && repeaterDetected;
+  return connected && repeaterDetected && repeaterCaps.compatible;
 }
 
 function refreshModeToggleUi() {
@@ -1331,6 +1338,8 @@ function refreshModeToggleUi() {
 
   if (repeaterReady) {
     hint.textContent = 'Repeater mode available. Use it for live status and repeater controls.';
+  } else if (connected && repeaterDetected && repeaterCaps.legacyDetected) {
+    hint.textContent = 'Legacy repeater firmware detected. Flash the latest RatTunnel build to unlock Repeater mode controls.';
   } else if (connected) {
     hint.textContent = 'Connected. Waiting to detect repeater firmware before enabling Repeater mode.';
   } else {
@@ -1403,11 +1412,53 @@ function markRepeaterDetected() {
   sysLog('Repeater firmware detected on serial console.\n');
 }
 
+function markCompatibleRepeater(reason = '') {
+  if (!repeaterCaps.compatible) {
+    repeaterCaps.compatible = true;
+    repeaterCaps.legacyDetected = false;
+    if (reason) sysLog(`Repeater compatibility confirmed (${reason}).\n`);
+    updateRepeaterUi();
+  }
+}
+
+function markLegacyRepeater(reason = '') {
+  repeaterCaps.legacyDetected = true;
+  repeaterCaps.compatible = false;
+  if (activeMode === 'repeater') activeMode = 'flasher';
+  updateRepeaterUi();
+  if (reason) {
+    showFlashAlert('warn', `Connected device is running legacy firmware (${reason}). Flash latest RatTunnel firmware to use repeater controls.`);
+  }
+}
+
 function inspectDeviceOutput(text) {
   feedStatusParser(text);
   rxProbeBuffer = (rxProbeBuffer + String(text || '')).slice(-2048);
   if (/(\[RNS\]|rns>|Transport Node|Reticulum transport|RatTunnel|Available Commands|Firmware:|Board: WisBlock)/i.test(rxProbeBuffer)) {
     markRepeaterDetected();
+  }
+
+  if (/RatTunnel\s+V\./i.test(rxProbeBuffer) || /Build:\s*rattunnel/i.test(rxProbeBuffer)) {
+    markCompatibleRepeater('RatTunnel build');
+  }
+
+  if (/\bannounce\b\s+Broadcast this node announce now/i.test(rxProbeBuffer)) {
+    repeaterCaps.supportsAnnounce = true;
+    markCompatibleRepeater('announce command present');
+  }
+
+  if (/\bname\s+<text>/i.test(rxProbeBuffer)) {
+    repeaterCaps.supportsName = true;
+    markCompatibleRepeater('name command present');
+  }
+
+  const legacyVersion = rxProbeBuffer.match(/RNS Transport Node v(\d+\.\d+\.\d+)/i);
+  if (legacyVersion) {
+    markLegacyRepeater(legacyVersion[1]);
+  }
+
+  if (/Unknown:\s*(announce|name)\b/i.test(rxProbeBuffer)) {
+    markLegacyRepeater('missing announce/name commands');
   }
 }
 
@@ -1562,6 +1613,10 @@ async function runRepeaterAction(cmd) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
   }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'Repeater controls require current RatTunnel firmware. Flash latest firmware first.');
+    return;
+  }
   await sendCmd(cmd);
   openRepeaterConsole();
 }
@@ -1569,6 +1624,10 @@ async function runRepeaterAction(cmd) {
 async function applyRepeaterSettings() {
   if (!writer) {
     showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'This connected firmware is missing required repeater commands. Flash latest RatTunnel firmware first.');
     return;
   }
 
@@ -1636,6 +1695,8 @@ async function probeRepeaterFirmware() {
     await writer.write('\r\n');
     await sleep(120);
     await writer.write('version\r\n');
+    await sleep(120);
+    await writer.write('help\r\n');
   } catch (_) {}
 }
 
@@ -1654,6 +1715,10 @@ async function openSelectedPort(selectedPort) {
   port = selectedPort;
   await port.open({ baudRate: 115200 });
   connected = true;
+  repeaterCaps.compatible = false;
+  repeaterCaps.supportsAnnounce = false;
+  repeaterCaps.supportsName = false;
+  repeaterCaps.legacyDetected = false;
   updateConnChip(true);
   document.getElementById('consoleInput').disabled = false;
 
@@ -1748,6 +1813,10 @@ async function doDisconnect() {
   try { if (port)   { await port.close();    port   = null; } } catch (_) {}
   connected = false;
   repeaterDetected = false;
+  repeaterCaps.compatible = false;
+  repeaterCaps.supportsAnnounce = false;
+  repeaterCaps.supportsName = false;
+  repeaterCaps.legacyDetected = false;
   rxProbeBuffer = '';
   activeMode = 'flasher';
   updateConnChip(false);
