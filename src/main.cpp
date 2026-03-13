@@ -136,8 +136,8 @@ void setup() {
         while (!Serial && (millis() - t0) < 3000) delay(10);
     }
 
-    Serial.println(F("[RNS] ── Reticulum Transport Node ──"));
-    Serial.println(F("[RNS] WisBlock 1W  |  v" FW_VERSION_STRING));
+    Serial.println(F("[RNS] ── RatTunnel Transport Node ──"));
+    Serial.println(F("[RNS] WisBlock 1W  |  " FW_DISPLAY_VERSION));
 
     // ── Persistence ───────────────────────────────────────
     Serial.print(F("[RNS] LittleFS: "));

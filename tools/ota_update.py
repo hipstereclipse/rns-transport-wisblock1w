@@ -108,7 +108,7 @@ def perform_dfu(port, zip_file):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='OTA firmware update for RNS Transport Node (WisBlock 1W)')
+        description='OTA firmware update for RatTunnel (WisBlock 1W)')
     parser.add_argument('--port', '-p', help='Serial port (auto-detected if omitted)')
     parser.add_argument('--firmware', '-f', help='DFU package (.zip)')
     parser.add_argument('--hex', help='Firmware .hex file (will be packaged)')
@@ -157,7 +157,7 @@ def main():
         sys.exit(1)
 
     print(f"╔═══════════════════════════════════════════╗")
-    print(f"║  RNS Transport Node — OTA Firmware Update ║")
+    print(f"║  RatTunnel — OTA Firmware Update          ║")
     print(f"╚═══════════════════════════════════════════╝")
     print(f"  Port:     {port}")
     print(f"  Firmware: {zip_file}")

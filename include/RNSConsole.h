@@ -63,7 +63,8 @@ public:
 private:
     void printBanner() {
         io->println(F("\r\n╔════════════════════════════════════════════╗"));
-        io->println(F("║  RNS Transport Node — WisBlock 1W  v" FW_VERSION_STRING "  ║"));
+        io->println(F("║  RatTunnel Node — WisBlock 1W             ║"));
+        io->println(F("║  " FW_DISPLAY_VERSION "                    ║"));
         io->println(F("║  Reticulum LoRa Transport @ +30 dBm       ║"));
         io->println(F("╚════════════════════════════════════════════╝"));
     }
@@ -113,7 +114,7 @@ private:
     void cmdStatus() {
         const auto& s = transport->getStats();
         io->println(F("── Transport Node Status ──"));
-        io->print(F("  Firmware:   ")); io->println(F(FW_VERSION_STRING));
+        io->print(F("  Firmware:   ")); io->println(F(FW_DISPLAY_VERSION));
 #ifndef NATIVE_TEST
         io->print(F("  Uptime:     ")); io->print(millis() / 1000); io->println(F(" s"));
 #endif
@@ -276,7 +277,7 @@ private:
 
     // ── version ───────────────────────────────────────────
     void cmdVersion() {
-        io->print(F("RNS Transport Node v")); io->println(F(FW_VERSION_STRING));
+        io->println(F(FW_DISPLAY_VERSION));
         io->print(F("Build: ")); io->println(F(FW_BUILD_TAG));
         io->print(F("Board: WisBlock 1W (RAK3401 + RAK13302)"));
         io->println();

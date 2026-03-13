@@ -20,11 +20,13 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #endif
 
 // ── Firmware version ──────────────────────────────────────
-#define FW_VERSION_MAJOR    0
-#define FW_VERSION_MINOR    2
+#define FW_VERSION_MAJOR    1
+#define FW_VERSION_MINOR    0
 #define FW_VERSION_PATCH    0
-#define FW_VERSION_STRING   "0.2.0"
-#define FW_BUILD_TAG        "wisblock1w-rns"
+#define FW_VERSION_STRING   "1.0.0"
+#define FW_PRODUCT_NAME     "RatTunnel"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.0"
+#define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
 #define PIN_LORA_NSS        26   // WB_SPI_CS

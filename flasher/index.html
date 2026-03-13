@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RNS Transport Node — Flasher</title>
+<title>RatTunnel — Flasher</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
 
@@ -540,6 +540,31 @@
     font-size: 0.73rem;
     color: var(--dim);
   }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+  .status-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 0.45rem 0.55rem;
+  }
+  .status-k {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--dim);
+    margin-bottom: 0.15rem;
+    font-family: var(--mono);
+  }
+  .status-v {
+    font-size: 0.79rem;
+    color: var(--text);
+    font-family: var(--mono);
+    word-break: break-word;
+  }
+  .status-v.dim { color: var(--dim); }
 
   /* ── Connect chip ─────────────────────────── */
   .conn-chip {
@@ -583,7 +608,7 @@
   <!-- Header -->
   <div class="logo">
     <div class="logo-icon">📡</div>
-    <h1>RNS Transport <span>Flasher</span></h1>
+    <h1>RatTunnel <span>Flasher</span></h1>
     <p>WisBlock 1W · nRF52840</p>
   </div>
 
@@ -608,6 +633,32 @@
     <div class="card-sub">Use guided controls for common repeater tasks. Full command access remains available in the advanced console.</div>
 
     <div class="repeater-grid">
+      <div class="repeater-block">
+        <div class="repeater-block-title">Live status</div>
+        <div class="repeater-actions" style="margin-bottom:0.55rem;">
+          <button class="qbtn" onclick="refreshRepeaterSnapshot()">Refresh now</button>
+          <button class="qbtn" id="autoRefreshBtn" onclick="toggleAutoRefresh()">Auto refresh: off</button>
+          <button class="qbtn" onclick="openRepeaterConsole()">Open logs</button>
+        </div>
+        <div class="status-grid" id="statusGrid">
+          <div class="status-item"><span class="status-k">Firmware</span><span class="status-v dim" id="stFirmware">—</span></div>
+          <div class="status-item"><span class="status-k">Build</span><span class="status-v dim" id="stBuild">—</span></div>
+          <div class="status-item"><span class="status-k">Board</span><span class="status-v dim" id="stBoard">—</span></div>
+          <div class="status-item"><span class="status-k">Uptime</span><span class="status-v dim" id="stUptime">—</span></div>
+          <div class="status-item"><span class="status-k">Paths</span><span class="status-v dim" id="stPaths">—</span></div>
+          <div class="status-item"><span class="status-k">Route entries</span><span class="status-v dim" id="stRouteCount">—</span></div>
+          <div class="status-item"><span class="status-k">RX / TX</span><span class="status-v dim" id="stRxTx">—</span></div>
+          <div class="status-item"><span class="status-k">Forwarded</span><span class="status-v dim" id="stFwd">—</span></div>
+          <div class="status-item"><span class="status-k">Duplicates</span><span class="status-v dim" id="stDup">—</span></div>
+          <div class="status-item"><span class="status-k">Frequency</span><span class="status-v dim" id="stFreq">—</span></div>
+          <div class="status-item"><span class="status-k">SF / BW</span><span class="status-v dim" id="stSfBw">—</span></div>
+          <div class="status-item"><span class="status-k">TX / Link</span><span class="status-v dim" id="stTxLink">—</span></div>
+          <div class="status-item"><span class="status-k">Identity hash</span><span class="status-v dim" id="stHash">—</span></div>
+          <div class="status-item"><span class="status-k">Announce capability</span><span class="status-v dim" id="stAnnounce">manual + periodic</span></div>
+          <div class="status-item"><span class="status-k">Last refresh</span><span class="status-v dim" id="stRefresh">—</span></div>
+        </div>
+      </div>
+
       <div class="repeater-block">
         <div class="repeater-block-title">Quick actions</div>
         <div class="repeater-actions">
@@ -641,6 +692,10 @@
           <div class="repeater-field">
             <label for="repTx">TX power (dBm)</label>
             <input id="repTx" type="number" step="1" min="-9" max="22" placeholder="22">
+          </div>
+          <div class="repeater-field">
+            <label for="repCr">Coding rate (denominator)</label>
+            <input id="repCr" type="number" step="1" min="5" max="8" placeholder="5">
           </div>
         </div>
         <div class="repeater-actions" style="margin-top:0.55rem;">
@@ -849,6 +904,30 @@ let connected = false;
 let repeaterDetected = false;
 let rxProbeBuffer = '';
 let flasherMode = false;
+let rxLineBuffer = '';
+let autoRefreshTimer = null;
+
+const repeaterState = {
+  firmware: '—',
+  build: '—',
+  board: '—',
+  uptime: '—',
+  paths: '—',
+  routeCount: '—',
+  rx: '—',
+  tx: '—',
+  fwd: '—',
+  dup: '—',
+  freq: '—',
+  sf: '—',
+  bw: '—',
+  cr: '—',
+  txp: '—',
+  rssi: '—',
+  snr: '—',
+  hash: '—',
+  refreshAt: '—'
+};
 
 let cmdHistory = [], cmdIdx = -1;
 
@@ -864,6 +943,7 @@ window.addEventListener('DOMContentLoaded', fetchReleases);
 window.addEventListener('DOMContentLoaded', updateActionButtons);
 window.addEventListener('DOMContentLoaded', refreshEnvironmentNotice);
 window.addEventListener('DOMContentLoaded', applyPrimaryModeUi);
+window.addEventListener('DOMContentLoaded', updateStatusUi);
 
 /* ════════════════════════════════════════════
    GitHub releases
@@ -1109,6 +1189,7 @@ function updateRepeaterUi() {
   panel.classList.toggle('show', show);
   btn.disabled = !show;
   modeBtn.disabled = !show;
+  if (!show) stopAutoRefresh();
   applyPrimaryModeUi();
 }
 
@@ -1160,14 +1241,146 @@ function markRepeaterDetected() {
   repeaterDetected = true;
   flasherMode = false;
   updateRepeaterUi();
+  refreshRepeaterSnapshot();
   sysLog('Repeater firmware detected on serial console.\n');
 }
 
 function inspectDeviceOutput(text) {
+  feedStatusParser(text);
   rxProbeBuffer = (rxProbeBuffer + String(text || '')).slice(-2048);
-  if (/(\[RNS\]|rns>|Transport Node|Reticulum transport|Available Commands|Firmware:|Board: WisBlock)/i.test(rxProbeBuffer)) {
+  if (/(\[RNS\]|rns>|Transport Node|Reticulum transport|RatTunnel|Available Commands|Firmware:|Board: WisBlock)/i.test(rxProbeBuffer)) {
     markRepeaterDetected();
   }
+}
+
+function setStatusField(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const val = value && String(value).trim() ? String(value).trim() : '—';
+  el.textContent = val;
+  el.classList.toggle('dim', val === '—');
+}
+
+function updateStatusUi() {
+  setStatusField('stFirmware', repeaterState.firmware);
+  setStatusField('stBuild', repeaterState.build);
+  setStatusField('stBoard', repeaterState.board);
+  setStatusField('stUptime', repeaterState.uptime);
+  setStatusField('stPaths', repeaterState.paths);
+  setStatusField('stRouteCount', repeaterState.routeCount);
+  setStatusField('stRxTx', `${repeaterState.rx} / ${repeaterState.tx}`);
+  setStatusField('stFwd', repeaterState.fwd);
+  setStatusField('stDup', repeaterState.dup);
+  setStatusField('stFreq', repeaterState.freq);
+  setStatusField('stSfBw', `${repeaterState.sf} / ${repeaterState.bw}`);
+  setStatusField('stTxLink', `${repeaterState.txp} · RSSI ${repeaterState.rssi} · SNR ${repeaterState.snr}`);
+  setStatusField('stHash', repeaterState.hash);
+  setStatusField('stRefresh', repeaterState.refreshAt);
+}
+
+function parseStatusLine(line) {
+  const t = line.trim();
+  if (!t) return;
+
+  if (/^RNS Transport Node v/i.test(t)) repeaterState.firmware = t.replace(/^RNS Transport Node v/i, 'v');
+  if (/^RatTunnel\s+V\./i.test(t)) repeaterState.firmware = t;
+  if (/^Build:/i.test(t)) repeaterState.build = t.split(':').slice(1).join(':').trim();
+  if (/^Board:/i.test(t)) repeaterState.board = t.split(':').slice(1).join(':').trim();
+  if (/^Hash:/i.test(t)) repeaterState.hash = t.split(':').slice(1).join(':').trim();
+
+  const keyVal = t.match(/^([A-Za-z\s\/]+):\s*(.+)$/);
+  if (keyVal) {
+    const key = keyVal[1].trim().toLowerCase();
+    const value = keyVal[2].trim();
+    if (key === 'uptime') repeaterState.uptime = value;
+    else if (key === 'rx packets') repeaterState.rx = value;
+    else if (key === 'tx packets') repeaterState.tx = value;
+    else if (key === 'forwarded') repeaterState.fwd = value;
+    else if (key === 'duplicates') repeaterState.dup = value;
+    else if (key === 'paths') repeaterState.paths = value;
+    else if (key === 'frequency') repeaterState.freq = value;
+    else if (key === 'bandwidth') repeaterState.bw = value;
+    else if (key === 'sf') repeaterState.sf = value;
+    else if (key === 'cr') repeaterState.cr = value;
+    else if (key === 'tx power') repeaterState.txp = value;
+    else if (key === 'last rssi') repeaterState.rssi = value;
+    else if (key === 'last snr') repeaterState.snr = value;
+  }
+
+  if (t.includes('..')) {
+    const prev = Number(repeaterState.routeCount === '—' ? 0 : repeaterState.routeCount);
+    repeaterState.routeCount = String(prev + 1);
+  }
+
+  if (/^TEST_OK\b/.test(t)) {
+    const tokens = t.split(/\s+/).slice(1);
+    for (const token of tokens) {
+      const [k, v] = token.split('=');
+      if (!k || typeof v === 'undefined') continue;
+      if (k === 'uptime_s') repeaterState.uptime = `${v} s`;
+      else if (k === 'rx') repeaterState.rx = v;
+      else if (k === 'tx') repeaterState.tx = v;
+      else if (k === 'fwd') repeaterState.fwd = v;
+      else if (k === 'paths') repeaterState.paths = v;
+      else if (k === 'freq_mhz') repeaterState.freq = `${v} MHz`;
+      else if (k === 'sf') repeaterState.sf = v;
+      else if (k === 'bw_khz') repeaterState.bw = `${v} kHz`;
+      else if (k === 'tx_dbm') repeaterState.txp = `${v} dBm`;
+    }
+  }
+
+  repeaterState.refreshAt = new Date().toLocaleTimeString();
+  updateStatusUi();
+}
+
+function feedStatusParser(text) {
+  const chunk = String(text || '');
+  rxLineBuffer += chunk;
+  const lines = rxLineBuffer.split(/\r?\n/);
+  rxLineBuffer = lines.pop() || '';
+  for (const line of lines) parseStatusLine(line);
+}
+
+async function refreshRepeaterSnapshot() {
+  if (!writer) return;
+  repeaterState.routeCount = '0';
+  await sendCmd('version');
+  await sleep(120);
+  await sendCmd('status');
+  await sleep(120);
+  await sendCmd('radio');
+  await sleep(120);
+  await sendCmd('routes');
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  const btn = document.getElementById('autoRefreshBtn');
+  if (btn) btn.textContent = 'Auto refresh: off';
+}
+
+function toggleAutoRefresh() {
+  const btn = document.getElementById('autoRefreshBtn');
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (autoRefreshTimer) {
+    stopAutoRefresh();
+    return;
+  }
+  autoRefreshTimer = setInterval(() => {
+    if (!writer) {
+      stopAutoRefresh();
+      return;
+    }
+    refreshRepeaterSnapshot();
+  }, 10000);
+  if (btn) btn.textContent = 'Auto refresh: 10s';
+  refreshRepeaterSnapshot();
 }
 
 function openRepeaterConsole() {
@@ -1199,12 +1412,14 @@ async function applyRepeaterSettings() {
   const sf = document.getElementById('repSf').value.trim();
   const bw = document.getElementById('repBw').value.trim();
   const tx = document.getElementById('repTx').value.trim();
+  const cr = document.getElementById('repCr').value.trim();
 
   const commands = [];
   if (freq) commands.push(`set freq ${freq}`);
   if (sf) commands.push(`set sf ${sf}`);
   if (bw) commands.push(`set bw ${bw}`);
   if (tx) commands.push(`set txpower ${tx}`);
+  if (cr) commands.push(`set cr ${cr}`);
 
   if (!commands.length) {
     showFlashAlert('warn', 'Enter at least one setting to apply.');
@@ -1223,11 +1438,19 @@ async function applyRepeaterSettings() {
     return;
   }
 
+  const crNum = cr ? Number(cr) : null;
+  if (cr && (!Number.isFinite(crNum) || crNum < 5 || crNum > 8)) {
+    showFlashAlert('error', 'Coding rate denominator must be between 5 and 8.');
+    return;
+  }
+
   for (const cmd of commands) {
     await sendCmd(cmd);
     await sleep(120);
   }
   await sendCmd('radio');
+  await sleep(120);
+  await sendCmd('status');
   showFlashAlert('info', 'Settings sent. Review the radio output and click Save config if needed.');
   openRepeaterConsole();
 }
@@ -1273,6 +1496,7 @@ async function openSelectedPort(selectedPort) {
   sysLog('Serial connected.\n');
   updateRepeaterUi();
   probeRepeaterFirmware();
+  setTimeout(() => { if (writer) refreshRepeaterSnapshot(); }, 500);
   advanceWizard(2);
 }
 
@@ -1343,6 +1567,7 @@ async function enterDfuMode() {
 
 async function doDisconnect() {
   looping = false;
+  stopAutoRefresh();
   try { if (reader) { await reader.cancel(); reader = null; } } catch (_) {}
   try { if (writer) { await writer.close();  writer = null; } } catch (_) {}
   try { if (port)   { await port.close();    port   = null; } } catch (_) {}
