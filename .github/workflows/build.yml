@@ -35,19 +35,21 @@ jobs:
             pio-${{ runner.os }}-
 
       - name: Install PlatformIO Core
-        run: pip install --upgrade platformio
+        run: |
+          pip install --upgrade platformio
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       # Pre-install the nordicnrf52 platform + all project lib deps so the
       # build step never needs to download anything under time pressure.
       - name: Install platform & library packages
-        run: pio pkg install -e wisblock_1w_transport
+        run: platformio pkg install -e wisblock_1w_transport
 
       # ── Build ────────────────────────────────────────────────────────────────
       # Override extra_scripts to empty so the CI build does not try to run
       # generate_uf2.py via SCons (we do that explicitly below instead).
       - name: Build firmware (wisblock_1w_transport)
         run: |
-          pio run -e wisblock_1w_transport \
+           platformio run -e wisblock_1w_transport \
             --project-option "extra_scripts=" \
             -v
 
