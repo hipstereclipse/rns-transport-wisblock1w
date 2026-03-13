@@ -28,6 +28,7 @@ struct RadioConfig {
     uint8_t cr;
     int8_t  txDbm;
     uint8_t syncWord;
+    uint16_t preamble;
     uint32_t checksum;   ///< Simple XOR checksum for integrity
 };
 
@@ -147,6 +148,7 @@ public:
         radio.setCR(cfg.cr);
         radio.setTxPower(cfg.txDbm);
         radio.setSyncWord(cfg.syncWord);
+        radio.setPreamble(cfg.preamble);
         return true;
 #else
         return false;
@@ -164,6 +166,7 @@ public:
         cfg.cr      = radio.curCR;
         cfg.txDbm   = radio.curTxDbm;
         cfg.syncWord = radio.curSyncWord;
+        cfg.preamble = radio.curPreamble;
         cfg.checksum = computeConfigChecksum(cfg);
 
         InternalFS.remove(CONFIG_FILE);

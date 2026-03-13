@@ -40,6 +40,50 @@ static RNSPersistence persist;
 static bool radioOk = false;
 static uint32_t nextAnnounceAt = 0;
 
+static void printResetReason() {
+#ifndef NATIVE_TEST
+    uint32_t reas = NRF_POWER->RESETREAS;
+    if (reas == 0) {
+        Serial.println(F("[RNS] Reset cause: unknown/power-on"));
+        return;
+    }
+
+    Serial.print(F("[RNS] Reset cause: "));
+    bool first = true;
+
+#ifdef POWER_RESETREAS_RESETPIN_Msk
+    if (reas & POWER_RESETREAS_RESETPIN_Msk) { Serial.print(F("pin")); first = false; }
+#endif
+#ifdef POWER_RESETREAS_DOG_Msk
+    if (reas & POWER_RESETREAS_DOG_Msk) { if (!first) Serial.print(F(", ")); Serial.print(F("watchdog")); first = false; }
+#endif
+#ifdef POWER_RESETREAS_SREQ_Msk
+    if (reas & POWER_RESETREAS_SREQ_Msk) { if (!first) Serial.print(F(", ")); Serial.print(F("software")); first = false; }
+#endif
+#ifdef POWER_RESETREAS_LOCKUP_Msk
+    if (reas & POWER_RESETREAS_LOCKUP_Msk) { if (!first) Serial.print(F(", ")); Serial.print(F("lockup")); first = false; }
+#endif
+#ifdef POWER_RESETREAS_OFF_Msk
+    if (reas & POWER_RESETREAS_OFF_Msk) { if (!first) Serial.print(F(", ")); Serial.print(F("wake-from-off")); first = false; }
+#endif
+#ifdef POWER_RESETREAS_LPCOMP_Msk
+    if (reas & POWER_RESETREAS_LPCOMP_Msk) { if (!first) Serial.print(F(", ")); Serial.print(F("lpcomp")); first = false; }
+#endif
+#ifdef POWER_RESETREAS_DIF_Msk
+    if (reas & POWER_RESETREAS_DIF_Msk) { if (!first) Serial.print(F(", ")); Serial.print(F("debug-interface")); first = false; }
+#endif
+
+    if (first) {
+        Serial.print(F("0x"));
+        Serial.print(reas, HEX);
+    }
+    Serial.println();
+
+    // Clear latched reason bits by writing 1s to the set positions.
+    NRF_POWER->RESETREAS = reas;
+#endif
+}
+
 enum MorseBlinkMode : uint8_t {
     MORSE_MODE_OFF      = 0,
     MORSE_MODE_ERRORS   = 1,
@@ -538,6 +582,7 @@ void setup() {
 
     Serial.println(F("[RNS] ── RatTunnel Transport Node ──"));
     Serial.println(F("[RNS] WisBlock 1W  |  " FW_DISPLAY_VERSION));
+    printResetReason();
 
     // ── Persistence ───────────────────────────────────────
     Serial.print(F("[RNS] LittleFS: "));

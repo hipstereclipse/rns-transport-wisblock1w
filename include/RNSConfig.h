@@ -66,6 +66,7 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define RNS_PLAIN_MDU       464
 #define RNS_ENCRYPTED_MDU   383
 #define RNS_ANNOUNCE_CAP_PCT  2      // percent of airtime budget
+#define RNS_TRANSPORT_DEST_NAME "rnstransport.transport"
 
 // ── Transport tuning (fits comfortably in 256 KB RAM) ────
 #define PATH_TABLE_MAX       64

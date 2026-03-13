@@ -205,6 +205,7 @@ private:
         io->print(F("  Sync Word: 0x"));
         if (radio->curSyncWord < 0x10) io->print('0');
         io->println(radio->curSyncWord, HEX);
+        io->print(F("  Preamble:  ")); io->println(radio->curPreamble);
         io->print(F("  Last RSSI: ")); io->print(radio->lastRSSI); io->println(F(" dBm"));
         io->print(F("  Last SNR:  ")); io->print(radio->lastSNR); io->println(F(" dB"));
     }
@@ -214,7 +215,7 @@ private:
         char param[16] = {0};
         char value[16] = {0};
         if (sscanf(args, "%15s %15s", param, value) < 2) {
-            io->println(F("Usage: set <freq|sf|bw|cr|txpower> <value>"));
+            io->println(F("Usage: set <freq|sf|bw|cr|txpower|syncword|preamble> <value>"));
             return;
         }
 
@@ -253,8 +254,13 @@ private:
             io->print(F("Sync word → 0x"));
             if (sync < 0x10) io->print('0');
             io->println((uint8_t)sync, HEX);
+        } else if (strcmp(param, "preamble") == 0) {
+            int preamble = atoi(value);
+            if (preamble < 4 || preamble > 255) { io->println(F("Preamble must be 4–255 symbols")); return; }
+            radio->setPreamble((uint16_t)preamble);
+            io->print(F("Preamble → ")); io->println(preamble);
         } else {
-            io->println(F("Unknown param. Use: freq, sf, bw, cr, txpower, syncword"));
+            io->println(F("Unknown param. Use: freq, sf, bw, cr, txpower, syncword, preamble"));
         }
     }
 
@@ -263,9 +269,10 @@ private:
         while (args && *args == ' ') args++;
 
         if (!args || *args == '\0') {
-            io->println(F("Usage: profile <rnode-eu|rnode-us>"));
-            io->println(F("  rnode-eu: 867.2 MHz, BW125, SF8, CR5, TX7, sync 0x12"));
-            io->println(F("  rnode-us: 915.0 MHz, BW125, SF8, CR5, TX7, sync 0x12"));
+            io->println(F("Usage: profile <rnode-eu|rnode-us|ratspeak-us>"));
+            io->println(F("  rnode-eu:    867.2 MHz, BW125, SF8, CR5, TX7, sync 0x12, preamble 8"));
+            io->println(F("  rnode-us:    915.0 MHz, BW125, SF8, CR5, TX7, sync 0x12, preamble 8"));
+            io->println(F("  ratspeak-us: 915.0 MHz, BW125, SF9, CR5, TX17, sync 0x12, preamble 18"));
             return;
         }
 
@@ -276,6 +283,7 @@ private:
             radio->setCR(5);
             radio->setTxPower(7);
             radio->setSyncWord(0x12);
+            radio->setPreamble(8);
             io->println(F("Profile applied: rnode-eu"));
             io->println(F("Tip: run 'save' to persist, then 'announce' to broadcast now."));
             cmdRadio();
@@ -289,7 +297,22 @@ private:
             radio->setCR(5);
             radio->setTxPower(7);
             radio->setSyncWord(0x12);
+            radio->setPreamble(8);
             io->println(F("Profile applied: rnode-us"));
+            io->println(F("Tip: run 'save' to persist, then 'announce' to broadcast now."));
+            cmdRadio();
+            return;
+        }
+
+        if (strcmp(args, "ratspeak-us") == 0 || strcmp(args, "rs-us") == 0) {
+            radio->setFrequency(915.0f);
+            radio->setBandwidth(125.0f);
+            radio->setSF(9);
+            radio->setCR(5);
+            radio->setTxPower(17);
+            radio->setSyncWord(0x12);
+            radio->setPreamble(18);
+            io->println(F("Profile applied: ratspeak-us"));
             io->println(F("Tip: run 'save' to persist, then 'announce' to broadcast now."));
             cmdRadio();
             return;
@@ -297,7 +320,7 @@ private:
 
         io->print(F("Unknown profile: "));
         io->println(args);
-        io->println(F("Use: profile <rnode-eu|rnode-us>"));
+        io->println(F("Use: profile <rnode-eu|rnode-us|ratspeak-us>"));
     }
 
     // ── save (persist current config to flash) ────────────
@@ -379,8 +402,8 @@ private:
         io->println(F("  routes         Show routing table"));
         io->println(F("  identity       Display node identity hash + keys"));
         io->println(F("  radio          Current radio configuration"));
-        io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower/syncword)"));
-        io->println(F("  profile <p>    One-shot radio preset (rnode-eu/rnode-us)"));
+        io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower/syncword/preamble)"));
+        io->println(F("  profile <p>    One-shot radio preset (rnode-eu/rnode-us/ratspeak-us)"));
         io->println(F("  name <text>    Set/display broadcast announce name"));
         io->println(F("  save           Persist config to flash"));
         io->println(F("  factory-reset  Erase all persisted data"));

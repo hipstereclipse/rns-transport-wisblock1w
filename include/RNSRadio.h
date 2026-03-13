@@ -42,6 +42,7 @@ public:
     uint8_t curCR    = LORA_CR;
     int8_t  curTxDbm = LORA_TX_DBM;
     uint8_t curSyncWord = LORA_SYNC_WORD;
+    uint16_t curPreamble = LORA_PREAMBLE;
 
     // ── DIO1 ISR (minimal — just set flag) ────────────────
     static RNSRadio* instance;
@@ -73,7 +74,7 @@ public:
 
         int state = lora.begin(
             curFreqMHz, curBwKHz, curSF, curCR,
-            curSyncWord, curTxDbm, LORA_PREAMBLE, 0
+            curSyncWord, curTxDbm, curPreamble, 0
         );
         if (state != RADIOLIB_ERR_NONE) return false;
 
@@ -203,6 +204,12 @@ public:
         lora.setSyncWord(syncWord);
 #endif
         curSyncWord = syncWord;
+    }
+    void setPreamble(uint16_t preambleSymbols) {
+#ifndef NATIVE_TEST
+        lora.setPreambleLength(preambleSymbols);
+#endif
+        curPreamble = preambleSymbols;
     }
 };
 

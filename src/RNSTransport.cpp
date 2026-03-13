@@ -5,6 +5,23 @@
  */
 #include "RNSTransport.h"
 #include "RNSRadio.h"
+#ifndef NATIVE_TEST
+#include <SHA256.h>
+#endif
+
+static void computeNameHash10(const char* fullName, uint8_t outHash[RNS_NAME_HASH_LEN]) {
+#ifndef NATIVE_TEST
+    SHA256 sha;
+    sha.reset();
+    sha.update(fullName, strlen(fullName));
+    uint8_t digest[32];
+    sha.finalize(digest, sizeof(digest));
+    memcpy(outHash, digest, RNS_NAME_HASH_LEN);
+#else
+    memset(outHash, 0, RNS_NAME_HASH_LEN);
+    (void)fullName;
+#endif
+}
 
 bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      const uint8_t* appData,
@@ -27,13 +44,17 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     memset(announceData, 0, totalDataLen);
 
     // [pubkey 64B]
-    identity->getPublicKey(announceData);
+    uint8_t publicKey[RNS_KEYSIZE];
+    identity->getPublicKey(publicKey);
+    memcpy(announceData, publicKey, RNS_KEYSIZE);
 
     // [nameHash 10B]
     if (nameHash) {
         memcpy(announceData + RNS_KEYSIZE, nameHash, RNS_NAME_HASH_LEN);
     } else {
-        memset(announceData + RNS_KEYSIZE, 0, RNS_NAME_HASH_LEN);
+        uint8_t defaultNameHash[RNS_NAME_HASH_LEN];
+        computeNameHash10(RNS_TRANSPORT_DEST_NAME, defaultNameHash);
+        memcpy(announceData + RNS_KEYSIZE, defaultNameHash, RNS_NAME_HASH_LEN);
     }
 
     // [randomBlob 10B]
@@ -57,7 +78,7 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     pkt.destType    = SINGLE;
     pkt.packetType  = ANNOUNCE;
     pkt.hops        = 0;
-    memcpy(pkt.destHash, identity->identityHash, RNS_ADDR_LEN);
+    RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, publicKey, pkt.destHash);
     pkt.context = 0x00;
     pkt.data    = announceData;
     pkt.dataLen = totalDataLen;

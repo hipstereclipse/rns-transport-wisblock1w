@@ -92,7 +92,7 @@ python tools/serve_flasher.py --no-open
 ### Repeater settings menu (connectivity)
 
 After serial connect and repeater detection, switch to **Repeater mode** to use the settings menu:
-- Choose a connectivity profile (`RNode EU` / `RNode US`) or keep `Custom`
+- Choose a connectivity profile (`RNode EU` / `RNode US` / `Ratspeak US balanced`) or keep `Custom`
 - Edit frequency/SF/BW/CR/TX/sync word and optional broadcast name
 - Use `Apply + Save` to write settings and persist in one step
 - Use `Announce now` to immediately test visibility from peers
@@ -130,8 +130,8 @@ Once a release exists with valid assets, the web flasher will list it automatica
 | `radio` | Current LoRa parameters |
 | `routes` | Routing table summary |
 | `identity` | Device identity and keys |
-| `set freq|sf|bw|cr|txpower|syncword` | Live radio tuning |
-| `profile rnode-eu|rnode-us` | One-shot Reticulum LoRa preset |
+| `set freq|sf|bw|cr|txpower|syncword|preamble` | Live radio tuning |
+| `profile rnode-eu|rnode-us|ratspeak-us` | One-shot Reticulum LoRa preset |
 | `save` | Persist current config |
 | `announce` | Trigger local announce |
 | `dfu` | Reboot to bootloader mode |
@@ -155,8 +155,8 @@ Once a release exists with valid assets, the web flasher will list it automatica
 ### Node does not appear on a known-good Reticulum LoRa device
 - Ensure on-air parameters match exactly on both sides: frequency, bandwidth, spreading factor, coding rate, and sync word
 - In console, run `radio` to inspect current settings
-- Fast path: apply one-shot preset with `profile rnode-eu` or `profile rnode-us`
-- Set values as needed, for example: `set freq 867.2`, `set sf 8`, `set bw 125`, `set cr 5`, `set syncword 0x12`
+- Fast path: apply one-shot preset with `profile rnode-eu`, `profile rnode-us`, or `profile ratspeak-us`
+- Set values as needed, for example: `set freq 915`, `set sf 9`, `set bw 125`, `set cr 5`, `set txpower 17`, `set syncword 0x12`, `set preamble 18`
 - Run `save` to persist settings, then `announce` to broadcast immediately
 
 ### Flash button disabled

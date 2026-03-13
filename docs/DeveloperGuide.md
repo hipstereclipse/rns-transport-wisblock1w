@@ -159,6 +159,7 @@ The transport node is protocol-transparent — it forwards any valid Reticulum p
 
 For Ratspeak to discover this transport node:
 - The node participates in announce propagation (validates and rebroadcasts)
+- The node emits local announces on the standard transport destination name (`rnstransport.transport`) so peers can learn a valid Reticulum path
 - Ratspeak clients on either side of the transport node will learn paths through it
 - Voice streams (which are DATA packets to a LINK destination) are forwarded via the path table
 

@@ -759,6 +759,7 @@
               <option value="custom" selected>Custom</option>
               <option value="rnode-eu">RNode EU (867.2 / SF8 / BW125 / CR5 / TX7 / 0x12)</option>
               <option value="rnode-us">RNode US (915.0 / SF8 / BW125 / CR5 / TX7 / 0x12)</option>
+              <option value="ratspeak-us">Ratspeak US balanced (915.0 / SF9 / BW125 / CR5 / TX17 / preamble18)</option>
             </select>
           </div>
           <div class="repeater-field">
@@ -784,6 +785,10 @@
           <div class="repeater-field">
             <label for="repSync">Sync word</label>
             <input id="repSync" type="text" maxlength="6" placeholder="0x12">
+          </div>
+          <div class="repeater-field">
+            <label for="repPreamble">Preamble (symbols)</label>
+            <input id="repPreamble" type="number" step="1" min="4" max="255" placeholder="8">
           </div>
           <div class="repeater-field" style="grid-column:1 / -1;">
             <label for="repName">Broadcast name</label>
@@ -1072,6 +1077,7 @@ const repeaterState = {
   bw: '—',
   cr: '—',
   sync: '—',
+  preamble: '—',
   txp: '—',
   rssi: '—',
   snr: '—',
@@ -1091,8 +1097,9 @@ const repeaterCaps = {
 
 const CONNECTIVITY_PROFILES = {
   custom: null,
-  'rnode-eu': { freq: 867.2, sf: 8, bw: 125, tx: 7, cr: 5, sync: 0x12 },
-  'rnode-us': { freq: 915.0, sf: 8, bw: 125, tx: 7, cr: 5, sync: 0x12 },
+  'rnode-eu': { freq: 867.2, sf: 8, bw: 125, tx: 7, cr: 5, sync: 0x12, preamble: 8 },
+  'rnode-us': { freq: 915.0, sf: 8, bw: 125, tx: 7, cr: 5, sync: 0x12, preamble: 8 },
+  'ratspeak-us': { freq: 915.0, sf: 9, bw: 125, tx: 17, cr: 5, sync: 0x12, preamble: 18 },
 };
 
 /* ════════════════════════════════════════════
@@ -1751,11 +1758,12 @@ function detectProfileFromForm() {
   const tx = Number(document.getElementById('repTx')?.value || '');
   const cr = Number(document.getElementById('repCr')?.value || '');
   const sync = parseSyncWord(document.getElementById('repSync')?.value || '');
+  const preamble = Number(document.getElementById('repPreamble')?.value || '');
 
   for (const [name, profile] of Object.entries(CONNECTIVITY_PROFILES)) {
     if (!profile) continue;
     const freqMatch = Number.isFinite(freq) && Math.abs(freq - profile.freq) < 0.05;
-    if (freqMatch && sf === profile.sf && bw === profile.bw && tx === profile.tx && cr === profile.cr && sync === profile.sync) {
+    if (freqMatch && sf === profile.sf && bw === profile.bw && tx === profile.tx && cr === profile.cr && sync === profile.sync && preamble === profile.preamble) {
       return name;
     }
   }
@@ -1773,6 +1781,10 @@ function updateProfileHint() {
   }
   if (profileName === 'rnode-us') {
     hintEl.textContent = 'Profile: RNode US preset loaded. You can tweak fields before Apply + Save.';
+    return;
+  }
+  if (profileName === 'ratspeak-us') {
+    hintEl.textContent = 'Profile: Ratspeak US balanced preset loaded. You can tweak fields before Apply + Save.';
     return;
   }
   hintEl.textContent = 'Custom profile. Match your peer exactly, then use Apply + Save.';
@@ -1794,6 +1806,7 @@ function applyConnectivityProfileToForm(force = false) {
   const txEl = document.getElementById('repTx');
   const crEl = document.getElementById('repCr');
   const syncEl = document.getElementById('repSync');
+  const preambleEl = document.getElementById('repPreamble');
 
   if (force || (freqEl && !freqEl.value.trim())) freqEl.value = String(profile.freq);
   if (force || (sfEl && !sfEl.value.trim())) sfEl.value = String(profile.sf);
@@ -1801,6 +1814,7 @@ function applyConnectivityProfileToForm(force = false) {
   if (force || (txEl && !txEl.value.trim())) txEl.value = String(profile.tx);
   if (force || (crEl && !crEl.value.trim())) crEl.value = String(profile.cr);
   if (force || (syncEl && !syncEl.value.trim())) syncEl.value = formatSyncWordHex(profile.sync);
+  if (force || (preambleEl && !preambleEl.value.trim())) preambleEl.value = String(profile.preamble);
 
   updateProfileHint();
 }
@@ -1812,6 +1826,7 @@ function loadSettingsFromStatus(silent = false) {
   const txEl = document.getElementById('repTx');
   const crEl = document.getElementById('repCr');
   const syncEl = document.getElementById('repSync');
+  const preambleEl = document.getElementById('repPreamble');
   const profileEl = document.getElementById('repProfile');
 
   if (freqEl && !freqEl.value.trim() && repeaterState.freq !== '—') freqEl.value = numberFromText(repeaterState.freq);
@@ -1823,6 +1838,7 @@ function loadSettingsFromStatus(silent = false) {
     const parsed = parseSyncWord(repeaterState.sync);
     if (parsed !== null) syncEl.value = formatSyncWordHex(parsed);
   }
+  if (preambleEl && !preambleEl.value.trim() && repeaterState.preamble !== '—') preambleEl.value = numberFromText(repeaterState.preamble);
 
   if (profileEl) profileEl.value = detectProfileFromForm();
   updateProfileHint();
@@ -1856,6 +1872,7 @@ function parseStatusLine(line) {
     else if (key === 'sf') repeaterState.sf = value;
     else if (key === 'cr') repeaterState.cr = value;
     else if (key === 'sync word') repeaterState.sync = value;
+    else if (key === 'preamble') repeaterState.preamble = value;
     else if (key === 'tx power') repeaterState.txp = value;
     else if (key === 'last rssi') repeaterState.rssi = value;
     else if (key === 'last snr') repeaterState.snr = value;
@@ -2025,6 +2042,7 @@ async function applyRepeaterSettings(saveAfter = false) {
   const tx = document.getElementById('repTx').value.trim();
   const cr = document.getElementById('repCr').value.trim();
   const sync = document.getElementById('repSync').value.trim();
+  const preamble = document.getElementById('repPreamble').value.trim();
   const name = document.getElementById('repName').value.trim();
 
   const commands = [];
@@ -2034,6 +2052,7 @@ async function applyRepeaterSettings(saveAfter = false) {
   if (tx) commands.push(`set txpower ${tx}`);
   if (cr) commands.push(`set cr ${cr}`);
   if (sync) commands.push(`set syncword ${sync}`);
+  if (preamble) commands.push(`set preamble ${preamble}`);
   if (name) commands.push(`name ${name}`);
 
   if (!commands.length) {
@@ -2062,6 +2081,12 @@ async function applyRepeaterSettings(saveAfter = false) {
   const syncNum = sync ? parseSyncWord(sync) : null;
   if (sync && syncNum === null) {
     showFlashAlert('error', 'Sync word must be between 0 and 255 (decimal or hex like 0x12).');
+    return;
+  }
+
+  const preambleNum = preamble ? Number(preamble) : null;
+  if (preamble && (!Number.isFinite(preambleNum) || preambleNum < 4 || preambleNum > 255)) {
+    showFlashAlert('error', 'Preamble must be between 4 and 255 symbols.');
     return;
   }
 
