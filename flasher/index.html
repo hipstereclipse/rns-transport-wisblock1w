@@ -450,6 +450,14 @@
     transition: all 0.12s;
   }
   .qbtn:hover { background: var(--accent-glow); border-color: var(--accent); }
+  .qbtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .flash-actions {
+    margin-top: 0.65rem;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
 
   /* ── Connect chip ─────────────────────────── */
   .conn-chip {
@@ -502,6 +510,8 @@
     <strong>⚠ Unsupported Browser</strong><br>
     This tool requires <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> (version 89+) on a desktop computer. Safari and Firefox are not supported.
   </div>
+
+  <div class="unsupported" id="contextNotice"></div>
 
   <!-- Step track -->
   <div class="step-track" id="stepTrack">
@@ -579,6 +589,12 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         <span id="flashBtnLabel">Select version above</span>
       </button>
+    </div>
+
+    <div class="flash-actions">
+      <button class="qbtn" id="autoConnectBtn" onclick="autoConnectNow()">Auto-connect</button>
+      <button class="qbtn" id="enterDfuBtn" onclick="enterDfuMode()">Enter DFU mode</button>
+      <button class="qbtn" id="eraseFlashBtn" onclick="startFlash(true)" disabled>Erase + Flash</button>
     </div>
 
     <!-- Progress -->
@@ -697,6 +713,8 @@ if (!('serial' in navigator)) {
 }
 
 window.addEventListener('DOMContentLoaded', fetchReleases);
+window.addEventListener('DOMContentLoaded', updateActionButtons);
+window.addEventListener('DOMContentLoaded', refreshEnvironmentNotice);
 
 /* ════════════════════════════════════════════
    GitHub releases
@@ -910,6 +928,25 @@ function updateFlashButton() {
     btn.disabled = true;
     label.textContent = 'Select version above';
   }
+
+  updateActionButtons();
+}
+
+function hasFirmwareSelection() {
+  const useLocal = document.getElementById('useLocalFile').checked;
+  return useLocal ? !!firmwareBlob : !!selectedAsset;
+}
+
+function updateActionButtons() {
+  const hasSerial = ('serial' in navigator);
+  const autoBtn = document.getElementById('autoConnectBtn');
+  const dfuBtn = document.getElementById('enterDfuBtn');
+  const eraseBtn = document.getElementById('eraseFlashBtn');
+  if (!autoBtn || !dfuBtn || !eraseBtn) return;
+
+  autoBtn.disabled = !hasSerial || connected;
+  dfuBtn.disabled = !hasSerial;
+  eraseBtn.disabled = !hasFirmwareSelection();
 }
 
 /* ════════════════════════════════════════════
@@ -923,10 +960,32 @@ async function toggleConnect() {
   }
 }
 
+async function openSelectedPort(selectedPort) {
+  port = selectedPort;
+  await port.open({ baudRate: 115200 });
+  connected = true;
+  updateConnChip(true);
+  document.getElementById('consoleInput').disabled = false;
+
+  const dec = new TextDecoderStream();
+  port.readable.pipeTo(dec.writable);
+  reader = dec.readable.getReader();
+
+  const enc = new TextEncoderStream();
+  enc.readable.pipeTo(port.writable);
+  writer = enc.writable.getWriter();
+
+  looping = true;
+  readLoop();
+  await writer.write('\r\n');
+  sysLog('Serial connected.\n');
+  advanceWizard(2);
+}
+
 async function doConnect() {
   if (!('serial' in navigator)) return;
   try {
-    port = await navigator.serial.requestPort({
+    const selectedPort = await navigator.serial.requestPort({
       filters: [
         { usbVendorId: 0x239A },
         { usbVendorId: 0x1915 },
@@ -935,26 +994,56 @@ async function doConnect() {
         { usbVendorId: 0x2341 },
       ]
     });
-    await port.open({ baudRate: 115200 });
-    connected = true;
-    updateConnChip(true);
-    document.getElementById('consoleInput').disabled = false;
-
-    const dec = new TextDecoderStream();
-    port.readable.pipeTo(dec.writable);
-    reader = dec.readable.getReader();
-
-    const enc = new TextEncoderStream();
-    enc.readable.pipeTo(port.writable);
-    writer = enc.writable.getWriter();
-
-    looping = true;
-    readLoop();
-    await writer.write('\r\n');
-    sysLog('Serial connected.\n');
-    advanceWizard(2);
+    await openSelectedPort(selectedPort);
   } catch (err) {
     if (err.name !== 'NotFoundError') sysLog(`Connect error: ${err.message}\n`);
+  } finally {
+    updateActionButtons();
+  }
+}
+
+async function autoConnectNow(silent = false) {
+  if (!('serial' in navigator)) {
+    if (!silent) showFlashAlert('warn', 'Web Serial is unavailable in this browser.');
+    return false;
+  }
+  if (connected) return true;
+
+  try {
+    const ports = await navigator.serial.getPorts();
+    if (ports.length > 0) {
+      await openSelectedPort(ports[0]);
+      if (!silent) showFlashAlert('info', 'Connected to an authorized serial port.');
+      return true;
+    }
+
+    if (!silent) showFlashAlert('info', 'Select your RAK4631 serial port to connect.');
+    await doConnect();
+    if (connected && !silent) showFlashAlert('info', 'Serial connected.');
+    return connected;
+  } catch (err) {
+    if (!silent) showFlashAlert('error', `Auto-connect failed: ${err.message}`);
+    return false;
+  } finally {
+    updateActionButtons();
+  }
+}
+
+async function enterDfuMode() {
+  hideFlashAlert();
+  const ok = await autoConnectNow(true);
+  if (!ok || !writer) {
+    showFlashAlert('warn', 'Could not connect to serial device. Connect manually or use double-reset to enter DFU mode.');
+    return;
+  }
+
+  try {
+    await writer.write('dfu\r\n');
+    sysLog('DFU command sent.\n');
+    showFlashAlert('info', 'DFU command sent. The RAK4631 USB drive should appear in a few seconds.');
+    advanceWizard(2);
+  } catch (err) {
+    showFlashAlert('error', `Failed to enter DFU mode: ${err.message}`);
   }
 }
 
@@ -967,6 +1056,7 @@ async function doDisconnect() {
   updateConnChip(false);
   document.getElementById('consoleInput').disabled = true;
   sysLog('Serial disconnected.\n');
+  updateActionButtons();
 }
 
 function updateConnChip(on) {
@@ -976,6 +1066,7 @@ function updateConnChip(on) {
   label.textContent = on ? 'Connected' : 'Connect device';
   chip.onclick = on ? () => doDisconnect() : () => doConnect();
   chip.title   = on ? 'Click to disconnect' : 'Connect for automatic DFU trigger (optional)';
+  updateActionButtons();
 }
 
 if ('serial' in navigator) {
@@ -1002,7 +1093,7 @@ async function readLoop() {
 /* ════════════════════════════════════════════
    Main flash flow
 ════════════════════════════════════════════ */
-async function startFlash() {
+async function startFlash(eraseBeforeFlash = false) {
   // Reset UI
   document.getElementById('flashBtn').disabled = true;
   document.getElementById('successPanel').classList.remove('show');
@@ -1032,6 +1123,27 @@ async function startFlash() {
     setPStep(2, 'active');
     let dfuTriggered = false;
 
+    // If not already connected, offer a just-in-time serial connect so we can
+    // send the DFU command automatically.
+    if (!connected && ('serial' in navigator)) {
+      showFlashAlert('info',
+        'Select your RAK4631 serial port to trigger DFU automatically. If you cancel, manual DFU instructions will be shown.');
+      await autoConnectNow(true);
+    }
+
+    if (eraseBeforeFlash && connected && writer) {
+      try {
+        sysLog('Sending factory-reset before flash…\n');
+        await writer.write('factory-reset\r\n');
+        await sleep(1800);
+      } catch (e) {
+        sysLog(`Factory reset command failed: ${e.message}\n`);
+      }
+      if (!connected) {
+        await autoConnectNow(true);
+      }
+    }
+
     if (connected && writer) {
       try {
         sysLog('Sending DFU command…\n');
@@ -1051,7 +1163,7 @@ async function startFlash() {
       document.getElementById('manualDfu').classList.add('show');
       document.getElementById('writeDriveSection').classList.add('show');
       showFlashAlert('info',
-        'No device connected. Follow the instructions below and click "Write to device drive" when the RAK4631 USB drive appears.');
+        'Automatic DFU trigger was not available. Follow the instructions below, then click "Write to device drive" when the RAK4631 USB drive appears.');
       return; // Will resume via writeToDrive()
     }
 
@@ -1155,11 +1267,60 @@ async function downloadAsset(asset) {
   throw new Error('Download failed from all sources. ' + attempts.join(' | '));
 }
 
+function supportsFileSystemAccess() {
+  return ('showDirectoryPicker' in window) && window.isSecureContext;
+}
+
+function detectBrowserName() {
+  const ua = navigator.userAgent || '';
+  if (/Edg\//.test(ua)) return 'Microsoft Edge';
+  if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) return 'Google Chrome';
+  if (/Firefox\//.test(ua)) return 'Firefox';
+  if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) return 'Safari';
+  if (/Electron\//.test(ua)) return 'an Electron-based browser';
+  return 'this browser';
+}
+
+function isEmbeddedBrowserContext() {
+  const ua = navigator.userAgent || '';
+  return window.top !== window || /Electron\//.test(ua);
+}
+
+function fileSystemAccessHint() {
+  if (window.location.protocol === 'file:') {
+    return 'Auto-write is disabled because this page was opened as a local file. Open it in Chrome/Edge from http://localhost instead of file://.';
+  }
+  if (isEmbeddedBrowserContext()) {
+    return 'Auto-write is disabled in embedded browser views such as VS Code preview panes. Open the flasher in the external Chrome or Edge app.';
+  }
+  if (!window.isSecureContext) {
+    return 'Auto-write requires a secure context. Open this page in Chrome/Edge via https:// or http://localhost (not file:// or embedded preview panes).';
+  }
+  if (!('showDirectoryPicker' in window)) {
+    return `Auto-write requires the File System Access API. ${detectBrowserName()} does not expose it here; use current Chrome or Edge.`;
+  }
+  return 'Auto-write is unavailable in this browser context.';
+}
+
+function refreshEnvironmentNotice() {
+  const notice = document.getElementById('contextNotice');
+  if (!notice) return;
+
+  if (supportsFileSystemAccess()) {
+    notice.classList.remove('show');
+    notice.innerHTML = '';
+    return;
+  }
+
+  notice.innerHTML = `<strong>ℹ Auto-write unavailable</strong><br>${escHtml(fileSystemAccessHint())}`;
+  notice.classList.add('show');
+}
+
 /* ════════════════════════════════════════════
    File System Access API — write to UF2 drive
 ════════════════════════════════════════════ */
 async function tryWriteToDrive(buf, name) {
-  if (!('showDirectoryPicker' in window)) return false;
+  if (!supportsFileSystemAccess()) return false;
   try {
     const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
     await writeBufferToDir(dir, buf, name);
@@ -1175,9 +1336,8 @@ async function writeToDrive() {
     showFlashAlert('error', 'No firmware loaded yet. Wait for download to complete.');
     return;
   }
-  if (!('showDirectoryPicker' in window)) {
-    showFlashAlert('warn',
-      'Your browser does not support the File System Access API. Please drag the saved .uf2 file onto the RAK4631 drive manually.');
+  if (!supportsFileSystemAccess()) {
+    showFlashAlert('warn', `${fileSystemAccessHint()} A .uf2 file will be downloaded now; drag it onto the RAK4631 drive manually.`);
     saveFile();
     return;
   }
