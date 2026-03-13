@@ -9,7 +9,7 @@ import threading
 import time
 import webbrowser
 
-
+                                                                                                                                                                                                                                                                                                                                                                                
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve the flasher over HTTP for Chrome/Edge Web Serial and File System Access support.")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind to")

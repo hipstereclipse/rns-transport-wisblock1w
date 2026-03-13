@@ -28,6 +28,7 @@
 #include "RNSConsole.h"
 #include "RNSPersistence.h"
 #include <nrf_wdt.h>
+#include <ctype.h>
 
 // ── Global objects (static allocation) ────────────────────
 static RNSIdentity    nodeIdentity;
@@ -38,6 +39,33 @@ static RNSPersistence persist;
 
 static bool radioOk = false;
 static uint32_t nextAnnounceAt = 0;
+
+enum MorseBlinkMode : uint8_t {
+    MORSE_MODE_OFF      = 0,
+    MORSE_MODE_ERRORS   = 1,
+    MORSE_MODE_INCOMING = 2,
+    MORSE_MODE_BOTH     = 3,
+    MORSE_MODE_DEFAULT  = 4,
+};
+
+struct MorseBlinkConfigState {
+    uint8_t mode = MORSE_MODE_ERRORS;
+    char defaultMessage[17] = "SOS";
+};
+
+static MorseBlinkConfigState morseCfg;
+
+static bool morseStepOn[128] = {0};
+static uint16_t morseStepMs[128] = {0};
+static uint8_t morseStepCount = 0;
+static uint8_t morseStepIndex = 0;
+static uint32_t morseStepUntil = 0;
+static bool morsePlaybackActive = false;
+
+static char morseQueue[4][17] = {{0}};
+static uint8_t morseQueueHead = 0;
+static uint8_t morseQueueTail = 0;
+static uint8_t morseQueueCount = 0;
 
 // ── Fault codes (displayed as Morse numeric digit on green LED) ──
 enum FaultCode : uint8_t {
@@ -85,6 +113,236 @@ static const char* morseDigitPattern(uint8_t digit) {
     return (digit <= 9) ? table[digit] : table[0];
 }
 
+static const char* morseCharPattern(char ch) {
+    switch (toupper((unsigned char)ch)) {
+        case 'A': return ".-";
+        case 'B': return "-...";
+        case 'C': return "-.-.";
+        case 'D': return "-..";
+        case 'E': return ".";
+        case 'F': return "..-.";
+        case 'G': return "--.";
+        case 'H': return "....";
+        case 'I': return "..";
+        case 'J': return ".---";
+        case 'K': return "-.-";
+        case 'L': return ".-..";
+        case 'M': return "--";
+        case 'N': return "-.";
+        case 'O': return "---";
+        case 'P': return ".--.";
+        case 'Q': return "--.-";
+        case 'R': return ".-.";
+        case 'S': return "...";
+        case 'T': return "-";
+        case 'U': return "..-";
+        case 'V': return "...-";
+        case 'W': return ".--";
+        case 'X': return "-..-";
+        case 'Y': return "-.--";
+        case 'Z': return "--..";
+        case '0': return "-----";
+        case '1': return ".----";
+        case '2': return "..---";
+        case '3': return "...--";
+        case '4': return "....-";
+        case '5': return ".....";
+        case '6': return "-....";
+        case '7': return "--...";
+        case '8': return "---..";
+        case '9': return "----.";
+        default:  return nullptr;
+    }
+}
+
+static bool morseModeUsesIncoming() {
+    return morseCfg.mode == MORSE_MODE_INCOMING || morseCfg.mode == MORSE_MODE_BOTH || morseCfg.mode == MORSE_MODE_DEFAULT;
+}
+
+static bool morseModeUsesErrors() {
+    return morseCfg.mode == MORSE_MODE_ERRORS || morseCfg.mode == MORSE_MODE_BOTH || morseCfg.mode == MORSE_MODE_DEFAULT;
+}
+
+static const char* morseModeName(uint8_t mode) {
+    switch (mode) {
+        case MORSE_MODE_OFF: return "off";
+        case MORSE_MODE_ERRORS: return "errors";
+        case MORSE_MODE_INCOMING: return "incoming";
+        case MORSE_MODE_BOTH: return "both";
+        case MORSE_MODE_DEFAULT: return "default";
+        default: return "off";
+    }
+}
+
+static bool parseMorseMode(const char* text, uint8_t& outMode) {
+    if (!text || !*text) return false;
+    if (strcmp(text, "off") == 0) outMode = MORSE_MODE_OFF;
+    else if (strcmp(text, "errors") == 0 || strcmp(text, "error") == 0) outMode = MORSE_MODE_ERRORS;
+    else if (strcmp(text, "incoming") == 0 || strcmp(text, "rx") == 0) outMode = MORSE_MODE_INCOMING;
+    else if (strcmp(text, "both") == 0 || strcmp(text, "all") == 0) outMode = MORSE_MODE_BOTH;
+    else if (strcmp(text, "default") == 0) outMode = MORSE_MODE_DEFAULT;
+    else return false;
+    return true;
+}
+
+static void sanitizeMorseMessage(const char* src, char* dst, size_t dstLen) {
+    if (!dst || dstLen == 0) return;
+    dst[0] = '\0';
+    if (!src) return;
+
+    size_t j = 0;
+    bool lastSpace = false;
+    for (size_t i = 0; src[i] != '\0' && j + 1 < dstLen; i++) {
+        char c = src[i];
+        if (isspace((unsigned char)c)) {
+            if (!lastSpace && j > 0) {
+                dst[j++] = ' ';
+                lastSpace = true;
+            }
+            continue;
+        }
+
+        c = (char)toupper((unsigned char)c);
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+            dst[j++] = c;
+            lastSpace = false;
+        }
+    }
+
+    while (j > 0 && dst[j - 1] == ' ') j--;
+    dst[j] = '\0';
+    if (dst[0] == '\0') strncpy(dst, "SOS", dstLen - 1);
+    dst[dstLen - 1] = '\0';
+}
+
+static bool pushMorseStep(bool on, uint16_t durationMs) {
+    if (durationMs == 0) return true;
+    if (morseStepCount > 0 && morseStepOn[morseStepCount - 1] == on) {
+        uint32_t merged = (uint32_t)morseStepMs[morseStepCount - 1] + durationMs;
+        morseStepMs[morseStepCount - 1] = (merged > 60000) ? 60000 : (uint16_t)merged;
+        return true;
+    }
+    if (morseStepCount >= 128) return false;
+    morseStepOn[morseStepCount] = on;
+    morseStepMs[morseStepCount] = durationMs;
+    morseStepCount++;
+    return true;
+}
+
+static bool buildMorseSteps(const char* message) {
+    morseStepCount = 0;
+    morseStepIndex = 0;
+    const uint16_t unitMs = 90;
+
+    if (!message || !*message) return false;
+
+    size_t len = strlen(message);
+    for (size_t i = 0; i < len; i++) {
+        char ch = message[i];
+        if (ch == ' ') {
+            if (!pushMorseStep(false, unitMs * 7)) return false;
+            continue;
+        }
+
+        const char* pattern = morseCharPattern(ch);
+        if (!pattern) continue;
+
+        for (size_t s = 0; pattern[s] != '\0'; s++) {
+            if (!pushMorseStep(true, pattern[s] == '.' ? unitMs : (uint16_t)(unitMs * 3))) return false;
+            if (pattern[s + 1] != '\0') {
+                if (!pushMorseStep(false, unitMs)) return false;
+            }
+        }
+
+        size_t next = i + 1;
+        if (next < len && message[next] != ' ') {
+            if (!pushMorseStep(false, unitMs * 3)) return false;
+        }
+    }
+
+    return morseStepCount > 0;
+}
+
+static void startMorsePlayback(const char* message) {
+    if (!buildMorseSteps(message)) return;
+    morsePlaybackActive = true;
+    morseStepIndex = 0;
+    digitalWrite(PIN_LED_BLUE, morseStepOn[0] ? HIGH : LOW);
+    morseStepUntil = millis() + morseStepMs[0];
+}
+
+static void enqueueMorseMessage(const char* msg) {
+    if (!msg || !*msg) return;
+    if (morseQueueCount >= 4) return;
+
+    strncpy(morseQueue[morseQueueTail], msg, sizeof(morseQueue[morseQueueTail]) - 1);
+    morseQueue[morseQueueTail][sizeof(morseQueue[morseQueueTail]) - 1] = '\0';
+    morseQueueTail = (uint8_t)((morseQueueTail + 1) % 4);
+    morseQueueCount++;
+}
+
+static const char* morseMessageForIncoming() {
+    return (morseCfg.mode == MORSE_MODE_DEFAULT) ? morseCfg.defaultMessage : "MSG";
+}
+
+static const char* morseMessageForError() {
+    return (morseCfg.mode == MORSE_MODE_DEFAULT) ? morseCfg.defaultMessage : "ERR";
+}
+
+static void updateMorseBlinkPlayback(uint32_t now) {
+    if (!morsePlaybackActive) {
+        if (morseQueueCount == 0) return;
+        char msg[17] = {0};
+        strncpy(msg, morseQueue[morseQueueHead], sizeof(msg) - 1);
+        morseQueueHead = (uint8_t)((morseQueueHead + 1) % 4);
+        morseQueueCount--;
+        startMorsePlayback(msg);
+        return;
+    }
+
+    if (now < morseStepUntil) return;
+    morseStepIndex++;
+    if (morseStepIndex >= morseStepCount) {
+        morsePlaybackActive = false;
+        digitalWrite(PIN_LED_BLUE, LOW);
+        return;
+    }
+
+    digitalWrite(PIN_LED_BLUE, morseStepOn[morseStepIndex] ? HIGH : LOW);
+    morseStepUntil = now + morseStepMs[morseStepIndex];
+}
+
+static void blinkMorseTextOnGreen(const char* text) {
+    const uint32_t unitMs = 180;
+    if (!text || !*text) {
+        serviceDelay(unitMs * 8);
+        return;
+    }
+
+    for (size_t i = 0; text[i] != '\0'; i++) {
+        if (text[i] == ' ') {
+            serviceDelay(unitMs * 7);
+            continue;
+        }
+
+        const char* pattern = morseCharPattern(text[i]);
+        if (!pattern) continue;
+
+        for (size_t s = 0; pattern[s] != '\0'; s++) {
+            digitalWrite(PIN_LED_GREEN, HIGH);
+            serviceDelay(pattern[s] == '.' ? unitMs : (unitMs * 3));
+            digitalWrite(PIN_LED_GREEN, LOW);
+            if (pattern[s + 1] != '\0') serviceDelay(unitMs);
+        }
+
+        if (text[i + 1] != '\0' && text[i + 1] != ' ') {
+            serviceDelay(unitMs * 3);
+        }
+    }
+
+    serviceDelay(unitMs * 8);
+}
+
 static void blinkMorseFaultDigit(uint8_t digit) {
     // Unit timing chosen for readability on status LEDs.
     const uint32_t unitMs = 180;
@@ -105,10 +363,14 @@ static void blinkMorseFaultDigit(uint8_t digit) {
 }
 
 static void errorBlinkFault(uint8_t faultCode) {
-    // Morse-code numeric fault loop. Console remains active for DFU/diagnosis.
+    // Fatal error loop. Console remains active for DFU/diagnosis.
     digitalWrite(PIN_LED_BLUE, LOW);
     while (true) {
-        blinkMorseFaultDigit(faultCode % 10);
+        if (morseModeUsesErrors()) {
+            blinkMorseTextOnGreen(morseMessageForError());
+        } else {
+            blinkMorseFaultDigit(faultCode % 10);
+        }
     }
 }
 
@@ -127,6 +389,10 @@ static void queueBluePulseToggles(uint8_t toggles) {
 }
 
 static void updateActivityLed(uint32_t now) {
+    if (morsePlaybackActive) {
+        return;
+    }
+
     if (activityTogglesRemaining == 0) {
         digitalWrite(PIN_LED_BLUE, LOW);
         return;
@@ -152,11 +418,74 @@ void RNSConsole::cmdSave() {
     bool ok1 = persistence->saveIdentity(*identity);
     bool ok2 = persistence->saveConfig(*radio);
     bool ok3 = persistence->saveAnnounceName(transport->getAnnounceName());
-    if (ok1 && ok2 && ok3) {
+    bool ok4 = persistence->saveMorseBlinkConfig(morseCfg.mode, morseCfg.defaultMessage);
+    if (ok1 && ok2 && ok3 && ok4) {
         io->println(F("Configuration saved to flash."));
     } else {
         io->println(F("Save failed (partial or full)."));
     }
+}
+
+void RNSConsole::cmdMorse(const char* args) {
+    while (args && *args == ' ') args++;
+
+    if (!args || *args == '\0') {
+        io->println(F("── Morse Blinker ──"));
+        io->print(F("  mode:    ")); io->println(morseModeName(morseCfg.mode));
+        io->print(F("  default: ")); io->println(morseCfg.defaultMessage);
+        io->println(F("Usage:"));
+        io->println(F("  morse mode <off|errors|incoming|both|default>"));
+        io->println(F("  morse default <message>"));
+        io->println(F("  morse test [message]"));
+        return;
+    }
+
+    if (strncmp(args, "mode", 4) == 0) {
+        args += 4;
+        while (*args == ' ') args++;
+        uint8_t mode = morseCfg.mode;
+        if (!parseMorseMode(args, mode)) {
+            io->println(F("Invalid mode. Use: off, errors, incoming, both, default"));
+            return;
+        }
+        morseCfg.mode = mode;
+        io->print(F("Morse mode -> ")); io->println(morseModeName(morseCfg.mode));
+        io->println(F("Tip: run 'save' to persist."));
+        return;
+    }
+
+    if (strncmp(args, "default", 7) == 0) {
+        args += 7;
+        while (*args == ' ') args++;
+        if (!*args) {
+            io->print(F("Default message: "));
+            io->println(morseCfg.defaultMessage);
+            return;
+        }
+
+        char cleaned[17] = {0};
+        sanitizeMorseMessage(args, cleaned, sizeof(cleaned));
+        strncpy(morseCfg.defaultMessage, cleaned, sizeof(morseCfg.defaultMessage) - 1);
+        morseCfg.defaultMessage[sizeof(morseCfg.defaultMessage) - 1] = '\0';
+        io->print(F("Default Morse message -> "));
+        io->println(morseCfg.defaultMessage);
+        io->println(F("Tip: run 'save' to persist."));
+        return;
+    }
+
+    if (strncmp(args, "test", 4) == 0) {
+        args += 4;
+        while (*args == ' ') args++;
+        char cleaned[17] = {0};
+        if (*args) sanitizeMorseMessage(args, cleaned, sizeof(cleaned));
+        else strncpy(cleaned, morseCfg.defaultMessage, sizeof(cleaned) - 1);
+        enqueueMorseMessage(cleaned);
+        io->print(F("Queued Morse test: "));
+        io->println(cleaned);
+        return;
+    }
+
+    io->println(F("Unknown morse subcommand. Use: mode, default, test"));
 }
 
 void RNSConsole::cmdFactoryReset() {
@@ -248,6 +577,18 @@ void setup() {
         }
     }
 
+    uint8_t loadedMorseMode = morseCfg.mode;
+    char loadedMorseMessage[17] = {0};
+    if (persist.loadMorseBlinkConfig(loadedMorseMode, loadedMorseMessage, sizeof(loadedMorseMessage))) {
+        morseCfg.mode = loadedMorseMode;
+        sanitizeMorseMessage(loadedMorseMessage, morseCfg.defaultMessage, sizeof(morseCfg.defaultMessage));
+        Serial.print(F("[RNS] Morse mode: "));
+        Serial.print(morseModeName(morseCfg.mode));
+        Serial.print(F(" default='"));
+        Serial.print(morseCfg.defaultMessage);
+        Serial.println(F("'"));
+    }
+
     // ── Radio ─────────────────────────────────────────────
     Serial.print(F("[RNS] Radio: "));
     radioOk = radio.begin(&transport);
@@ -323,8 +664,13 @@ void loop() {
     const auto& s = transport.getStats();
     if (s.rxPackets > lastRxCount) {
         uint32_t delta = s.rxPackets - lastRxCount;
-        if (delta > 3) delta = 3;
-        queueBluePulseToggles((uint8_t)(delta * 2));
+        if (morseModeUsesIncoming()) {
+            (void)delta;
+            enqueueMorseMessage(morseMessageForIncoming());
+        } else {
+            if (delta > 3) delta = 3;
+            queueBluePulseToggles((uint8_t)(delta * 2));
+        }
         lastRxCount = s.rxPackets;
     }
 
@@ -335,6 +681,7 @@ void loop() {
         lastAnnounceCount = s.announces;
     }
 
+    updateMorseBlinkPlayback(now);
     updateActivityLed(now);
 
     // Periodic self-announce so peers can discover this node
@@ -343,6 +690,7 @@ void loop() {
             Serial.println(F("[RNS] Announce sent"));
         } else {
             Serial.println(F("[RNS] Announce send failed"));
+            if (morseModeUsesErrors()) enqueueMorseMessage(morseMessageForError());
         }
         scheduleNextAnnounce(now);
     }
