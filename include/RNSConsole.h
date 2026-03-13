@@ -14,6 +14,10 @@
 #include "RNSRadio.h"
 #include "RNSIdentity.h"
 
+#ifndef NATIVE_TEST
+extern "C" char* sbrk(int incr);
+#endif
+
 // Forward declaration for persistence (optional)
 class RNSPersistence;
 
@@ -431,7 +435,10 @@ private:
 
 #ifndef NATIVE_TEST
     uint32_t freeMemory() {
-        return 0;
+        uintptr_t heapEnd = (uintptr_t)sbrk(0);
+        uintptr_t stackPtr = (uintptr_t)__get_MSP();
+        if (stackPtr <= heapEnd) return 0;
+        return (uint32_t)(stackPtr - heapEnd);
     }
 #endif
 };
