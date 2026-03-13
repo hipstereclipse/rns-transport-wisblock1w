@@ -805,7 +805,7 @@
     <div class="version-tools" id="versionTools" style="display:none;">
       <label>
         <input type="checkbox" id="showOlderBuilds" onchange="toggleOlderBuilds(this.checked)">
-        Show older builds
+        Show older + legacy builds
       </label>
       <span id="versionCountHint"></span>
     </div>
@@ -956,10 +956,12 @@
 const REPO = 'hipstereclipse/rns-transport-wisblock1w';
 const RAW_FIRMWARE_FALLBACK_URL = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2`;
 const MAX_RECENT_RELEASES = 8;
+const MIN_SUPPORTED_MAJOR = 1;
 
 let releases      = [];
 let allReleases   = [];
 let showOlderBuilds = false;
+let mainReleaseEntry = null;
 let selectedAsset = null;   // GitHub release asset object
 let firmwareBlob  = null;   // ArrayBuffer ready to write
 let firmwareName  = '';
@@ -1031,6 +1033,22 @@ async function fetchReleases() {
   sel.innerHTML = '<option value="">Loading…</option>';
   sel.disabled = true;
 
+  const branchAssetUrl = `${RAW_FIRMWARE_FALLBACK_URL}?_=${Date.now()}`;
+  mainReleaseEntry = {
+    tag_name: 'main',
+    name: 'Latest main branch build',
+    prerelease: true,
+    published_at: new Date().toISOString(),
+    _isMainBranchOption: true,
+    assets: [{
+      name: 'latest.uf2',
+      state: 'uploaded',
+      browser_download_url: branchAssetUrl,
+      updated_at: new Date().toISOString(),
+      size: 0
+    }]
+  };
+
   try {
     const res = await fetch(
       `https://api.github.com/repos/${REPO}/releases?per_page=30&_=${Date.now()}`,
@@ -1051,23 +1069,10 @@ async function fetchReleases() {
       const tools = document.getElementById('versionTools');
       if (tools) tools.style.display = 'none';
 
-      const branchAssetUrl = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2?_=${Date.now()}`;
-      releases = [{
-        tag_name: 'main',
-        name: 'Latest main branch build',
-        prerelease: true,
-        published_at: new Date().toISOString(),
-        assets: [{
-          name: 'latest.uf2',
-          state: 'uploaded',
-          browser_download_url: branchAssetUrl,
-          updated_at: new Date().toISOString(),
-          size: 0
-        }]
-      }];
+      releases = [mainReleaseEntry];
 
       document.getElementById('noReleasesAlert').classList.add('show');
-      document.getElementById('releaseSub').textContent = 'Using latest branch firmware (fallback).';
+      document.getElementById('releaseSub').textContent = 'Using latest main build (fallback).';
       sel.innerHTML = '<option value="0">main  —  Latest branch firmware</option>';
       sel.disabled = false;
       sel.value = '0';
@@ -1094,22 +1099,9 @@ async function fetchReleases() {
     const tools = document.getElementById('versionTools');
     if (tools) tools.style.display = 'none';
 
-    const branchAssetUrl = `https://raw.githubusercontent.com/${REPO}/main/flasher/firmware/latest.uf2?_=${Date.now()}`;
-    releases = [{
-      tag_name: 'main',
-      name: 'Latest main branch build',
-      prerelease: true,
-      published_at: new Date().toISOString(),
-      assets: [{
-        name: 'latest.uf2',
-        state: 'uploaded',
-        browser_download_url: branchAssetUrl,
-        updated_at: new Date().toISOString(),
-        size: 0
-      }]
-    }];
+    releases = [mainReleaseEntry];
 
-    document.getElementById('releaseSub').textContent = 'GitHub releases unavailable; using branch firmware fallback.';
+    document.getElementById('releaseSub').textContent = 'GitHub releases unavailable; using latest main build.';
     sel.innerHTML = '<option value="0">main  —  Latest branch firmware</option>';
     sel.disabled = false;
     sel.value = '0';
@@ -1120,7 +1112,19 @@ async function fetchReleases() {
   }
 }
 
+function parseSemverFromTag(tag) {
+  const m = String(tag || '').match(/v?(\d+)\.(\d+)\.(\d+)/i);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
+}
+
+function isLegacyRelease(rel) {
+  const v = parseSemverFromTag(rel && rel.tag_name);
+  return !!(v && v.major < MIN_SUPPORTED_MAJOR);
+}
+
 function formatReleaseOption(rel) {
+  if (rel && rel._isMainBranchOption) return 'main  —  Latest build from flasher/firmware/latest.uf2';
   const tag = rel.tag_name || 'untagged';
   const name = (rel.name || '').trim();
   const suffix = rel.prerelease ? ' (pre)' : '';
@@ -1135,7 +1139,13 @@ function applyReleaseList() {
   const releaseSub = document.getElementById('releaseSub');
 
   const total = allReleases.length;
-  releases = showOlderBuilds ? [...allReleases] : allReleases.slice(0, MAX_RECENT_RELEASES);
+  const legacyCount = allReleases.filter(isLegacyRelease).length;
+  const nonLegacy = allReleases.filter(r => !isLegacyRelease(r));
+  const base = showOlderBuilds
+    ? [...allReleases]
+    : (nonLegacy.length ? nonLegacy : allReleases).slice(0, MAX_RECENT_RELEASES);
+
+  releases = mainReleaseEntry ? [mainReleaseEntry, ...base] : base;
 
   sel.innerHTML = '';
   releases.forEach((rel, i) => {
@@ -1146,7 +1156,8 @@ function applyReleaseList() {
   });
 
   sel.disabled = releases.length === 0;
-  tools.style.display = total > MAX_RECENT_RELEASES ? 'flex' : 'none';
+  const canExpandList = (total > MAX_RECENT_RELEASES) || (legacyCount > 0);
+  tools.style.display = canExpandList ? 'flex' : 'none';
 
   if (total === 0) {
     releaseSub.textContent = 'No firmware releases available.';
@@ -1157,11 +1168,12 @@ function applyReleaseList() {
   }
 
   if (showOlderBuilds || total <= MAX_RECENT_RELEASES) {
-    releaseSub.textContent = `${total} release${total === 1 ? '' : 's'} available`;
-    if (hint) hint.textContent = total > MAX_RECENT_RELEASES ? `Showing all ${total}` : '';
+    releaseSub.textContent = `${total} tagged release${total === 1 ? '' : 's'} available + main`; 
+    if (hint) hint.textContent = total > MAX_RECENT_RELEASES ? `Showing all ${total}${legacyCount ? ` (${legacyCount} legacy)` : ''}` : '';
   } else {
-    releaseSub.textContent = `${total} release${total === 1 ? '' : 's'} available`;
-    if (hint) hint.textContent = `Showing ${releases.length} recent`;
+    const shownTagged = Math.max(0, releases.length - (mainReleaseEntry ? 1 : 0));
+    releaseSub.textContent = `${total} tagged release${total === 1 ? '' : 's'} available + main`;
+    if (hint) hint.textContent = `Showing ${shownTagged} recent${legacyCount ? ` · hiding ${legacyCount} legacy` : ''}`;
   }
 
   sel.value = '0';
@@ -1201,6 +1213,13 @@ function onVersionChange() {
     document.getElementById('versionPrerelease').innerHTML = rel.prerelease
       ? '<span class="badge badge-yellow">pre-release</span>'
       : '<span class="badge badge-green">stable</span>';
+
+    if (rel._isMainBranchOption) {
+      document.getElementById('releaseSub').textContent = 'Selected source: main branch latest.uf2 (recommended for newest fixes).';
+      document.getElementById('versionPrerelease').innerHTML = '<span class="badge badge-blue">main branch</span>';
+    } else {
+      document.getElementById('releaseSub').textContent = `Selected source: GitHub release ${rel.tag_name || ''}`.trim();
+    }
   }
 
   // If this release has multiple firmware assets, let user pick
