@@ -172,6 +172,9 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
 #ifndef NATIVE_TEST
     Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
     Serial.print(F(" STEP10 radio->transmit end ok=")); Serial.println(ok ? F("true") : F("false"));
+    Serial.print(F("[ANNDBG] #")); Serial.print(dbgId);
+    Serial.print(F(" STEP10b lastTxState=")); Serial.print(radio->lastTxState);
+    Serial.print(F(" lastTxDtMs=")); Serial.println(radio->lastTxDurationMs);
 #endif
 
     if (announceTx != originalTx) {

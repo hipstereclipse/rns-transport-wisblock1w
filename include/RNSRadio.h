@@ -20,6 +20,9 @@
 #include <RadioLib.h>
 #endif
 
+#define RNS_TX_ERR_INVALID_INPUT   (-9001)
+#define RNS_TX_ERR_CAD_NOT_FREE    (-9002)
+
 class RNSRadio {
 public:
 #ifndef NATIVE_TEST
@@ -34,6 +37,8 @@ public:
     bool          txActive = false;
     float         lastRSSI = 0.0f;
     float         lastSNR  = 0.0f;
+    int           lastTxState = 0;
+    uint32_t      lastTxDurationMs = 0;
 
     // Runtime-adjustable parameters (shadows of hardware state)
     float curFreqMHz = LORA_FREQ_MHZ;
@@ -156,7 +161,11 @@ public:
      * keeping the total worst-case time well under WDT_TIMEOUT_SEC.
      */
     bool transmit(const uint8_t* data, uint16_t len) {
-        if (!data || len == 0 || len > RNS_MTU) return false;
+        if (!data || len == 0 || len > RNS_MTU) {
+            lastTxState = RNS_TX_ERR_INVALID_INPUT;
+            lastTxDurationMs = 0;
+            return false;
+        }
 
 #ifndef NATIVE_TEST
         const bool dbgAnnounce = ((data[0] & 0x03) == ANNOUNCE);
@@ -198,7 +207,11 @@ public:
                 }
                 delay(random(10, 35));
             }
-            if (!channelFree) return false;
+            if (!channelFree) {
+                lastTxState = RNS_TX_ERR_CAD_NOT_FREE;
+                lastTxDurationMs = millis() - txStartMs;
+                return false;
+            }
         }
 
         uint8_t txBuf[RNS_MTU + 1];
@@ -216,6 +229,22 @@ public:
         int state = lora.transmit(txData, txLen);
         txActive = false;
 
+        if (dbgAnnounce && state != RADIOLIB_ERR_NONE) {
+            Serial.print(F("[ANNDBG] RADIO TX recovery retry, firstState="));
+            Serial.println(state);
+            lora.standby();
+            delay(12);
+            lora.startReceive();
+            delay(20);
+
+            txActive = true;
+            state = lora.transmit(txData, txLen);
+            txActive = false;
+
+            Serial.print(F("[ANNDBG] RADIO TX retry state="));
+            Serial.println(state);
+        }
+
         if (dbgAnnounce) {
             Serial.print(F("[ANNDBG] RADIO TX state="));
             Serial.print(state);
@@ -226,8 +255,12 @@ public:
         }
 
         lora.startReceive();
+        lastTxState = state;
+        lastTxDurationMs = millis() - txStartMs;
         return (state == RADIOLIB_ERR_NONE);
 #else
+        lastTxState = 0;
+        lastTxDurationMs = 0;
         return true;
 #endif
     }

@@ -238,6 +238,8 @@ private:
         io->print(F("  Preamble:  ")); io->println(radio->curPreamble);
         io->print(F("  Last RSSI: ")); io->print(radio->lastRSSI); io->println(F(" dBm"));
         io->print(F("  Last SNR:  ")); io->print(radio->lastSNR); io->println(F(" dB"));
+        io->print(F("  Last TX:   state=")); io->print(radio->lastTxState);
+        io->print(F(", dt=")); io->print(radio->lastTxDurationMs); io->println(F(" ms"));
     }
 
     // ── set <param> <value> ───────────────────────────────
