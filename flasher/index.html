@@ -791,14 +791,11 @@
           </div>
         </div>
         <div class="repeater-actions" style="margin-top:0.55rem;">
-          <button class="qbtn" onclick="applyConnectivityProfileToForm(true)">Apply profile</button>
-          <button class="qbtn" onclick="loadSettingsFromStatus()">Load from live status</button>
-          <button class="qbtn" onclick="applyRepeaterSettings(false)">Apply settings</button>
           <button class="qbtn" onclick="applyRepeaterSettings(true)">Apply + Save</button>
-          <button class="qbtn" onclick="runRepeaterAction('radio')">Read current radio config</button>
+          <button class="qbtn" onclick="runRepeaterAction('radio')">Refresh from device</button>
         </div>
-        <div class="repeater-panel-foot" id="repProfileHint">Select a profile, tweak values if needed, then Apply + Save.</div>
-        <div class="repeater-panel-foot">Tip: click Save config after applying settings to persist them across reboots.</div>
+        <div class="repeater-panel-foot" id="repProfileHint">Select profile, tweak if needed, then Apply + Save.</div>
+        <div class="repeater-panel-foot">Live status auto-fills empty fields when available.</div>
       </div>
 
       <div class="repeater-block">
