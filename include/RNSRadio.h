@@ -172,48 +172,33 @@ public:
         // CAD at SF8/BW125 completes in ~17 ms; 200 ms is generous.
         static const uint32_t CAD_TIMEOUT_MS = 200;
 
-        bool channelFree = false;
-        for (int attempt = 0; attempt < 8; attempt++) {
-            if (dbgAnnounce) {
-                Serial.print(F("[ANNDBG] RADIO CAD attempt="));
-                Serial.println(attempt + 1);
-            }
-            if (lora.startChannelScan() != RADIOLIB_ERR_NONE) {
-                if (dbgAnnounce) {
-                    Serial.println(F("[ANNDBG] RADIO CAD startChannelScan failed"));
+        // Announce path: skip CAD to avoid repeated startChannelScan failures
+        // observed on some boots, which can trigger watchdog/power resets.
+        bool channelFree = dbgAnnounce;
+
+        if (dbgAnnounce) {
+            Serial.println(F("[ANNDBG] RADIO CAD bypass for ANNOUNCE"));
+        }
+
+        if (!channelFree) {
+            for (int attempt = 0; attempt < 4; attempt++) {
+                if (lora.startChannelScan() != RADIOLIB_ERR_NONE) {
+                    lora.startReceive();
+                    delay(15);
+                    continue;
                 }
-                delay(random(10, 50));
-                continue;
-            }
-            uint32_t cadStart = millis();
-            bool cadTimedOut = false;
-            while (!digitalRead(PIN_LORA_DIO1)) {
-                if (millis() - cadStart >= CAD_TIMEOUT_MS) {
-                    cadTimedOut = true;
+                uint32_t cadStart = millis();
+                while (!digitalRead(PIN_LORA_DIO1)) {
+                    if (millis() - cadStart >= CAD_TIMEOUT_MS) break;
+                }
+                int cad = lora.getChannelScanResult();
+                if (cad == RADIOLIB_CHANNEL_FREE) {
+                    channelFree = true;
                     break;
                 }
+                delay(random(10, 35));
             }
-            int cad = lora.getChannelScanResult();
-            if (dbgAnnounce) {
-                Serial.print(F("[ANNDBG] RADIO CAD result="));
-                Serial.print(cad);
-                Serial.print(F(" timeout="));
-                Serial.print(cadTimedOut ? F("yes") : F("no"));
-                Serial.print(F(" dtMs="));
-                Serial.println(millis() - cadStart);
-            }
-            if (cad == RADIOLIB_CHANNEL_FREE) {
-                channelFree = true;
-                break;
-            }
-            delay(random(10, 50));
-        }
-        if (!channelFree) {
-            if (dbgAnnounce) {
-                Serial.print(F("[ANNDBG] RADIO TX abort: channel not free dtMs="));
-                Serial.println(millis() - txStartMs);
-            }
-            return false;
+            if (!channelFree) return false;
         }
 
         uint8_t txBuf[RNS_MTU + 1];
