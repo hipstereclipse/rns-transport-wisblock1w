@@ -804,9 +804,49 @@ private:
             io->println(F("OFF (raw Reticulum frames)"));
         #endif
 
-        // 7. Re-enter RX and report
+        // 7. Re-enter RX and verify IRQ setup
         int rc = radio->lora.startReceive();
         io->print(F("  Re-startReceive rc: ")); io->println(rc);
+
+        // Verify IRQ is clean after startReceive
+        uint32_t postIrq = radio->lora.getIrqFlags();
+        io->print(F("  IRQ after RX start: 0x")); io->println(postIrq, HEX);
+        if (postIrq != 0) {
+            io->println(F("  ⚠ IRQ flags not clean — possible config issue"));
+        }
+
+        // Quick preamble scan: enable all IRQ sources and poll for 3 seconds
+        io->println(F("  Quick preamble scan (3s)..."));
+        RadioLibIrqFlags_t allFlags = (1UL << RADIOLIB_IRQ_RX_DONE)
+            | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)
+            | (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID)
+            | (1UL << RADIOLIB_IRQ_HEADER_VALID)
+            | (1UL << RADIOLIB_IRQ_HEADER_ERR)
+            | (1UL << RADIOLIB_IRQ_CRC_ERR)
+            | (1UL << RADIOLIB_IRQ_TIMEOUT);
+        radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
+        uint32_t scanEnd = millis() + 3000;
+        uint32_t scanPreambles = 0;
+        uint32_t scanRxDone = 0;
+        while (millis() < scanEnd) {
+            uint32_t irq = radio->lora.getIrqFlags();
+            if (irq & 0x0004) scanPreambles++;
+            if (irq & 0x0002) scanRxDone++;
+            if (irq) {
+                radio->lora.clearIrqFlags(0xFFFF);
+            }
+            delay(1);
+        }
+        io->print(F("    Preambles: ")); io->println(scanPreambles);
+        io->print(F("    RxDone: ")); io->println(scanRxDone);
+        if (scanPreambles == 0) {
+            io->println(F("    ✗ No LoRa activity on this freq/SF/BW"));
+        } else {
+            io->println(F("    ✓ LoRa preambles detected!"));
+        }
+
+        // Restore normal RX mode
+        radio->lora.startReceive();
 #endif
     }
 
@@ -830,7 +870,17 @@ private:
         delay(50);
         while (io->available()) io->read();
 
-        radio->lora.startReceive();
+        // Enable ALL IRQ sources for monitoring — default startReceive()
+        // sets irqMask=0x0272 which omits PreambleDetected and SyncWordValid,
+        // making those counters always read 0.
+        RadioLibIrqFlags_t monFlags = (1UL << RADIOLIB_IRQ_RX_DONE)
+            | (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)
+            | (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID)
+            | (1UL << RADIOLIB_IRQ_HEADER_VALID)
+            | (1UL << RADIOLIB_IRQ_HEADER_ERR)
+            | (1UL << RADIOLIB_IRQ_CRC_ERR)
+            | (1UL << RADIOLIB_IRQ_TIMEOUT);
+        radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, monFlags, monFlags, 0);
         uint32_t prevIrq = 0;
         uint32_t end = millis() + (uint32_t)seconds * 1000;
         uint32_t ticks = 0;
@@ -1174,12 +1224,18 @@ private:
         readReg(0x0702, plReg, 2);
         io->print(plReg[0], HEX); io->print(' '); io->println(plReg[1], HEX);
 
-        // 5. DIO / IRQ mask (0x0580)
-        uint8_t irqMask[4];
-        readReg(0x0580, irqMask, 4);
-        io->print(F("  IRQ mask @0x580: "));
-        for (int i = 0; i < 4; i++) { if (irqMask[i] < 0x10) io->print('0'); io->print(irqMask[i], HEX); io->print(' '); }
-        io->println();
+        // 5. IRQ status via GetIrqStatus opcode (reliable, unlike register reads)
+        uint32_t irqNow = radio->lora.getIrqFlags();
+        io->print(F("  IRQ status: 0x")); io->println(irqNow, HEX);
+        if (irqNow & 0x0002) io->println(F("    [RX_DONE]"));
+        if (irqNow & 0x0004) io->println(F("    [PREAMBLE]"));
+        if (irqNow & 0x0008) io->println(F("    [SYNCWORD]"));
+        if (irqNow & 0x0010) io->println(F("    [HDR_VALID]"));
+        if (irqNow & 0x0020) io->println(F("    [HDR_ERR]"));
+        if (irqNow & 0x0040) io->println(F("    [CRC_ERR]"));
+        if (irqNow & 0x0200) io->println(F("    [TIMEOUT]"));
+        io->println(F("  Expected irqMask: 0x0272 (RxDone|HdrValid|HdrErr|CrcErr|Timeout)"));
+        io->println(F("  Note: Preamble (0x04) and Sync (0x08) NOT in default mask"));
 
         // 6. Confirm RX via GetStatus
         SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
