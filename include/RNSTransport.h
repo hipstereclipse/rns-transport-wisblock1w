@@ -147,7 +147,7 @@ public:
             return;
         }
 
-        if (!RNSIdentity::validateAnnounce(pkt.data, pkt.dataLen)) {
+        if (!RNSIdentity::validateAnnounce(pkt.destHash, pkt.data, pkt.dataLen)) {
             stats.invalidPackets++;
             return;
         }

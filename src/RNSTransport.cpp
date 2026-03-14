@@ -84,13 +84,15 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     }
 
     // Reticulum wire format: pubkey|nameHash|randomHash|SIGNATURE|appData
-    // Signed data = pubkey + nameHash + randomHash + appData
+    // Signed data = destHash + pubkey + nameHash + randomHash + appData
+    // The destHash is prepended per Reticulum spec but NOT in wire payload.
     static uint8_t signedBuf[RNS_MTU];
-    memcpy(signedBuf, announceData, baseLen);
+    memcpy(signedBuf, cachedTransportDestHash, RNS_ADDR_LEN);
+    memcpy(signedBuf + RNS_ADDR_LEN, announceData, baseLen);
     if (announceAppData && announceAppDataLen > 0) {
-        memcpy(signedBuf + baseLen, announceAppData, announceAppDataLen);
+        memcpy(signedBuf + RNS_ADDR_LEN + baseLen, announceAppData, announceAppDataLen);
     }
-    identity->sign(signedBuf, baseLen + announceAppDataLen, announceData + baseLen);
+    identity->sign(signedBuf, RNS_ADDR_LEN + baseLen + announceAppDataLen, announceData + baseLen);
 
     // [appData after signature]
     if (announceAppData && announceAppDataLen > 0) {

@@ -105,10 +105,10 @@ public:
      *
      * @return true if signature is valid.
      */
-    static bool validateAnnounce(const uint8_t* data, uint16_t len) {
+    static bool validateAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len) {
         const uint16_t minLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN
                               + RNS_RANDOM_BLOB_LEN + RNS_SIGLENGTH;
-        if (!data || len < minLen) return false;
+        if (!destHash || !data || len < minLen) return false;
 
         // Reticulum wire format: pubkey|nameHash|randomHash|SIGNATURE|appData
         // Signature is at fixed offset, NOT at end of data.
@@ -116,16 +116,18 @@ public:
         const uint8_t* signature  = &data[sigOffset];
         const uint8_t* signingKey = &data[32];   // Ed25519 pub at bytes 32..63
 
-        // Signed data = pubkey + nameHash + randomHash + appData (skip signature)
+        // Signed data = destHash + pubkey + nameHash + randomHash + appData (skip signature)
+        // The destHash from the packet header is prepended per Reticulum spec.
         const uint16_t appDataOffset = sigOffset + RNS_SIGLENGTH;
         const uint16_t appDataLen = (len > appDataOffset) ? (len - appDataOffset) : 0;
-        const uint16_t signedLen  = sigOffset + appDataLen;
+        const uint16_t signedLen  = RNS_ADDR_LEN + sigOffset + appDataLen;
         if (signedLen > RNS_MTU) return false;
 
         uint8_t signedBuf[RNS_MTU];
-        memcpy(signedBuf, data, sigOffset);
+        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
+        memcpy(signedBuf + RNS_ADDR_LEN, data, sigOffset);
         if (appDataLen > 0) {
-            memcpy(signedBuf + sigOffset, data + appDataOffset, appDataLen);
+            memcpy(signedBuf + RNS_ADDR_LEN + sigOffset, data + appDataOffset, appDataLen);
         }
 
         return Ed25519::verify(signature, signingKey, signedBuf, signedLen);

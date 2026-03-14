@@ -77,8 +77,9 @@ int main(){
     // Validate announce edge cases
     {
         uint8_t short_data[10]={};
-        chk(!RNSIdentity::validateAnnounce(short_data,10), "reject short ann");
-        chk(!RNSIdentity::validateAnnounce(nullptr,200), "reject null ann");
+        uint8_t dummy_hash[RNS_ADDR_LEN]={};
+        chk(!RNSIdentity::validateAnnounce(dummy_hash, short_data,10), "reject short ann");
+        chk(!RNSIdentity::validateAnnounce(dummy_hash, nullptr,200), "reject null ann");
     }
 
     printf("\n%d passed, %d failed\n",ok,bad);
