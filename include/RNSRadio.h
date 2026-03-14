@@ -31,6 +31,7 @@ public:
 #endif
 
     RNSTransport* transport = nullptr;
+    Stream*       dumpStream = nullptr;  // non-null → hex-dump every RX packet
 
     volatile bool rxFlag   = false;
     bool          txActive = false;
@@ -769,6 +770,24 @@ public:
         if (state == RADIOLIB_ERR_NONE) {
             lastRSSI = lora.getRSSI();
             lastSNR  = lora.getSNR();
+
+            // Verbose packet hex dump when enabled via 'pktdump' cmd
+            if (dumpStream) {
+                dumpStream->print(F("\r\n[PKTDUMP] len="));
+                dumpStream->print(len);
+                dumpStream->print(F(" RSSI="));
+                dumpStream->print(lastRSSI, 1);
+                dumpStream->print(F(" SNR="));
+                dumpStream->print(lastSNR, 1);
+                dumpStream->print(F("\r\n  HEX: "));
+                for (int i = 0; i < len; i++) {
+                    if (buf[i] < 0x10) dumpStream->print('0');
+                    dumpStream->print(buf[i], HEX);
+                    if (i < len - 1) dumpStream->print(' ');
+                }
+                dumpStream->println();
+            }
+
             const uint8_t* payload = buf;
             uint16_t payloadLen = (uint16_t)len;
 #if RNODE_LORA_HEADER_ENABLED

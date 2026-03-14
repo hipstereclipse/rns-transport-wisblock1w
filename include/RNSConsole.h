@@ -33,6 +33,7 @@ public:
     RNSIdentity*    identity    = nullptr;
     RNSPersistence* persistence = nullptr;
     Stream*         io          = nullptr;
+    bool            pktDumpEnabled = false;
 
     char    cmdBuf[128];
     uint8_t cmdPos = 0;
@@ -117,6 +118,11 @@ private:
         else if (strcmp(command, "reinit")    == 0) cmdReinit();
         else if (strcmp(command, "pintest")   == 0) cmdPintest();
         else if (strcmp(command, "version")   == 0) cmdVersion();
+        else if (strcmp(command, "rxdiag")    == 0) cmdRxDiag();
+        else if (strcmp(command, "irqmon")    == 0) cmdIrqMon(args);
+        else if (strcmp(command, "rxraw")     == 0) cmdRxRaw();
+        else if (strcmp(command, "txraw")     == 0) cmdTxRaw(args);
+        else if (strcmp(command, "pktdump")   == 0) cmdPktDump(args);
         else if (strcmp(command, "help")      == 0) cmdHelp();
         else {
             io->print(F("Unknown: "));
@@ -725,6 +731,303 @@ private:
 #endif
     }
 
+    // ── rxdiag: SX1262 RX state deep dive ─────────────────
+    void cmdRxDiag() {
+#ifndef NATIVE_TEST
+        if (!radio || !radio->hwReady) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        io->println(F("── RX Diagnostic ──"));
+
+        // 1. Chip operating mode via GetStatus SPI command
+        SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+        digitalWrite(PIN_LORA_NSS, LOW);
+        delayMicroseconds(200);
+        SPI.transfer(0xC0); // GetStatus opcode
+        uint8_t status = SPI.transfer(0x00);
+        digitalWrite(PIN_LORA_NSS, HIGH);
+        SPI.endTransaction();
+
+        uint8_t chipMode = (status >> 4) & 0x07;
+        uint8_t cmdStatus = (status >> 1) & 0x07;
+        const char* modeStr;
+        switch (chipMode) {
+            case 2: modeStr = "STBY_RC"; break;
+            case 3: modeStr = "STBY_XOSC"; break;
+            case 4: modeStr = "FS"; break;
+            case 5: modeStr = "RX"; break;
+            case 6: modeStr = "TX"; break;
+            default: modeStr = "UNKNOWN"; break;
+        }
+        io->print(F("  ChipMode: ")); io->print(chipMode);
+        io->print(F(" (")); io->print(modeStr); io->println(F(")"));
+        io->print(F("  CmdStatus: ")); io->println(cmdStatus);
+
+        // 2. IRQ flags
+        uint32_t irq = radio->lora.getIrqFlags();
+        io->print(F("  IRQ flags: 0x")); io->println(irq, HEX);
+        if (irq & (1UL << RADIOLIB_IRQ_TX_DONE))            io->println(F("    [TX_DONE]"));
+        if (irq & (1UL << RADIOLIB_IRQ_RX_DONE))            io->println(F("    [RX_DONE]"));
+        if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED))  io->println(F("    [PREAMBLE]"));
+        if (irq & (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID))    io->println(F("    [SYNCWORD]"));
+        if (irq & (1UL << RADIOLIB_IRQ_HEADER_VALID))       io->println(F("    [HDR_VALID]"));
+        if (irq & (1UL << RADIOLIB_IRQ_HEADER_ERR))         io->println(F("    [HDR_ERR]"));
+        if (irq & (1UL << RADIOLIB_IRQ_CRC_ERR))            io->println(F("    [CRC_ERR]"));
+        if (irq & (1UL << RADIOLIB_IRQ_CAD_DONE))           io->println(F("    [CAD_DONE]"));
+        if (irq & (1UL << RADIOLIB_IRQ_CAD_DETECTED))       io->println(F("    [CAD_DET]"));
+        if (irq & (1UL << RADIOLIB_IRQ_TIMEOUT))            io->println(F("    [TIMEOUT]"));
+
+        // 3. BUSY pin
+        io->print(F("  BUSY(P")); io->print(PIN_LORA_BUSY);
+        io->print(F("): ")); io->println(digitalRead(PIN_LORA_BUSY));
+
+        // 4. rxFlag / pollMode
+        io->print(F("  rxFlag: ")); io->println(radio->rxFlag ? "true" : "false");
+        io->print(F("  pollMode: ")); io->println(radio->pollMode ? "true" : "false");
+
+        // 5. Packet buffer check
+        int pktLen = radio->lora.getPacketLength();
+        io->print(F("  Pending pktLen: ")); io->println(pktLen);
+
+        // 6. Current radio params
+        io->print(F("  Freq: ")); io->print(radio->curFreqMHz, 1); io->println(F(" MHz"));
+        io->print(F("  SF: ")); io->println(radio->curSF);
+        io->print(F("  BW: ")); io->print(radio->curBwKHz, 1); io->println(F(" kHz"));
+        io->print(F("  Sync: 0x")); io->println(radio->curSyncWord, HEX);
+        io->print(F("  RNODE header: "));
+        #if RNODE_LORA_HEADER_ENABLED
+            io->println(F("ON (1-byte prefix stripped on RX, added on TX)"));
+        #else
+            io->println(F("OFF (raw Reticulum frames)"));
+        #endif
+
+        // 7. Re-enter RX and report
+        int rc = radio->lora.startReceive();
+        io->print(F("  Re-startReceive rc: ")); io->println(rc);
+#endif
+    }
+
+    // ── irqmon: Monitor IRQ register for N seconds ────────
+    void cmdIrqMon(const char* args) {
+#ifndef NATIVE_TEST
+        if (!radio || !radio->hwReady) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        int seconds = 10;
+        if (args && args[0]) seconds = atoi(args);
+        if (seconds < 1) seconds = 1;
+        if (seconds > 60) seconds = 60;
+
+        io->print(F("── IRQ Monitor (")); io->print(seconds);
+        io->println(F("s) — press any key to stop ──"));
+        io->println(F("  Watching for: PREAMBLE, SYNCWORD, RX_DONE, CRC_ERR, TIMEOUT, HDR_ERR"));
+
+        radio->lora.startReceive();
+        uint32_t prevIrq = 0;
+        uint32_t end = millis() + (uint32_t)seconds * 1000;
+        uint32_t ticks = 0;
+        uint32_t preambles = 0, syncs = 0, rxDone = 0, crcErr = 0, timeouts = 0, hdrErr = 0;
+
+        while (millis() < end) {
+            if (io->available()) break;  // key pressed
+            uint32_t irq = radio->lora.getIrqFlags();
+            if (irq != prevIrq) {
+                uint32_t dt = millis();
+                io->print(F("  [")); io->print(dt / 1000); io->print(F(".")); 
+                io->print((dt % 1000) / 100); io->print(F("s] IRQ=0x")); io->print(irq, HEX);
+                if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED))  { io->print(F(" PREAMBLE")); preambles++; }
+                if (irq & (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID))    { io->print(F(" SYNC")); syncs++; }
+                if (irq & (1UL << RADIOLIB_IRQ_HEADER_VALID))       io->print(F(" HDR_OK"));
+                if (irq & (1UL << RADIOLIB_IRQ_RX_DONE))            { io->print(F(" RX_DONE")); rxDone++; }
+                if (irq & (1UL << RADIOLIB_IRQ_CRC_ERR))            { io->print(F(" CRC_ERR")); crcErr++; }
+                if (irq & (1UL << RADIOLIB_IRQ_HEADER_ERR))         { io->print(F(" HDR_ERR")); hdrErr++; }
+                if (irq & (1UL << RADIOLIB_IRQ_TIMEOUT))            { io->print(F(" TIMEOUT")); timeouts++; }
+                io->println();
+                prevIrq = irq;
+                
+                // If RX_DONE, dump the packet
+                if (irq & (1UL << RADIOLIB_IRQ_RX_DONE)) {
+                    int len = radio->lora.getPacketLength();
+                    if (len > 0 && len <= RNS_MTU) {
+                        uint8_t buf[RNS_MTU];
+                        radio->lora.readData(buf, len);
+                        io->print(F("    RSSI=")); io->print(radio->lora.getRSSI(), 1);
+                        io->print(F(" SNR=")); io->print(radio->lora.getSNR(), 1);
+                        io->print(F(" len=")); io->println(len);
+                        io->print(F("    HEX: "));
+                        for (int i = 0; i < len && i < 64; i++) {
+                            if (buf[i] < 0x10) io->print('0');
+                            io->print(buf[i], HEX);
+                            if (i < len - 1) io->print(' ');
+                        }
+                        if (len > 64) io->print(F("..."));
+                        io->println();
+                    }
+                    radio->lora.startReceive(); // re-enter RX
+                    prevIrq = 0;
+                }
+            }
+            ticks++;
+            delay(1);
+        }
+
+        io->println(F("  ── Summary ──"));
+        io->print(F("    Polls: ")); io->println(ticks);
+        io->print(F("    Preambles: ")); io->println(preambles);
+        io->print(F("    SyncWords: ")); io->println(syncs);
+        io->print(F("    RX_DONE: ")); io->println(rxDone);
+        io->print(F("    CRC_ERR: ")); io->println(crcErr);
+        io->print(F("    HDR_ERR: ")); io->println(hdrErr);
+        io->print(F("    Timeouts: ")); io->println(timeouts);
+
+        radio->lora.startReceive(); // make sure we end in RX
+#endif
+    }
+
+    // ── rxraw: Force-read SX1262 FIFO ─────────────────────
+    void cmdRxRaw() {
+#ifndef NATIVE_TEST
+        if (!radio || !radio->hwReady) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        io->println(F("── RX Raw FIFO Dump ──"));
+        uint32_t irq = radio->lora.getIrqFlags();
+        io->print(F("  IRQ: 0x")); io->println(irq, HEX);
+
+        int len = radio->lora.getPacketLength();
+        io->print(F("  pktLen: ")); io->println(len);
+
+        if (len > 0 && len <= RNS_MTU) {
+            uint8_t buf[RNS_MTU];
+            int rc = radio->lora.readData(buf, len);
+            io->print(F("  readData rc: ")); io->println(rc);
+            io->print(F("  RSSI: ")); io->print(radio->lora.getRSSI(), 1);
+            io->print(F("  SNR: ")); io->println(radio->lora.getSNR(), 1);
+            io->print(F("  RAW[")); io->print(len); io->print(F("]: "));
+            for (int i = 0; i < len; i++) {
+                if (buf[i] < 0x10) io->print('0');
+                io->print(buf[i], HEX);
+                if (i < len - 1) io->print(' ');
+            }
+            io->println();
+
+            // Try to parse as Reticulum packet
+            const uint8_t* payload = buf;
+            uint16_t payloadLen = (uint16_t)len;
+            #if RNODE_LORA_HEADER_ENABLED
+            if (payloadLen > 1) {
+                io->print(F("  RNode hdr: 0x")); io->println(buf[0], HEX);
+                payload = &buf[1];
+                payloadLen--;
+            }
+            #endif
+            if (payloadLen >= RNS_HEADER_SIZE + RNS_ADDR_LEN + 1) {
+                uint8_t flags = payload[0];
+                io->print(F("  RNS flags: 0x")); io->println(flags, HEX);
+                io->print(F("    ifac=")); io->print((flags >> 7) & 1);
+                io->print(F(" hdr=")); io->print((flags >> 6) & 1);
+                io->print(F(" ctx=")); io->print((flags >> 5) & 1);
+                io->print(F(" prop=")); io->print((flags >> 4) & 1);
+                io->print(F(" dest=")); io->print((flags >> 2) & 3);
+                io->print(F(" type=")); io->println(flags & 3);
+                io->print(F("    hops=")); io->println(payload[1]);
+                io->print(F("    destHash: "));
+                for (int i = 2; i < 18 && i < payloadLen; i++) {
+                    if (payload[i] < 0x10) io->print('0');
+                    io->print(payload[i], HEX);
+                }
+                io->println();
+            }
+        } else {
+            io->println(F("  (no packet in FIFO)"));
+        }
+        radio->lora.startReceive();
+#endif
+    }
+
+    // ── txraw: Transmit raw hex bytes ─────────────────────
+    void cmdTxRaw(const char* args) {
+#ifndef NATIVE_TEST
+        if (!radio || !radio->hwReady) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        if (!args || !args[0]) {
+            io->println(F("Usage: txraw <hex bytes>"));
+            io->println(F("  e.g. txraw 0011FF (bypasses RNODE header & CSMA)"));
+            return;
+        }
+
+        // Parse hex string to bytes
+        uint8_t buf[RNS_MTU];
+        uint16_t len = 0;
+        const char* p = args;
+        while (*p && len < RNS_MTU) {
+            while (*p == ' ') p++;
+            if (!*p) break;
+            char hi = *p++;
+            if (!*p) break;
+            char lo = *p++;
+            auto hexVal = [](char c) -> uint8_t {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return 0;
+            };
+            buf[len++] = (hexVal(hi) << 4) | hexVal(lo);
+        }
+        if (len == 0) {
+            io->println(F("No valid hex data."));
+            return;
+        }
+
+        io->print(F("TX raw ")); io->print(len); io->println(F(" bytes (no CSMA, no header)"));
+
+        radio->lora.standby();
+        int rc = radio->lora.startTransmit(buf, len);
+        if (rc != RADIOLIB_ERR_NONE) {
+            io->print(F("  startTransmit failed rc=")); io->println(rc);
+            radio->lora.startReceive();
+            return;
+        }
+        uint32_t t0 = millis();
+        bool done = false;
+        while (millis() - t0 < 5000) {
+            uint32_t irq = radio->lora.getIrqFlags();
+            if (irq & (1UL << RADIOLIB_IRQ_TX_DONE)) { done = true; break; }
+            delay(1);
+        }
+        radio->lora.finishTransmit();
+        io->print(F("  rc=")); io->print(done ? 0 : -5);
+        io->print(F(" elapsed=")); io->print(millis() - t0);
+        io->println(F("ms"));
+        radio->lora.startReceive();
+#endif
+    }
+
+    // ── pktdump: Toggle verbose per-packet hex dump ───────
+    void cmdPktDump(const char* args) {
+#ifndef NATIVE_TEST
+        if (!radio) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        if (args && (strcmp(args, "on") == 0 || strcmp(args, "1") == 0)) {
+            pktDumpEnabled = true;
+        } else if (args && (strcmp(args, "off") == 0 || strcmp(args, "0") == 0)) {
+            pktDumpEnabled = false;
+        } else {
+            pktDumpEnabled = !pktDumpEnabled;
+        }
+        radio->dumpStream = pktDumpEnabled ? io : nullptr;
+        io->print(F("Packet hex dump: "));
+        io->println(pktDumpEnabled ? F("ON — all RX packets will be hex-dumped") : F("OFF"));
+#endif
+    }
+
     // ── help ──────────────────────────────────────────────
     void cmdHelp() {
         io->println(F("── Available Commands ──"));
@@ -746,6 +1049,12 @@ private:
         io->println(F("  reinit         Retry radio initialization"));
         io->println(F("  pintest        Scan IO pins to find SX1262 BUSY/DIO1/RST"));
         io->println(F("  version        Firmware version"));
+        io->println(F("── Diagnostics ──"));
+        io->println(F("  rxdiag         SX1262 RX state dump (chipMode, IRQ, BUSY, params)"));
+        io->println(F("  irqmon [sec]   Monitor IRQ flags for N seconds (default 10)"));
+        io->println(F("  rxraw          Force-read SX1262 FIFO and hex dump"));
+        io->println(F("  txraw <hex>    Transmit raw hex bytes (no header, no CSMA)"));
+        io->println(F("  pktdump [on|off] Toggle verbose hex dump of every RX packet"));
         io->println(F("  help           This message"));
     }
 
