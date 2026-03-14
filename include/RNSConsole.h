@@ -110,11 +110,14 @@ private:
         else if (strcmp(command, "name")      == 0) cmdName(args);
         else if (strcmp(command, "msg")       == 0) cmdMsg(args);
         else if (strcmp(command, "notify")    == 0) cmdNotify(args);
+        else if (strcmp(command, "led")       == 0) cmdLed(args);
+        else if (strcmp(command, "rathole")   == 0) cmdRathole(args);
         else if (strcmp(command, "save")      == 0) cmdSave();
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
         else if (strcmp(command, "dfu")       == 0) cmdDfu();
         else if (strcmp(command, "reboot")    == 0) cmdReboot();
         else if (strcmp(command, "announce")  == 0) cmdAnnounce(args);
+        else if (strcmp(command, "discover")  == 0) cmdDiscover();
         else if (strcmp(command, "morse")     == 0) cmdMorse(args);
         else if (strcmp(command, "test")      == 0) cmdTest();
         else if (strcmp(command, "ping")      == 0) cmdTest();
@@ -420,6 +423,9 @@ private:
     // ── morse blink settings ──────────────────────────────
     void cmdMorse(const char* args); // implemented in main.cpp
 
+    // ── RatHole security settings ─────────────────────────
+    void cmdRathole(const char* args); // implemented in main.cpp
+
     // ── msg <text> — send a broadcast peer message via announce ─
     void cmdMsg(const char* args) {
         if (!transport) {
@@ -559,6 +565,9 @@ private:
         io->println(F("Tip: run 'save' to persist."));
     }
 
+    // ── led — configure board LED behavior ───────────────
+    void cmdLed(const char* args);  // implemented in main.cpp
+
     // ── factory-reset ─────────────────────────────────────
     void cmdFactoryReset();  // implemented in main.cpp
 
@@ -631,6 +640,22 @@ private:
             }
         } else {
             io->println(F("Announce transmit failed (radio busy/offline)."));
+        }
+    }
+
+    void cmdDiscover() {
+        if (!transport) {
+            io->println(F("Transport not available."));
+            return;
+        }
+        if (!radio->hwReady) {
+            io->println(F("Discovery blocked: radio hardware not initialized."));
+            return;
+        }
+        if (transport->sendDiscoverySweep()) {
+            io->println(F("Discovery sweep sent. Nearby nodes will replay cached announces if available."));
+        } else {
+            io->println(F("Discovery sweep failed (radio busy/offline)."));
         }
     }
 
@@ -1842,11 +1867,14 @@ private:
         io->println(F("  name <text>    Set/display broadcast announce name"));
         io->println(F("  msg [text]     Send peer message via announce (broadcast)"));
         io->println(F("  notify <mode>  Set notification mode (sound/morse/both/silent)"));
+        io->println(F("  led            Configure green/blue board LED behavior"));
+        io->println(F("  rathole        Configure secure boot-scrub mode"));
         io->println(F("  save           Persist config to flash"));
         io->println(F("  factory-reset  Erase all persisted data"));
         io->println(F("  dfu            Reboot into bootloader (USB flashing)"));
         io->println(F("  reboot         Restart node"));
         io->println(F("  announce [txt] Broadcast announce (optional text payload)"));
+        io->println(F("  discover       Request cached announce replays from nearby nodes"));
         io->println(F("  morse          Configure Morse blinker (mode/default)"));
         io->println(F("  test|ping      Emit one-line node health response"));
         io->println(F("  reinit         Retry radio initialization"));

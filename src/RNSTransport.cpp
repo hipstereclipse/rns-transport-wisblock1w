@@ -144,6 +144,39 @@ bool RNSTransport::sendMessageAnnounce(const char* text) {
     return sendLocalAnnounce(nullptr, (const uint8_t*)payload, (uint16_t)(prefixLen + textLen));
 }
 
+bool RNSTransport::sendDiscoverySweep() {
+    if (!radio || !identity || !identity->initialized) return false;
+    if (!radio->hwReady) return false;
+    if (!pathReqHashReady) initDestHashCache();
+    if (!pathReqHashReady) return false;
+
+    uint8_t requestData[RNS_ADDR_LEN * 2] = {0};
+    for (uint8_t i = RNS_ADDR_LEN; i < (RNS_ADDR_LEN * 2); i++) {
+        requestData[i] = (uint8_t)random(0, 256);
+    }
+
+    RNSPacket pkt;
+    pkt.ifacFlag = false;
+    pkt.headerType = HEADER_1;
+    pkt.contextFlag = false;
+    pkt.propType = BROADCAST;
+    pkt.destType = PLAIN;
+    pkt.packetType = DATA;
+    pkt.hops = 0;
+    memcpy(pkt.destHash, cachedPathReqDestHash, RNS_ADDR_LEN);
+    pkt.context = 0x00;
+    pkt.data = requestData;
+    pkt.dataLen = sizeof(requestData);
+
+    uint8_t outBuf[RNS_MTU];
+    uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
+    if (outLen == 0) return false;
+
+    bool ok = radio->transmit(outBuf, outLen);
+    if (ok) stats.txPackets++;
+    return ok;
+}
+
 /**
  * @brief Send an encrypted LXMF DATA packet to a specific peer.
  *

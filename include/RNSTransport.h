@@ -13,6 +13,10 @@
 
 class RNSRadio;  // forward declaration
 
+#ifndef NATIVE_TEST
+void rnsHandleIncomingPeerMessage(const uint8_t* srcHash, bool haveSrcHash, const char* text, bool parsed);
+#endif
+
 // ── Path table entry ──────────────────────────────────────
 struct PathEntry {
     uint8_t  destHash[RNS_ADDR_LEN];
@@ -43,6 +47,15 @@ struct AnnounceQueueEntry {
     bool     pending;
 };
 
+struct AnnounceCacheEntry {
+    uint8_t  destHash[RNS_ADDR_LEN];
+    uint8_t  raw[ANNOUNCE_CACHE_RAW_MAX];
+    uint16_t rawLen;
+    uint32_t seenAt;
+    uint8_t  hops;
+    bool     active;
+};
+
 // ── Aggregate counters ────────────────────────────────────
 struct TransportStats {
     uint32_t rxPackets      = 0;
@@ -66,13 +79,99 @@ private:
     PathEntry          pathTable[PATH_TABLE_MAX];
     HashCacheEntry     hashCache[HASH_CACHE_MAX];
     AnnounceQueueEntry announceQueue[ANNOUNCE_QUEUE_MAX];
+    AnnounceCacheEntry announceCache[ANNOUNCE_CACHE_MAX];
     char               announceName[RNS_ANNOUNCE_NAME_MAX + 1] = "RatTunnel";
     uint8_t            cachedTransportDestHash[RNS_ADDR_LEN] = {0};
     uint8_t            cachedTransportNameHash[RNS_NAME_HASH_LEN] = {0};
     uint8_t            cachedPathReqDestHash[RNS_ADDR_LEN] = {0};
     bool               pathReqHashReady = false;
     uint32_t           lastPathReqAnnounceAt = 0;
+    uint32_t           lastDiscoveryReplayAt = 0;
     bool               announceHashCacheReady = false;
+
+    static bool isZeroHash(const uint8_t hash[RNS_ADDR_LEN]) {
+        if (!hash) return false;
+        for (uint8_t i = 0; i < RNS_ADDR_LEN; i++) {
+            if (hash[i] != 0) return false;
+        }
+        return true;
+    }
+
+    bool queueRawAnnounce(const uint8_t* raw, uint16_t rawLen, uint8_t hops) {
+        if (!raw || rawLen == 0 || rawLen > RNS_MTU) return false;
+        for (int i = 0; i < ANNOUNCE_QUEUE_MAX; i++) {
+            if (!announceQueue[i].pending) {
+                memcpy(announceQueue[i].raw, raw, rawLen);
+                announceQueue[i].rawLen = rawLen;
+                announceQueue[i].raw[1] = hops;
+                announceQueue[i].scheduledAt = millis() + random(100, ANNOUNCE_JITTER_MS);
+                announceQueue[i].pending = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void cacheAnnounce(const RNSPacket& pkt) {
+        if (!pkt.isAnnounce()) return;
+        if (pkt.rawLen == 0 || pkt.rawLen > ANNOUNCE_CACHE_RAW_MAX) return;
+        if (announceHashCacheReady && memcmp(pkt.destHash, cachedTransportDestHash, RNS_ADDR_LEN) == 0) return;
+
+        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        const uint16_t sigLen = RNS_SIGLENGTH;
+        if (pkt.dataLen > (baseLen + sigLen)) {
+            const uint16_t appLen = pkt.dataLen - baseLen - sigLen;
+            const uint8_t* app = pkt.data + baseLen + sigLen;
+            bool looksLikeName = app && appLen >= 3
+                && (app[0] & 0xF0) == 0x90
+                && (app[0] & 0x0F) >= 1
+                && (app[1] & 0xE0) == 0xA0;
+            if (!looksLikeName) return;
+        }
+
+        uint32_t now = millis();
+        int slot = -1;
+        uint32_t oldest = UINT32_MAX;
+        for (int i = 0; i < ANNOUNCE_CACHE_MAX; i++) {
+            if (announceCache[i].active && memcmp(announceCache[i].destHash, pkt.destHash, RNS_ADDR_LEN) == 0) {
+                slot = i;
+                break;
+            }
+            if (!announceCache[i].active) {
+                slot = i;
+                break;
+            }
+            if (announceCache[i].seenAt < oldest) {
+                oldest = announceCache[i].seenAt;
+                slot = i;
+            }
+        }
+        if (slot < 0) slot = 0;
+
+        announceCache[slot].active = true;
+        announceCache[slot].rawLen = pkt.rawLen;
+        announceCache[slot].seenAt = now;
+        announceCache[slot].hops = pkt.hops;
+        memcpy(announceCache[slot].destHash, pkt.destHash, RNS_ADDR_LEN);
+        memcpy(announceCache[slot].raw, pkt.raw, pkt.rawLen);
+    }
+
+    uint16_t queueCachedAnnounces(uint8_t limit = 0xFF,
+                                  const uint8_t requestedDestHash[RNS_ADDR_LEN] = nullptr) {
+        uint16_t queued = 0;
+        for (int i = 0; i < ANNOUNCE_CACHE_MAX; i++) {
+            if (!announceCache[i].active) continue;
+            if (requestedDestHash && memcmp(announceCache[i].destHash, requestedDestHash, RNS_ADDR_LEN) != 0) continue;
+
+            uint8_t replayHops = announceCache[i].hops;
+            if (replayHops < RNS_MAX_HOPS) replayHops++;
+            if (!queueRawAnnounce(announceCache[i].raw, announceCache[i].rawLen, replayHops)) break;
+
+            queued++;
+            if (queued >= limit) break;
+        }
+        return queued;
+    }
 
     // ── Msgpack skip helper ───────────────────────────────
     static bool skipMsgpackElem(const uint8_t* d, uint16_t len, uint16_t& p) {
@@ -178,9 +277,12 @@ public:
         memset(pathTable,     0, sizeof(pathTable));
         memset(hashCache,     0, sizeof(hashCache));
         memset(announceQueue, 0, sizeof(announceQueue));
+        memset(announceCache, 0, sizeof(announceCache));
         strncpy(announceName, "RatTunnel", sizeof(announceName) - 1);
         announceName[sizeof(announceName) - 1] = '\0';
         announceHashCacheReady = false;
+        lastPathReqAnnounceAt = 0;
+        lastDiscoveryReplayAt = 0;
     }
 
     /** @brief Pre-compute dest hash so we can recognise packets for us
@@ -319,6 +421,7 @@ public:
         updatePath(pkt.destHash, nullptr, pkt.hops, rxRSSI, rxSNR,
                    extractedName[0] ? extractedName : nullptr,
                    pkt.data);
+        cacheAnnounce(pkt);
 
         // Queue retransmission if within hop limit
         if (pkt.hops < RNS_MAX_HOPS) {
@@ -331,17 +434,37 @@ public:
 #ifndef NATIVE_TEST
         if (!pathReqHashReady) return;
         if (memcmp(pkt.destHash, cachedPathReqDestHash, RNS_ADDR_LEN) != 0) return;
-        // Path request: data = requested_dest_hash(16) + random(16)
         if (pkt.dataLen < RNS_ADDR_LEN) return;
+        const uint8_t* requestedHash = pkt.data;
+        uint32_t now = millis();
+
+        if (isZeroHash(requestedHash)) {
+            if (now - lastDiscoveryReplayAt < DISCOVERY_RESPONSE_COOLDOWN_MS) return;
+            lastDiscoveryReplayAt = now;
+            Serial.println(F("[RNS] Discovery sweep received — replaying cached announces"));
+            sendLocalAnnounce();
+            uint16_t replayed = queueCachedAnnounces();
+            Serial.print(F("[RNS] Queued cached announces: "));
+            Serial.println(replayed);
+            return;
+        }
+
         if (!announceHashCacheReady) return;
-        if (memcmp(pkt.data, cachedTransportDestHash, RNS_ADDR_LEN) == 0) {
+        if (memcmp(requestedHash, cachedTransportDestHash, RNS_ADDR_LEN) == 0) {
             // Someone is requesting a path to US — respond with announce
             // Rate-limit: at most one response per 2 seconds
-            uint32_t now = millis();
             if (now - lastPathReqAnnounceAt < 2000) return;
             lastPathReqAnnounceAt = now;
             Serial.println(F("[RNS] Path request for us — sending announce"));
             sendLocalAnnounce();
+            return;
+        }
+
+        if (now - lastDiscoveryReplayAt < DISCOVERY_RESPONSE_COOLDOWN_MS) return;
+        uint16_t replayed = queueCachedAnnounces(1, requestedHash);
+        if (replayed > 0) {
+            lastDiscoveryReplayAt = now;
+            Serial.println(F("[RNS] Path request satisfied from announce cache"));
         }
 #endif
     }
@@ -382,6 +505,9 @@ public:
                     }
                     Serial.print(F("..: "));
                     Serial.println(msgText);
+#ifndef NATIVE_TEST
+                    rnsHandleIncomingPeerMessage(srcHash, true, msgText, true);
+#endif
                 } else {
                     // Decrypted but couldn't parse LXMF - show raw
                     if (plainLen >= (2 * RNS_ADDR_LEN)) {
@@ -411,6 +537,9 @@ public:
                     Serial.print(F("..: [decrypted, "));
                     Serial.print(plainLen);
                     Serial.println(F(" bytes]"));
+#ifndef NATIVE_TEST
+                    rnsHandleIncomingPeerMessage(srcHash, haveSrcHash, nullptr, false);
+#endif
                 }
             } else {
                 // Decryption failed - show encrypted notification with diagnostics
@@ -428,6 +557,10 @@ public:
                 Serial.println(F(" bytes]"));
                 identity->decryptDiag(pkt.data, pkt.dataLen,
                     announceHashCacheReady ? cachedTransportDestHash : nullptr);
+#ifndef NATIVE_TEST
+                rnsHandleIncomingPeerMessage(pkt.headerType == HEADER_2 ? pkt.transportId : nullptr,
+                    pkt.headerType == HEADER_2, nullptr, false);
+#endif
             }
         } else if (pkt.isData()) {
             Serial.print(F("[PEERMSG] from 0000000000000000..: [encrypted, "));
@@ -564,19 +697,7 @@ public:
 
     // ── Announce retransmit queue ─────────────────────────
     void queueAnnounceRetransmit(RNSPacket& pkt) {
-        for (int i = 0; i < ANNOUNCE_QUEUE_MAX; i++) {
-            if (!announceQueue[i].pending) {
-                static uint8_t newRaw[RNS_MTU];
-                memcpy(newRaw, pkt.raw, pkt.rawLen);
-                newRaw[1] = pkt.hops + 1;   // increment hop counter
-
-                memcpy(announceQueue[i].raw, newRaw, pkt.rawLen);
-                announceQueue[i].rawLen      = pkt.rawLen;
-                announceQueue[i].scheduledAt = millis() + random(100, ANNOUNCE_JITTER_MS);
-                announceQueue[i].pending     = true;
-                return;
-            }
-        }
+        queueRawAnnounce(pkt.raw, pkt.rawLen, (uint8_t)(pkt.hops + 1));
         // Queue full — drop (announce flood protection)
     }
 
@@ -586,6 +707,7 @@ public:
     bool sendLocalAnnounce(const uint8_t* nameHash = nullptr,
                            const uint8_t* appData = nullptr,
                            uint16_t appDataLen = 0);
+    bool sendDiscoverySweep();
 
     // ── Send a message-bearing announce ──────────────────
     bool sendMessageAnnounce(const char* text);
@@ -638,6 +760,10 @@ public:
         for (int i = 0; i < PATH_TABLE_MAX; i++) {
             if (pathTable[i].active && now > pathTable[i].expiresAt)
                 pathTable[i].active = false;
+        }
+        for (int i = 0; i < ANNOUNCE_CACHE_MAX; i++) {
+            if (announceCache[i].active && (now - announceCache[i].seenAt) > PATH_EXPIRY_MS)
+                announceCache[i].active = false;
         }
         for (int i = 0; i < HASH_CACHE_MAX; i++) {
             if (hashCache[i].active &&

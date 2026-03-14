@@ -772,6 +772,114 @@
     gap: 0.5rem;
     height: 100%;
   }
+  .msg-shell {
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: 0.65rem;
+    min-height: 0;
+  }
+  .chat-thread-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    gap: 0.45rem;
+  }
+  .chat-thread-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--dim);
+  }
+  .chat-thread-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-height: 260px;
+    max-height: 470px;
+    overflow-y: auto;
+  }
+  .chat-thread-card {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 0.6rem 0.7rem;
+    cursor: pointer;
+    transition: border-color 0.14s, background 0.14s;
+  }
+  .chat-thread-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+  .chat-thread-card.active {
+    border-color: var(--green);
+    background: var(--green-glow);
+  }
+  .chat-thread-card.blocked {
+    border-color: rgba(255,120,120,0.35);
+  }
+  .chat-thread-top {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .chat-thread-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-thread-time {
+    font-size: 0.64rem;
+    color: var(--dim);
+    font-family: var(--mono);
+  }
+  .chat-thread-preview {
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--dim);
+    min-height: 1.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-thread-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .chat-thread-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    font-size: 0.62rem;
+    font-family: var(--mono);
+    color: var(--dim);
+  }
+  .chat-thread-badge.unread {
+    color: #000c1a;
+    background: var(--accent);
+    border-color: transparent;
+    font-weight: 700;
+  }
+  .chat-thread-badge.blocked {
+    color: var(--red);
+    border-color: rgba(255,120,120,0.35);
+    background: rgba(255,120,120,0.08);
+  }
+  .chat-main-pane {
+    min-width: 0;
+  }
   .chat-log {
     flex: 1;
     min-height: 260px;
@@ -1045,6 +1153,179 @@
     margin-top: 0.6rem;
     flex-wrap: wrap;
   }
+  .contacts-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    margin-bottom: 0.55rem;
+  }
+  .contacts-toolbar input,
+  .contacts-toolbar select,
+  .peer-profile-form input,
+  .peer-profile-form textarea,
+  .announce-panel input,
+  .announce-panel textarea {
+    width: 100%;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.76rem;
+    font-family: var(--mono);
+    outline: none;
+  }
+  .contacts-toolbar input:focus,
+  .contacts-toolbar select:focus,
+  .peer-profile-form input:focus,
+  .peer-profile-form textarea:focus,
+  .announce-panel input:focus,
+  .announce-panel textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-glow);
+  }
+  .contacts-grid {
+    display: grid;
+    gap: 0.65rem;
+  }
+  .peer-profile-panel {
+    background: linear-gradient(180deg, var(--surface2), rgba(255,255,255,0.02));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.8rem;
+  }
+  .peer-profile-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.55rem;
+  }
+  .peer-profile-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .peer-profile-title strong {
+    font-size: 0.86rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .peer-profile-title span {
+    font-size: 0.7rem;
+    color: var(--dim);
+    font-family: var(--mono);
+  }
+  .peer-profile-status {
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    padding: 0.22rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .peer-profile-status.online {
+    color: var(--green);
+    border-color: rgba(110,255,166,0.28);
+    background: rgba(110,255,166,0.08);
+  }
+  .peer-profile-status.offline {
+    color: var(--yellow);
+    border-color: rgba(255,210,90,0.22);
+    background: rgba(255,210,90,0.08);
+  }
+  .peer-profile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem 0.75rem;
+    margin: 0.4rem 0 0.65rem;
+  }
+  .peer-profile-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .peer-profile-stat .pps-label {
+    font-size: 0.64rem;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .peer-profile-stat .pps-value {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .peer-profile-form {
+    display: grid;
+    gap: 0.45rem;
+  }
+  .peer-profile-form label,
+  .announce-panel label {
+    display: grid;
+    gap: 0.18rem;
+    font-size: 0.7rem;
+    color: var(--dim);
+  }
+  .peer-profile-form textarea,
+  .announce-panel textarea {
+    min-height: 5.5rem;
+    resize: vertical;
+    font-family: var(--sans);
+    line-height: 1.45;
+  }
+  .peer-profile-actions,
+  .announce-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .peer-profile-empty {
+    font-size: 0.76rem;
+    color: var(--dim);
+    line-height: 1.55;
+  }
+  .announce-panel {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(41,47,58,0.92), rgba(23,27,34,0.98));
+  }
+  .announce-panel-copy {
+    font-size: 0.72rem;
+    color: var(--dim);
+    line-height: 1.5;
+  }
+  .announce-panel-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+  .announce-panel-grid .full {
+    grid-column: 1 / -1;
+  }
+  @media (max-width: 760px) {
+    .msg-shell,
+    .contacts-toolbar,
+    .announce-panel-grid,
+    .peer-profile-grid {
+      grid-template-columns: 1fr;
+    }
+    .chat-thread-list {
+      max-height: 220px;
+    }
+  }
 
   /* ── Chat header (messages tab) ──────────── */
   .chat-header {
@@ -1100,6 +1381,21 @@
     flex-shrink: 0;
   }
   .chat-header-close:hover { border-color: var(--red); color: var(--red); }
+  .chat-header-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .chat-thread-empty {
+    color: var(--dim);
+    font-size: 0.74rem;
+    line-height: 1.5;
+    padding: 1.2rem 0.5rem;
+    text-align: center;
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+  }
 
   .peer-pills {
     display: flex;
@@ -1231,9 +1527,367 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* ── Auth overlay ──────────────────────── */
+  .auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(8, 12, 20, 0.97);
+    backdrop-filter: blur(16px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .auth-overlay.hidden { display: none; }
+  .auth-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem 1.75rem;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+  .auth-card h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+  }
+  .auth-card h2 span { color: var(--accent); }
+  .auth-sub {
+    font-size: 0.8rem;
+    color: var(--dim);
+    margin-bottom: 1.2rem;
+    line-height: 1.45;
+  }
+  .auth-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    padding: 0.65rem 0.85rem;
+    outline: none;
+    margin-bottom: 0.55rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .auth-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .auth-input.error { border-color: var(--red); box-shadow: 0 0 0 2px var(--red-glow); }
+  .auth-btn {
+    width: 100%;
+    padding: 0.65rem;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+    color: #000c1a;
+    font-family: var(--sans);
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 0.25rem;
+  }
+  .auth-btn:hover { background: linear-gradient(135deg, #0284c7, #0ea5e9); box-shadow: 0 0 24px rgba(56,189,248,0.3); }
+  .auth-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .auth-btn.secondary {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-weight: 600;
+  }
+  .auth-btn.secondary:hover { border-color: var(--accent); color: var(--accent); box-shadow: none; }
+  .auth-btn.danger { background: linear-gradient(135deg, #dc2626, #f87171); }
+  .auth-btn.danger:hover { box-shadow: 0 0 24px rgba(248,113,113,0.3); }
+  .auth-error {
+    font-size: 0.76rem;
+    color: var(--red);
+    margin-top: 0.45rem;
+    min-height: 1.1rem;
+  }
+  .auth-hint {
+    font-size: 0.7rem;
+    color: var(--dim);
+    margin-top: 0.7rem;
+    line-height: 1.4;
+  }
+  .lock-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--dim);
+    font-size: 0.72rem;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.12s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .lock-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .lock-btn.locked { border-color: var(--red); color: var(--red); }
+
+  /* ── Disabled section (grayed out) ─────── */
+  .section-disabled {
+    opacity: 0.35;
+    pointer-events: none;
+    filter: grayscale(0.4);
+    transition: opacity 0.25s, filter 0.25s;
+  }
+  .section-enabled {
+    opacity: 1;
+    pointer-events: auto;
+    filter: none;
+    transition: opacity 0.25s, filter 0.25s;
+  }
+
+  /* ── Collapsible sub-sections ──────────── */
+  .collapse-hdr {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    user-select: none;
+    padding: 0.1rem 0;
+    margin-top: 0.65rem;
+  }
+  .collapse-hdr:hover .sec-divider { color: var(--text); }
+  .collapse-hdr .caret {
+    font-size: 0.58rem;
+    color: var(--dim);
+    transition: transform 0.2s;
+  }
+  .collapse-hdr.open .caret { transform: rotate(90deg); }
+  .collapse-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .collapse-body.open {
+    max-height: 2000px;
+  }
+
+  /* ── Normalized form select ──────────── */
+  .form-select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.4rem 0.5rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-select:focus { border-color: var(--accent); }
+  .form-select:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ── Security tab ─────────────────────── */
+  .security-section {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(41,47,58,0.92), rgba(23,27,34,0.98));
+    padding: 0.75rem;
+    margin-bottom: 0.65rem;
+  }
+  .security-section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.5rem;
+  }
+  .security-section-head .ss-icon { font-size: 0.9rem; }
+  .security-section-head .ss-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .security-section-head .ss-badge {
+    font-size: 0.62rem;
+    font-family: var(--mono);
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid;
+  }
+  .ss-badge.on { color: var(--green); border-color: rgba(74,222,128,0.35); background: var(--green-glow); }
+  .ss-badge.off { color: var(--dim); border-color: var(--border); }
+
+  /* ── LED card system ───────────────────── */
+  .led-cards { display: grid; gap: 0.65rem; margin-top: 0.35rem; }
+  .led-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(41,47,58,0.88), rgba(18,22,30,0.96));
+    padding: 0.65rem 0.75rem;
+    display: grid;
+    gap: 0.45rem;
+  }
+  .led-card-hdr {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .led-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px 1px currentColor;
+  }
+  .led-dot.green { color: var(--green); background: var(--green); }
+  .led-dot.blue  { color: var(--accent); background: var(--accent); }
+  .led-dot.red   { color: var(--red); background: var(--red); }
+  .led-dot.off   { color: var(--dim); background: var(--dim); box-shadow: none; opacity: 0.4; }
+  .led-card-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    flex: 1;
+  }
+  .led-card-tag {
+    font-size: 0.58rem;
+    font-family: var(--mono);
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    border: 1px solid;
+    color: var(--dim);
+    border-color: var(--border);
+  }
+  .led-card-tag.active { color: var(--green); border-color: rgba(74,222,128,0.35); background: var(--green-glow); }
+  .led-card-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+  .led-card-body .full { grid-column: 1 / -1; }
+  .led-card-body label {
+    display: grid;
+    gap: 0.15rem;
+    font-size: 0.68rem;
+    color: var(--dim);
+  }
+  .led-card-body label.inline-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+  }
+  .led-card-body input[type="number"] {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.28rem 0.4rem;
+  }
+  .led-card-body input[type="text"] {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 0.28rem 0.4rem;
+  }
+  .led-card-foot {
+    font-size: 0.64rem;
+    color: var(--dim);
+    line-height: 1.45;
+    padding-top: 0.15rem;
+    border-top: 1px solid var(--border);
+  }
+  .led-sub-panel {
+    display: none;
+    grid-column: 1 / -1;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(15,22,35,0.7);
+  }
+  .led-sub-panel.show {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .led-sub-panel .sub-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+  }
+  .led-sub-panel .sub-grid .full { grid-column: 1 / -1; }
+  .led-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-top: 0.2rem;
+  }
+  .led-preset-bar {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    margin-bottom: 0.45rem;
+  }
+  .led-preset-bar label {
+    font-size: 0.68rem;
+    color: var(--dim);
+    margin-right: 0.1rem;
+  }
+  .led-preset-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.18rem 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--dim);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .led-preset-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .led-preset-chip.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  @media (max-width: 500px) {
+    .led-card-body { grid-template-columns: 1fr; }
+    .led-sub-panel .sub-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
+
+<!-- Auth overlay -->
+<div class="auth-overlay hidden" id="authOverlay">
+  <div class="auth-card" id="authCard">
+    <div id="authLogin">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">🔒</div>
+      <h2>RatTunnel <span>Locked</span></h2>
+      <div class="auth-sub">Enter your password to access repeater controls.</div>
+      <input class="auth-input" type="password" id="authPasswordInput" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter')authUnlock()">
+      <button class="auth-btn" onclick="authUnlock()">Unlock</button>
+      <div class="auth-error" id="authError"></div>
+      <div class="auth-hint">This password protects repeater access in this browser.</div>
+    </div>
+    <div id="authSetup" style="display:none;">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">🔐</div>
+      <h2>Set <span>Password</span></h2>
+      <div class="auth-sub">Create a password to protect repeater access. Stored securely in your browser using PBKDF2.</div>
+      <input class="auth-input" type="password" id="authNewPassword" placeholder="New password (min 6 characters)" autocomplete="new-password" onkeydown="if(event.key==='Enter')document.getElementById('authConfirmPassword').focus()">
+      <input class="auth-input" type="password" id="authConfirmPassword" placeholder="Confirm password" autocomplete="new-password" onkeydown="if(event.key==='Enter')authSetPassword()">
+      <button class="auth-btn" onclick="authSetPassword()">Set Password</button>
+      <button class="auth-btn secondary" onclick="authSkipSetup()" style="margin-top:0.35rem;">Skip — no password</button>
+      <div class="auth-error" id="authSetupError"></div>
+      <div class="auth-hint">You can set or change the password later from the Security tab.</div>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
 
   <!-- Header -->
@@ -1241,6 +1895,7 @@
     <div class="logo-icon">📡</div>
     <h1>RatTunnel <span>Flasher</span></h1>
     <p>WisBlock 1W · nRF52840</p>
+    <div style="margin-top:0.4rem;"><button class="lock-btn" id="lockBtn" onclick="authLockNow()" style="display:none;">🔒 Lock</button></div>
   </div>
 
   <!-- Browser check -->
@@ -1271,9 +1926,10 @@
     <div class="tab-bar">
       <button class="tab active" onclick="switchRepeaterTab('tabOverview')">Overview</button>
       <button class="tab" onclick="switchRepeaterTab('tabRadio')">Radio</button>
-      <button class="tab" onclick="switchRepeaterTab('tabDiag')">Diagnostics</button>
+      <button class="tab" onclick="switchRepeaterTab('tabDiag')">Diag</button>
       <button class="tab" onclick="switchRepeaterTab('tabMsg')">Messages</button>
       <button class="tab" onclick="switchRepeaterTab('tabContacts')">Contacts</button>
+      <button class="tab" onclick="switchRepeaterTab('tabSecurity')">Security</button>
       <button class="tab" onclick="switchRepeaterTab('tabHub')">Hub</button>
     </div>
 
@@ -1281,12 +1937,44 @@
     <div class="tab-pane show" id="tabOverview">
       <div class="repeater-actions" style="margin-bottom:0.5rem;">
         <button class="qbtn" onclick="refreshRepeaterSnapshot(true)">↻ Refresh</button>
-        <button class="qbtn" id="autoRefreshBtn" onclick="toggleAutoRefresh()">Auto: off</button>
+        <button class="qbtn" id="autoRefreshBtn" onclick="toggleAutoRefresh()">Auto: on</button>
         <button class="qbtn" id="verifyLinkBtn" onclick="verifyLink()">Verify link</button>
         <button class="qbtn" onclick="runRepeaterAction('announce')">Announce</button>
+        <button class="qbtn" onclick="runRepeaterAction('discover')">Discover</button>
         <button class="qbtn" onclick="runRepeaterAction('save')">Save</button>
         <button class="qbtn" onclick="runRepeaterAction('reboot')">Reboot</button>
       </div>
+      <div class="repeater-form" style="margin-bottom:0.6rem;">
+        <div class="repeater-field">
+          <label for="autoRefreshInterval">Auto refresh interval</label>
+          <select id="autoRefreshInterval" class="form-select" onchange="onRefreshPrefChanged()">
+            <option value="5000">5 seconds</option>
+            <option value="10000">10 seconds</option>
+            <option value="15000">15 seconds</option>
+            <option value="30000">30 seconds</option>
+            <option value="60000">60 seconds</option>
+            <option value="120000">120 seconds</option>
+          </select>
+        </div>
+        <div class="repeater-field">
+          <label for="autoRefreshScope">Snapshot detail</label>
+          <select id="autoRefreshScope" class="form-select" onchange="onRefreshPrefChanged()">
+            <option value="light">Light: status + routes</option>
+            <option value="standard">Standard: status + radio + routes</option>
+            <option value="full">Full: version + status + radio + routes</option>
+          </select>
+        </div>
+        <div class="repeater-field">
+          <label for="peerRefreshMode">Peer refresh</label>
+          <select id="peerRefreshMode" class="form-select" onchange="onRefreshPrefChanged()">
+            <option value="always">Every cycle</option>
+            <option value="alternate">Every other cycle</option>
+            <option value="rare">Every third cycle</option>
+            <option value="manual">Manual only</option>
+          </select>
+        </div>
+      </div>
+      <div class="repeater-panel-foot" id="autoRefreshHint" style="margin-bottom:0.55rem;">Overview auto refresh starts automatically after connection and keeps the peer list fresh unless you slow it down.</div>
 
       <div class="stat-2col">
         <div class="stat-row"><span class="sk">Firmware</span><span class="sv dim" id="stFirmware">—</span></div>
@@ -1312,6 +2000,7 @@
         <button class="qbtn" onclick="runRepeaterAction('test')">test</button>
         <button class="qbtn" onclick="runRepeaterAction('radio')">radio</button>
         <button class="qbtn" onclick="runRepeaterAction('routes')">routes</button>
+        <button class="qbtn" onclick="runRepeaterAction('discover')">discover</button>
         <button class="qbtn" onclick="runRepeaterAction('identity')">identity</button>
         <button class="qbtn" onclick="runRepeaterAction('peers')">peers</button>
         <button class="qbtn" onclick="openRepeaterConsole()">open console</button>
@@ -1323,7 +2012,7 @@
       <div class="repeater-form">
         <div class="repeater-field" style="grid-column:1 / -1;">
           <label for="repProfile">Profile</label>
-          <select id="repProfile" onchange="applyConnectivityProfileToForm()" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:0.78rem;padding:0.4rem 0.5rem;outline:none;">
+          <select id="repProfile" class="form-select" onchange="applyConnectivityProfileToForm()">
             <option value="custom" selected>Custom</option>
             <option value="rnode-eu">RNode EU (867.2 / SF8 / BW125 / CR5 / TX7 / 0x12)</option>
             <option value="rnode-us">RNode US (915.0 / SF8 / BW125 / CR5 / TX7 / 0x12)</option>
@@ -1360,7 +2049,7 @@
         </div>
         <div class="repeater-field">
           <label for="repName">Name</label>
-          <input id="repName" type="text" maxlength="32" placeholder="RatTunnel Relay">
+          <input id="repName" type="text" maxlength="32" placeholder="RatTunnel Relay" oninput="syncAnnounceNameFromRadio()">
         </div>
       </div>
       <div class="repeater-actions" style="margin-top:0.5rem;">
@@ -1369,27 +2058,227 @@
       </div>
       <div class="repeater-panel-foot" id="repProfileHint" style="margin-top:0.4rem;">Select profile, tweak if needed, then Apply + Save.</div>
 
-      <div class="sec-divider" style="margin-top:0.65rem;">Morse blinker</div>
-      <div class="repeater-form">
-        <div class="repeater-field">
-          <label for="repMorseMode">Mode</label>
-          <select id="repMorseMode" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:0.78rem;padding:0.4rem 0.5rem;outline:none;">
-            <option value="off">Off</option>
-            <option value="errors" selected>Errors only</option>
-            <option value="incoming">Incoming only</option>
-            <option value="both">Errors + incoming</option>
-            <option value="default">Default message</option>
-          </select>
-        </div>
-        <div class="repeater-field">
-          <label for="repMorseDefault">Default msg</label>
-          <input id="repMorseDefault" type="text" maxlength="16" placeholder="SOS">
+      <!-- Announcement (collapsible) -->
+      <div class="collapse-hdr open" onclick="toggleCollapse(this)">
+        <span class="caret">&#9654;</span>
+        <div class="sec-divider" style="margin:0;">Announcement</div>
+      </div>
+      <div class="collapse-body open">
+        <div class="announce-panel" style="margin-top:0.25rem;">
+          <div class="announce-panel-copy">
+            The saved broadcast name is used in self-announces. Send a one-off announce with custom payload text from the GUI.
+          </div>
+          <div class="announce-panel-grid">
+            <label>
+              Saved broadcast name
+              <input id="repAnnounceName" type="text" maxlength="32" placeholder="RatTunnel" oninput="syncRadioNameFromAnnounce()">
+            </label>
+            <label>
+              Current announce preview
+              <input id="repAnnouncePreview" type="text" readonly placeholder="Saved name will appear here">
+            </label>
+            <label class="full">
+              One-off announce payload
+              <textarea id="repAnnounceText" maxlength="80" placeholder="Optional custom text for announce payload" oninput="updateAnnouncePreview()"></textarea>
+            </label>
+          </div>
+          <div class="announce-actions">
+            <button class="qbtn" onclick="saveAnnounceSettings()">Save announce name</button>
+            <button class="qbtn" onclick="sendAnnounceFromUi(false)">Announce now</button>
+            <button class="qbtn" onclick="sendAnnounceFromUi(true)">Save name + announce</button>
+          </div>
         </div>
       </div>
-      <div class="repeater-actions" style="margin-top:0.4rem;">
-        <button class="qbtn" onclick="applyMorseBlinkSettings()">Apply Morse</button>
-        <button class="qbtn" onclick="runRepeaterAction('morse')">Read config</button>
-        <button class="qbtn" onclick="runRepeaterAction('morse test')">Test blink</button>
+
+      <!-- Power & LEDs (collapsible) -->
+      <div class="collapse-hdr" onclick="toggleCollapse(this)">
+        <span class="caret">&#9654;</span>
+        <div class="sec-divider" style="margin:0;">Power & LEDs</div>
+      </div>
+      <div class="collapse-body">
+        <!-- Quick preset bar -->
+        <div class="led-preset-bar" style="margin-top:0.4rem;">
+          <label>Preset:</label>
+          <button class="led-preset-chip active" data-preset="balanced" onclick="selectLedPreset('balanced')">Balanced</button>
+          <button class="led-preset-chip" data-preset="low-power" onclick="selectLedPreset('low-power')">Low power</button>
+          <button class="led-preset-chip" data-preset="dark" onclick="selectLedPreset('dark')">Dark</button>
+        </div>
+
+        <div class="led-cards">
+          <!-- ── Green LED card ── -->
+          <div class="led-card" id="ledCardGreen">
+            <div class="led-card-hdr">
+              <span class="led-dot green" id="ledDotGreen"></span>
+              <span class="led-card-title">Green LED — Status</span>
+              <span class="led-card-tag" id="ledTagGreen">idle</span>
+            </div>
+            <div class="led-card-body">
+              <label>
+                Idle mode
+                <select id="repGreenLedIdleMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="heartbeat">Heartbeat blink</option>
+                  <option value="solid">Solid on</option>
+                  <option value="off">Off</option>
+                </select>
+              </label>
+              <label>
+                RX flashes
+                <select id="repGreenLedRxMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Disabled</option>
+                  <option value="on">Enabled</option>
+                </select>
+              </label>
+              <label>
+                TX flashes
+                <select id="repGreenLedTxMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Disabled</option>
+                  <option value="on">Enabled</option>
+                </select>
+              </label>
+              <label>
+                Morse mode
+                <select id="repGreenLedMorseMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Off</option>
+                  <option value="errors">Errors only</option>
+                  <option value="incoming">Incoming messages</option>
+                  <option value="both">Errors + incoming</option>
+                  <option value="default">Default message</option>
+                </select>
+              </label>
+            </div>
+            <div class="led-card-foot">Green can now handle idle, raw RX/TX flashes, and morse playback independently.</div>
+          </div>
+
+          <!-- ── Blue LED card ── -->
+          <div class="led-card" id="ledCardBlue">
+            <div class="led-card-hdr">
+              <span class="led-dot blue" id="ledDotBlue"></span>
+              <span class="led-card-title">Blue LED — Signal & Morse</span>
+              <span class="led-card-tag" id="ledTagBlue">idle</span>
+            </div>
+            <div class="led-card-body">
+              <label>
+                Idle mode
+                <select id="repBlueLedIdleMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Off</option>
+                  <option value="solid">Solid on</option>
+                  <option value="heartbeat">Heartbeat blink</option>
+                </select>
+              </label>
+              <label>
+                RX flashes
+                <select id="repBlueLedRxMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="on">Enabled</option>
+                  <option value="off">Disabled</option>
+                </select>
+              </label>
+              <label>
+                TX flashes
+                <select id="repBlueLedTxMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="on">Enabled</option>
+                  <option value="off">Disabled</option>
+                </select>
+              </label>
+              <label>
+                Morse mode
+                <select id="repBlueLedMorseMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Off</option>
+                  <option value="errors" selected>Errors only</option>
+                  <option value="incoming">Incoming messages</option>
+                  <option value="both">Errors + incoming</option>
+                  <option value="default">Default message</option>
+                </select>
+              </label>
+            </div>
+            <div class="led-card-foot">Blue remains the default radio activity LED, but its RX, TX, and morse roles are now fully independent.</div>
+          </div>
+
+          <!-- ── Red LED card ── -->
+          <div class="led-card section-disabled" id="ledCardRed">
+            <div class="led-card-hdr">
+              <span class="led-dot off" id="ledDotRed"></span>
+              <span class="led-card-title">Red LED — Optional</span>
+              <span class="led-card-tag" id="ledTagRed">unavailable</span>
+            </div>
+            <div class="led-card-body">
+              <label>
+                Idle mode
+                <select id="repRedLedIdleMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Off</option>
+                  <option value="solid">Solid on</option>
+                  <option value="heartbeat">Heartbeat blink</option>
+                </select>
+              </label>
+              <label>
+                RX flashes
+                <select id="repRedLedRxMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Disabled</option>
+                  <option value="on">Enabled</option>
+                </select>
+              </label>
+              <label>
+                TX flashes
+                <select id="repRedLedTxMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Disabled</option>
+                  <option value="on">Enabled</option>
+                </select>
+              </label>
+              <label>
+                Morse mode
+                <select id="repRedLedMorseMode" class="form-select" onchange="updateLedCardUi()">
+                  <option value="off">Off</option>
+                  <option value="errors">Errors only</option>
+                  <option value="incoming">Incoming messages</option>
+                  <option value="both">Errors + incoming</option>
+                  <option value="default">Default message</option>
+                </select>
+              </label>
+            </div>
+            <div class="led-card-foot" id="ledRedFoot">This WisBlock target does not expose a red LED pin. These controls are reserved for boards that add one later.</div>
+          </div>
+        </div>
+
+        <div class="led-sub-panel show" id="morseDetailPanel" style="margin-top:0.55rem;">
+          <div class="sub-grid">
+            <label>
+              Default Morse message
+              <input id="repMorseDefault" type="text" maxlength="16" placeholder="SOS">
+            </label>
+            <label>
+              Alert behavior
+              <select id="repLedAlertMode" class="form-select" onchange="updateLedCardUi()">
+                <option value="once">Play once</option>
+                <option value="count">Repeat N times</option>
+                <option value="until-clear">Until read / cleared</option>
+              </select>
+            </label>
+            <label id="lblAlertCount">
+              Repeat count
+              <input id="repLedAlertCount" type="number" min="1" max="9" value="3">
+            </label>
+            <label id="lblAlertInterval">
+              Reminder interval (s)
+              <input id="repLedAlertInterval" type="number" min="1" max="3600" value="20">
+            </label>
+            <label class="full">
+              Watch specific senders
+              <input id="repLedAlertWatch" type="text" placeholder="Blank = all senders, or comma-separated 16-hex peer hashes">
+            </label>
+          </div>
+          <div class="led-actions">
+            <button class="qbtn" onclick="addSelectedPeerToLedAlerts()">+ Selected peer</button>
+            <button class="qbtn" onclick="runRepeaterAction('morse test')">Test blink</button>
+          </div>
+        </div>
+
+        <!-- Actions row -->
+        <div class="led-actions" style="margin-top:0.55rem;">
+          <button class="qbtn" onclick="applyAllLedSettings()">Apply to device</button>
+          <button class="qbtn" onclick="savePowerDefaults()">Save UI defaults</button>
+          <button class="qbtn" onclick="runRepeaterAction('led')">Read config</button>
+          <button class="qbtn" onclick="runRepeaterAction('morse')">Read Morse</button>
+        </div>
+        <div class="repeater-panel-foot" style="margin-top:0.3rem;">Low-power preset disables all LEDs. Sticky Morse alerts clear automatically when you open a matching chat.</div>
       </div>
     </div>
 
@@ -1444,46 +2333,59 @@
 
     <!-- ── Messages Tab ──────────────────────── -->
     <div class="tab-pane" id="tabMsg">
-      <div class="msg-panel">
-        <!-- Chat header: shows target -->
-        <div class="chat-header" id="chatHeader">
-          <div class="chat-header-info">
-            <div class="chat-header-dot" id="chatHeaderDot"></div>
-            <span class="chat-header-name" id="chatTargetName">Broadcast</span>
-            <span class="chat-header-detail" id="chatTargetDetail">all peers</span>
+      <div class="msg-shell">
+        <div class="chat-thread-pane">
+          <div class="chat-thread-head">
+            <span>Chats</span>
+            <span id="chatThreadCount">0 threads</span>
           </div>
-          <span class="chat-encrypted-badge" id="chatEncBadge" style="display:none;">🔒 encrypted</span>
-          <button class="chat-header-close" id="chatClearTarget" onclick="clearChatTarget()" style="display:none;" title="Back to broadcast">✕</button>
+          <div class="chat-thread-list" id="chatThreadList"></div>
+          <div class="chat-thread-empty" id="chatThreadEmpty">
+            No conversations yet. Incoming direct messages will create threads automatically.
+          </div>
         </div>
 
-        <!-- Peer pills (quick target selection) -->
-        <div class="peer-pills" id="peerPills">
-          <button class="peer-pill active" onclick="selectPeerForMessaging('')">All</button>
-        </div>
-
-        <!-- Chat log -->
-        <div id="commLog" class="chat-log"></div>
-
-        <!-- Input row -->
-        <div class="chat-input-row">
-          <input id="commText" type="text" maxlength="72" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendPeerMessage()" oninput="updateCharCount()">
-          <button class="chat-send-btn" onclick="sendPeerMessage()" title="Send">&#9654;</button>
-        </div>
-
-        <!-- Footer -->
-        <div class="chat-footer">
-          <span class="chat-char-count" id="chatCharCount">0/72</span>
-          <div style="display:flex;gap:0.3rem;align-items:center;">
-            <div class="notify-row">
-              <span>Notify:</span>
-              <select id="msgNotifyMode" onchange="onNotifyModeChange()">
-                <option value="sound">Sound</option>
-                <option value="silent">Silent</option>
-                <option value="morse">Morse</option>
-                <option value="both">Both</option>
-              </select>
+        <div class="msg-panel chat-main-pane">
+          <div class="chat-header" id="chatHeader">
+            <div class="chat-header-info">
+              <div class="chat-header-dot" id="chatHeaderDot"></div>
+              <span class="chat-header-name" id="chatTargetName">Broadcast</span>
+              <span class="chat-header-detail" id="chatTargetDetail">all peers</span>
             </div>
-            <button class="qbtn" onclick="clearCommLog()">Clear</button>
+            <span class="chat-encrypted-badge" id="chatEncBadge" style="display:none;">🔒 encrypted</span>
+            <div class="chat-header-actions">
+              <button class="chat-header-close" id="chatMarkReadBtn" onclick="markCurrentThreadRead()" style="display:none;" title="Mark opened/read">Read</button>
+              <button class="chat-header-close" id="chatBlockBtn" onclick="toggleCurrentThreadBlocked()" style="display:none;" title="Block or unblock this peer">Block</button>
+              <button class="chat-header-close" id="chatDeleteBtn" onclick="deleteCurrentThread()" style="display:none;" title="Delete this chat">Delete</button>
+              <button class="chat-header-close" id="chatClearTarget" onclick="clearChatTarget()" style="display:none;" title="Back to broadcast">✕</button>
+            </div>
+          </div>
+
+          <div class="peer-pills" id="peerPills">
+            <button class="peer-pill active" onclick="selectPeerForMessaging('')">All</button>
+          </div>
+
+          <div id="commLog" class="chat-log"></div>
+
+          <div class="chat-input-row">
+            <input id="commText" type="text" maxlength="72" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendPeerMessage()" oninput="updateCharCount()">
+            <button class="chat-send-btn" onclick="sendPeerMessage()" title="Send">&#9654;</button>
+          </div>
+
+          <div class="chat-footer">
+            <span class="chat-char-count" id="chatCharCount">0/72</span>
+            <div style="display:flex;gap:0.3rem;align-items:center;">
+              <div class="notify-row">
+                <span>Notify:</span>
+                <select id="msgNotifyMode" onchange="onNotifyModeChange()">
+                  <option value="sound">Sound</option>
+                  <option value="silent">Silent</option>
+                  <option value="morse">Morse</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+              <button class="qbtn" onclick="clearCommLog()">Clear view</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1501,13 +2403,164 @@
           <button class="qbtn" onclick="runRepeaterAction('announce',{silent:true})">Announce</button>
         </div>
       </div>
-      <div class="contacts-list" id="contactsList"></div>
-      <div class="contacts-empty" id="contactsEmpty">
-        No peers discovered yet.<br>Run <strong>Announce</strong> to broadcast your identity and wait for peers to respond.
+      <div class="contacts-toolbar">
+        <input id="contactsSearch" type="text" placeholder="Search by alias, name, hash, or notes" oninput="updateContactsList()">
+        <select id="contactsSort" onchange="updateContactsList()" style="min-width:11rem;">
+          <option value="smart">Sort: Smart</option>
+          <option value="recent">Sort: Recently seen</option>
+          <option value="signal">Sort: Strongest signal</option>
+          <option value="messages">Sort: Most messages</option>
+          <option value="name">Sort: Name</option>
+        </select>
+      </div>
+      <div class="contacts-grid">
+        <div class="contacts-list" id="contactsList"></div>
+        <div class="contacts-empty" id="contactsEmpty">
+          No peers discovered yet.<br>Run <strong>Announce</strong> to broadcast your identity and wait for peers to respond.
+        </div>
+        <div class="peer-profile-panel" id="peerProfilePanel">
+          <div class="peer-profile-empty" id="peerProfileEmpty">
+            Select a peer to inspect its profile, keep notes, and review message/link statistics.
+          </div>
+          <div id="peerProfileContent" style="display:none;">
+            <div class="peer-profile-head">
+              <div class="peer-profile-title">
+                <strong id="peerProfileName">Peer</strong>
+                <span id="peerProfileHash">—</span>
+              </div>
+              <span class="peer-profile-status" id="peerProfileStatus">Unknown</span>
+            </div>
+            <div class="peer-profile-grid" id="peerProfileStats"></div>
+            <div class="peer-profile-form">
+              <label>
+                Alias
+                <input id="peerAliasInput" type="text" maxlength="32" placeholder="Optional local nickname">
+              </label>
+              <label>
+                Notes
+                <textarea id="peerNotesInput" maxlength="600" placeholder="Add local notes about this peer, route quality, location, or reminders"></textarea>
+              </label>
+            </div>
+            <div class="peer-profile-actions" style="margin-top:0.55rem;">
+              <button class="qbtn" onclick="savePeerProfile()">Save profile</button>
+              <button class="qbtn" onclick="messageSelectedProfilePeer()">Message peer</button>
+              <button class="qbtn" onclick="toggleFavorite(selectedProfileHash)">Toggle favorite</button>
+              <button class="qbtn" onclick="toggleProfileBlocked()">Block / unblock</button>
+              <button class="qbtn" onclick="clearPeerUnread()">Clear unread</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="contacts-actions">
         <button class="qbtn" onclick="runRepeaterAction('peers',{silent:true})">Refresh peers</button>
         <button class="qbtn" onclick="switchRepeaterTab('tabMsg')">Open chat</button>
+      </div>
+    </div>
+
+    <!-- ── Security Tab ──────────────────────── -->
+    <div class="tab-pane" id="tabSecurity">
+
+      <!-- Access Control -->
+      <div class="security-section">
+        <div class="security-section-head">
+          <span class="ss-icon">&#128274;</span>
+          <span class="ss-title">Access Control</span>
+          <span class="ss-badge off" id="authStatusBadge">No password</span>
+        </div>
+        <div class="announce-panel-copy" style="margin-bottom:0.55rem;">
+          Protect repeater access with a password. The password is verified using PBKDF2-SHA256 with a random salt &mdash; the plaintext is never stored.
+        </div>
+        <div id="secPasswordActions">
+          <div id="secNoPassword">
+            <input class="auth-input" type="password" id="secNewPw" placeholder="New password (min 6 characters)" autocomplete="new-password" style="margin-bottom:0.35rem;">
+            <input class="auth-input" type="password" id="secConfirmPw" placeholder="Confirm password" autocomplete="new-password" style="margin-bottom:0.35rem;">
+            <div class="announce-actions">
+              <button class="qbtn" onclick="secSetPassword()">Set password</button>
+            </div>
+          </div>
+          <div id="secHasPassword" style="display:none;">
+            <div class="announce-actions">
+              <button class="qbtn" onclick="secPromptChangePassword()">Change password</button>
+              <button class="qbtn" onclick="secRemovePassword()">Remove password</button>
+              <button class="qbtn" onclick="authLockNow()">Lock now</button>
+            </div>
+            <div id="secChangePwForm" style="display:none;margin-top:0.55rem;">
+              <input class="auth-input" type="password" id="secOldPw" placeholder="Current password" autocomplete="off" style="margin-bottom:0.35rem;">
+              <input class="auth-input" type="password" id="secChgNewPw" placeholder="New password" autocomplete="new-password" style="margin-bottom:0.35rem;">
+              <input class="auth-input" type="password" id="secChgConfirmPw" placeholder="Confirm new password" autocomplete="new-password" style="margin-bottom:0.35rem;">
+              <div class="announce-actions">
+                <button class="qbtn" onclick="secDoChangePassword()">Update password</button>
+                <button class="qbtn" onclick="secCancelChange()">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="auth-error" id="secPwError" style="margin-top:0.35rem;"></div>
+        <div class="repeater-panel-foot" style="margin-top:0.5rem;">
+          Auto-lock timeout:
+          <select id="secAutoLockTimeout" class="form-select" onchange="saveAuthPrefs()" style="width:auto;display:inline-block;margin-left:0.25rem;padding:0.2rem 0.4rem;">
+            <option value="0">Disabled</option>
+            <option value="300000">5 minutes</option>
+            <option value="900000" selected>15 minutes</option>
+            <option value="1800000">30 minutes</option>
+            <option value="3600000">1 hour</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- RatHole -->
+      <div class="security-section">
+        <div class="security-section-head">
+          <span class="ss-icon">&#128371;</span>
+          <span class="ss-title">RatHole Mode</span>
+          <span class="ss-badge off" id="ratholeBadge">Off</span>
+        </div>
+        <div class="announce-panel-copy" style="margin-bottom:0.5rem;">
+          RatHole gates privacy controls. When no-log mode is enabled, browser chat threads, peer notes, and favorites are wiped and will not be stored.
+        </div>
+        <label class="full" style="display:flex;gap:0.6rem;align-items:flex-start;margin-bottom:0.45rem;">
+          <input id="repRatHoleEnabled" type="checkbox" onchange="updateRatHoleUi()" style="accent-color:var(--accent);margin-top:2px;">
+          <span style="font-size:0.78rem;color:var(--text);font-weight:600;">Enable RatHole security mode</span>
+        </label>
+        <div id="ratholeSubOptions" class="section-disabled">
+          <div class="announce-panel-grid" style="margin-bottom:0.45rem;">
+            <label class="full" style="display:flex;gap:0.6rem;align-items:flex-start;">
+              <input id="repRatHoleNoLogs" type="checkbox" onchange="updateRatHoleUi()">
+              <span>Store no local logs</span>
+            </label>
+            <label>
+              Delete messages after (hours)
+              <input id="repRatHoleRetention" type="number" min="1" max="720" value="72" onchange="updateRatHoleUi()">
+            </label>
+            <label class="full" style="display:flex;gap:0.6rem;align-items:flex-start;">
+              <input id="repRatHoleBootReset" type="checkbox" onchange="updateRatHoleUi()">
+              <span>Wipe device state &amp; regenerate identity on every power-on boot</span>
+            </label>
+          </div>
+          <div class="announce-actions">
+            <button class="qbtn" onclick="saveRatHoleDefaults()">Save defaults</button>
+            <button class="qbtn" onclick="applyRatHoleSettings(true)">Apply to device</button>
+            <button class="qbtn" onclick="runRepeaterAction('rathole')">Read config</button>
+            <button class="qbtn" onclick="purgeRatHoleDataNow()">Purge local data</button>
+          </div>
+        </div>
+        <div class="repeater-panel-foot" id="ratholeHint" style="margin-top:0.5rem;">RatHole mode is off. Enable it to activate local no-log retention and device boot-scrub options.</div>
+      </div>
+
+      <!-- Data Management -->
+      <div class="security-section">
+        <div class="security-section-head">
+          <span class="ss-icon">&#128451;</span>
+          <span class="ss-title">Data Management</span>
+        </div>
+        <div class="announce-panel-copy" style="margin-bottom:0.5rem;">
+          Export or import all browser-side data: chat threads, contacts, favorites, refresh prefs, and RatHole configuration.
+        </div>
+        <div class="announce-actions">
+          <button class="qbtn" onclick="exportLocalState()">Export data</button>
+          <button class="qbtn" onclick="requestImportLocalState()">Import data</button>
+        </div>
+        <input id="ratholeImportFile" type="file" accept="application/json" style="display:none;" onchange="importLocalStateFromFile(event)">
       </div>
     </div>
 
@@ -1713,6 +2766,7 @@
           <span class="qbtn" onclick="sendCmd('radio')">radio</span>
           <span class="qbtn" onclick="sendCmd('routes')">routes</span>
           <span class="qbtn" onclick="sendCmd('announce')">announce</span>
+          <span class="qbtn" onclick="sendCmd('discover')">discover</span>
           <span class="qbtn" onclick="sendCmd('rxdiag')">rxdiag</span>
           <span class="qbtn" onclick="sendCmd('nfloor 5')">nfloor</span>
           <span class="qbtn" onclick="sendCmd('regdump')">regdump</span>
@@ -1775,10 +2829,374 @@ let serialCommandQueue = Promise.resolve();
 let serialCooldownUntil = 0;
 let serialSessionId = 0;
 let lastSnapshotAt = 0;
+let autoRefreshCycle = 0;
+
+const queryParams = new URLSearchParams(window.location.search);
 
 const SERIAL_CMD_GAP_MS = 90;
 const SERIAL_BOOT_GRACE_MS = 2200;
 const SNAPSHOT_MIN_INTERVAL_MS = 3000;
+const REFRESH_PREFS_KEY = 'rattunnel_repeater_refresh';
+const DEFAULT_REFRESH_PREFS = {
+  enabled: true,
+  intervalMs: 10000,
+  scope: 'full',
+  peerMode: 'always',
+  powerPreset: 'balanced',
+};
+let refreshPrefs = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REFRESH_PREFS_KEY) || '{}');
+    return { ...DEFAULT_REFRESH_PREFS, ...saved };
+  } catch (_) {
+    return { ...DEFAULT_REFRESH_PREFS };
+  }
+})();
+const RATHOLE_PREFS_KEY = 'rattunnel_rathole';
+const DEFAULT_RATHOLE_PREFS = {
+  enabled: false,
+  noLogs: false,
+  retentionHours: 72,
+  bootReset: false,
+};
+let ratholePrefs = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RATHOLE_PREFS_KEY) || '{}');
+    return { ...DEFAULT_RATHOLE_PREFS, ...saved };
+  } catch (_) {
+    return { ...DEFAULT_RATHOLE_PREFS };
+  }
+})();
+
+/* ════════════════════════════════════════════
+   Auth / Access Control (PBKDF2-SHA256)
+════════════════════════════════════════════ */
+const AUTH_KEY = 'rattunnel_auth';
+const AUTH_PREFS_KEY = 'rattunnel_auth_prefs';
+const AUTH_SESSION_KEY = 'rattunnel_auth_session';
+const PBKDF2_ITERATIONS = 200000;
+let authUnlocked = false;
+let authIdleTimer = null;
+let authLastActivity = Date.now();
+const DEFAULT_AUTH_PREFS = { autoLockMs: 900000 };
+
+let authPrefs = (() => {
+  try {
+    return { ...DEFAULT_AUTH_PREFS, ...JSON.parse(localStorage.getItem(AUTH_PREFS_KEY) || '{}') };
+  } catch (_) { return { ...DEFAULT_AUTH_PREFS }; }
+})();
+function saveAuthPrefs() {
+  const el = document.getElementById('secAutoLockTimeout');
+  if (el) authPrefs.autoLockMs = parseInt(el.value, 10) || 0;
+  localStorage.setItem(AUTH_PREFS_KEY, JSON.stringify(authPrefs));
+  resetAuthIdleTimer();
+}
+
+function getAuthData() {
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (_) { return null; }
+}
+
+async function pbkdf2Derive(password, salt, iterations = PBKDF2_ITERATIONS) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256);
+  return new Uint8Array(bits);
+}
+
+function bufToHex(buf) { return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
+function hexToBuf(hex) { const bytes = new Uint8Array(hex.length / 2); for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i*2, 2), 16); return bytes; }
+
+async function authHashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const derived = await pbkdf2Derive(password, salt);
+  return { salt: bufToHex(salt), hash: bufToHex(derived), iterations: PBKDF2_ITERATIONS };
+}
+
+async function authVerifyPassword(password, stored) {
+  const salt = hexToBuf(stored.salt);
+  const derived = await pbkdf2Derive(password, salt, stored.iterations || PBKDF2_ITERATIONS);
+  const expected = stored.hash;
+  const got = bufToHex(derived);
+  if (got.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < got.length; i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+function authHasPassword() { return !!getAuthData(); }
+
+function authSessionToken() {
+  try { return sessionStorage.getItem(AUTH_SESSION_KEY); } catch (_) { return null; }
+}
+
+function authCreateSession() {
+  const token = bufToHex(crypto.getRandomValues(new Uint8Array(16)));
+  try { sessionStorage.setItem(AUTH_SESSION_KEY, token); } catch (_) {}
+  return token;
+}
+
+function authClearSession() {
+  try { sessionStorage.removeItem(AUTH_SESSION_KEY); } catch (_) {}
+}
+
+function authIsUnlocked() {
+  if (!authHasPassword()) return true;
+  return authUnlocked && !!authSessionToken();
+}
+
+function isRepeaterAccessLocked() {
+  return authHasPassword() && !authIsUnlocked();
+}
+
+function canAccessRepeaterMode() {
+  return canUseRepeaterMode() && !isRepeaterAccessLocked();
+}
+
+function updateConsoleAccessUi() {
+  const input = document.getElementById('consoleInput');
+  if (input) input.disabled = !connected || (canUseRepeaterMode() && isRepeaterAccessLocked());
+}
+
+function requireRepeaterAccess(message = 'Unlock repeater access first.', opts = {}) {
+  const { showOverlay = true, showAlert = true } = opts;
+  if (!canUseRepeaterMode()) {
+    if (showAlert) showFlashAlert('warn', 'Repeater mode is unavailable until a connected repeater is detected.');
+    activeMode = 'flasher';
+    applyPrimaryModeUi();
+    return false;
+  }
+  if (!isRepeaterAccessLocked()) return true;
+  activeMode = 'flasher';
+  applyPrimaryModeUi();
+  if (showAlert) showFlashAlert('info', message);
+  if (showOverlay) authShowOverlay();
+  return false;
+}
+
+function authShowOverlay() {
+  const overlay = document.getElementById('authOverlay');
+  const login = document.getElementById('authLogin');
+  const setup = document.getElementById('authSetup');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+  if (authHasPassword()) {
+    login.style.display = '';
+    setup.style.display = 'none';
+    const inp = document.getElementById('authPasswordInput');
+    if (inp) { inp.value = ''; inp.classList.remove('error'); setTimeout(() => inp.focus(), 100); }
+  } else {
+    login.style.display = 'none';
+    setup.style.display = '';
+    const inp = document.getElementById('authNewPassword');
+    if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 100); }
+    const conf = document.getElementById('authConfirmPassword');
+    if (conf) conf.value = '';
+  }
+  document.getElementById('authError').textContent = '';
+  document.getElementById('authSetupError').textContent = '';
+}
+
+function authHideOverlay() {
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+async function authUnlock() {
+  const inp = document.getElementById('authPasswordInput');
+  const errEl = document.getElementById('authError');
+  const pw = inp?.value || '';
+  if (!pw) { errEl.textContent = 'Enter your password.'; inp?.classList.add('error'); return; }
+  const stored = getAuthData();
+  if (!stored) { authHideOverlay(); return; }
+  const valid = await authVerifyPassword(pw, stored);
+  if (!valid) {
+    errEl.textContent = 'Incorrect password.';
+    inp?.classList.add('error');
+    inp?.select();
+    return;
+  }
+  authUnlocked = true;
+  authCreateSession();
+  authHideOverlay();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  resetAuthIdleTimer();
+}
+
+async function authSetPassword() {
+  const pwEl = document.getElementById('authNewPassword');
+  const confEl = document.getElementById('authConfirmPassword');
+  const errEl = document.getElementById('authSetupError');
+  const pw = pwEl?.value || '';
+  const conf = confEl?.value || '';
+  if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  if (pw !== conf) { errEl.textContent = 'Passwords do not match.'; return; }
+  const data = await authHashPassword(pw);
+  localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+  authUnlocked = true;
+  authCreateSession();
+  authHideOverlay();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  updateSecurityTabUi();
+  resetAuthIdleTimer();
+}
+
+function authSkipSetup() {
+  authUnlocked = true;
+  authHideOverlay();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+}
+
+function authLockNow(opts = {}) {
+  const { showOverlay = activeMode === 'repeater' } = opts;
+  if (!authHasPassword()) return;
+  authUnlocked = false;
+  authClearSession();
+  clearAuthIdleTimer();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  if (showOverlay) {
+    authShowOverlay();
+  }
+}
+
+function updateLockBtnUi() {
+  const btn = document.getElementById('lockBtn');
+  if (!btn) return;
+  if (authHasPassword()) {
+    btn.style.display = '';
+    if (authIsUnlocked()) {
+      btn.textContent = '\uD83D\uDD13 Unlocked';
+      btn.classList.remove('locked');
+    } else {
+      btn.textContent = '\uD83D\uDD12 Locked';
+      btn.classList.add('locked');
+    }
+  } else {
+    btn.style.display = 'none';
+  }
+  updateConsoleAccessUi();
+}
+
+function updateSecurityTabUi() {
+  const hasPassword = authHasPassword();
+  const noPw = document.getElementById('secNoPassword');
+  const hasPw = document.getElementById('secHasPassword');
+  const badge = document.getElementById('authStatusBadge');
+  if (noPw) noPw.style.display = hasPassword ? 'none' : '';
+  if (hasPw) hasPw.style.display = hasPassword ? '' : 'none';
+  if (badge) {
+    badge.textContent = hasPassword ? 'Active' : 'No password';
+    badge.className = 'ss-badge ' + (hasPassword ? 'on' : 'off');
+  }
+  const timeoutEl = document.getElementById('secAutoLockTimeout');
+  if (timeoutEl) timeoutEl.value = String(authPrefs.autoLockMs || 0);
+  document.getElementById('secPwError').textContent = '';
+  const chgForm = document.getElementById('secChangePwForm');
+  if (chgForm) chgForm.style.display = 'none';
+}
+
+async function secSetPassword() {
+  const pw = document.getElementById('secNewPw')?.value || '';
+  const conf = document.getElementById('secConfirmPw')?.value || '';
+  const errEl = document.getElementById('secPwError');
+  if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  if (pw !== conf) { errEl.textContent = 'Passwords do not match.'; return; }
+  const data = await authHashPassword(pw);
+  localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+  authUnlocked = true;
+  authCreateSession();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  updateSecurityTabUi();
+  resetAuthIdleTimer();
+  showFlashAlert('info', 'Password set. Repeater access is now protected.');
+  document.getElementById('secNewPw').value = '';
+  document.getElementById('secConfirmPw').value = '';
+}
+
+function secPromptChangePassword() {
+  const form = document.getElementById('secChangePwForm');
+  if (form) { form.style.display = ''; document.getElementById('secOldPw')?.focus(); }
+}
+function secCancelChange() {
+  const form = document.getElementById('secChangePwForm');
+  if (form) form.style.display = 'none';
+  ['secOldPw','secChgNewPw','secChgConfirmPw'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+}
+
+async function secDoChangePassword() {
+  const errEl = document.getElementById('secPwError');
+  const oldPw = document.getElementById('secOldPw')?.value || '';
+  const newPw = document.getElementById('secChgNewPw')?.value || '';
+  const confPw = document.getElementById('secChgConfirmPw')?.value || '';
+  const stored = getAuthData();
+  if (!stored) { errEl.textContent = 'No current password found.'; return; }
+  const valid = await authVerifyPassword(oldPw, stored);
+  if (!valid) { errEl.textContent = 'Current password is incorrect.'; return; }
+  if (newPw.length < 6) { errEl.textContent = 'New password must be at least 6 characters.'; return; }
+  if (newPw !== confPw) { errEl.textContent = 'New passwords do not match.'; return; }
+  const data = await authHashPassword(newPw);
+  localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+  authUnlocked = true;
+  authCreateSession();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  updateSecurityTabUi();
+  resetAuthIdleTimer();
+  showFlashAlert('info', 'Password changed successfully.');
+}
+
+async function secRemovePassword() {
+  if (!authHasPassword()) return;
+  const pw = prompt('Enter your current password to remove it:');
+  if (!pw) return;
+  const stored = getAuthData();
+  const valid = await authVerifyPassword(pw, stored);
+  if (!valid) { document.getElementById('secPwError').textContent = 'Incorrect password.'; return; }
+  localStorage.removeItem(AUTH_KEY);
+  authUnlocked = true;
+  authClearSession();
+  clearAuthIdleTimer();
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  updateSecurityTabUi();
+  showFlashAlert('info', 'Password removed. Repeater access is no longer protected.');
+}
+
+function resetAuthIdleTimer() {
+  clearAuthIdleTimer();
+  const timeout = authPrefs.autoLockMs;
+  if (!timeout || !authHasPassword()) return;
+  authLastActivity = Date.now();
+  authIdleTimer = setInterval(() => {
+    if (Date.now() - authLastActivity > timeout && authIsUnlocked()) {
+      authLockNow();
+      if (activeMode === 'repeater') authShowOverlay();
+    }
+  }, 30000);
+}
+
+function clearAuthIdleTimer() {
+  if (authIdleTimer) { clearInterval(authIdleTimer); authIdleTimer = null; }
+}
+
+function authBumpActivity() {
+  authLastActivity = Date.now();
+}
+
+/* ════════════════════════════════════════════
+   Collapsible sections
+════════════════════════════════════════════ */
+function toggleCollapse(hdrEl) {
+  const body = hdrEl.nextElementSibling;
+  if (!body) return;
+  const isOpen = hdrEl.classList.contains('open');
+  hdrEl.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
+}
 
 const linkVerifyState = {
   running: false,
@@ -1788,13 +3206,272 @@ const linkVerifyState = {
 
 const detectedNodes = new Map();
 
-// ── Favorites & contact metadata (persisted in localStorage) ──
-let favoriteHashes = JSON.parse(localStorage.getItem('rattunnel_favorites') || '[]');
-// contactMeta: { hash: { firstSeen, lastSeen, msgCount, lastMsg } }
-let contactMeta = JSON.parse(localStorage.getItem('rattunnel_contact_meta') || '{}');
+function applyHubQueryConfig() {
+  const hubWs = queryParams.get('hubWs');
+  if (hubWs) {
+    const input = document.getElementById('hubWsUrl');
+    if (input) input.value = hubWs;
+  }
+}
 
-function saveFavorites() { localStorage.setItem('rattunnel_favorites', JSON.stringify(favoriteHashes)); }
-function saveContactMeta() { localStorage.setItem('rattunnel_contact_meta', JSON.stringify(contactMeta)); }
+// ── Favorites & contact metadata (persisted in localStorage) ──
+let favoriteHashes = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('rattunnel_favorites') || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch (_) {
+    return [];
+  }
+})();
+// contactMeta: { hash: { firstSeen, lastSeen, msgCount, lastMsg, alias, notes, ... } }
+let contactMeta = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('rattunnel_contact_meta') || '{}');
+    return saved && typeof saved === 'object' ? saved : {};
+  } catch (_) {
+    return {};
+  }
+})();
+let selectedProfileHash = '';
+const CHAT_THREADS_KEY = 'rattunnel_chat_threads';
+const CHAT_THREAD_LIMIT = 120;
+let chatThreads = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_THREADS_KEY) || '{}');
+    if (!saved || typeof saved !== 'object') return {};
+    return saved;
+  } catch (_) {
+    return {};
+  }
+})();
+
+function shouldPersistBrowserLogs() {
+  return !(ratholePrefs.enabled && ratholePrefs.noLogs);
+}
+function saveFavorites() {
+  if (!shouldPersistBrowserLogs()) {
+    localStorage.removeItem('rattunnel_favorites');
+    return;
+  }
+  localStorage.setItem('rattunnel_favorites', JSON.stringify(favoriteHashes));
+}
+function saveContactMeta() {
+  if (!shouldPersistBrowserLogs()) {
+    localStorage.removeItem('rattunnel_contact_meta');
+    return;
+  }
+  localStorage.setItem('rattunnel_contact_meta', JSON.stringify(contactMeta));
+}
+function saveChatThreads() {
+  if (!shouldPersistBrowserLogs()) {
+    localStorage.removeItem(CHAT_THREADS_KEY);
+    return;
+  }
+  localStorage.setItem(CHAT_THREADS_KEY, JSON.stringify(chatThreads));
+}
+function saveRatHolePrefs() {
+  localStorage.setItem(RATHOLE_PREFS_KEY, JSON.stringify(ratholePrefs));
+}
+function threadKeyForHash(hash) { return hash || 'broadcast'; }
+function hashForThreadKey(threadKey) { return threadKey === 'broadcast' ? '' : threadKey; }
+function recomputeThreadDerivedContactStats() {
+  Object.values(contactMeta).forEach(meta => {
+    if (!meta || typeof meta !== 'object') return;
+    meta.msgCount = 0;
+    meta.inCount = 0;
+    meta.outCount = 0;
+    meta.encryptedIn = 0;
+    meta.encryptedOut = 0;
+    meta.lastMsg = '';
+  });
+
+  Object.entries(chatThreads).forEach(([threadKey, thread]) => {
+    const hash = hashForThreadKey(threadKey);
+    if (!hash || !thread || !Array.isArray(thread.messages)) return;
+    const meta = ensureContactMeta(hash);
+    let latestTs = 0;
+    let latestText = '';
+    thread.messages.forEach(msg => {
+      meta.msgCount = (meta.msgCount || 0) + 1;
+      if (msg.direction === 'out') {
+        meta.outCount = (meta.outCount || 0) + 1;
+        if (msg.encrypted) meta.encryptedOut = (meta.encryptedOut || 0) + 1;
+      } else if (msg.direction === 'in') {
+        meta.inCount = (meta.inCount || 0) + 1;
+        if (msg.encrypted) meta.encryptedIn = (meta.encryptedIn || 0) + 1;
+      }
+      const ts = Number(msg.ts || 0);
+      if (ts >= latestTs) {
+        latestTs = ts;
+        latestText = String(msg.text || '');
+      }
+    });
+    meta.lastMsg = latestText.slice(0, 80);
+  });
+}
+function purgeExpiredChats(saveAfter = true) {
+  if (!ratholePrefs.enabled) return false;
+  const retentionHours = Math.max(1, Math.min(720, Number(ratholePrefs.retentionHours || DEFAULT_RATHOLE_PREFS.retentionHours)));
+  if (!Number.isFinite(retentionHours)) return false;
+
+  const cutoff = Date.now() - (retentionHours * 3600 * 1000);
+  let changed = false;
+
+  Object.keys(chatThreads).forEach(threadKey => {
+    const thread = chatThreads[threadKey];
+    if (!thread || !Array.isArray(thread.messages)) return;
+    const kept = thread.messages.filter(msg => Number(msg.ts || 0) >= cutoff);
+    if (kept.length !== thread.messages.length) {
+      thread.messages = kept;
+      thread.updatedAt = kept[kept.length - 1]?.ts || 0;
+      changed = true;
+    }
+    if (!thread.messages.length && !thread.blocked) {
+      delete chatThreads[threadKey];
+      changed = true;
+    }
+  });
+
+  if (!changed) return false;
+
+  recomputeThreadDerivedContactStats();
+  syncUnreadCountsFromThreads();
+  if (saveAfter) {
+    saveChatThreads();
+    saveContactMeta();
+  }
+  return true;
+}
+function clearSensitiveBrowserState() {
+  favoriteHashes = [];
+  contactMeta = {};
+  chatThreads = {};
+  localStorage.removeItem('rattunnel_favorites');
+  localStorage.removeItem('rattunnel_contact_meta');
+  localStorage.removeItem(CHAT_THREADS_KEY);
+  syncUnreadCountsFromThreads();
+}
+function applyRatHoleLocalPolicy() {
+  let changed = false;
+  if (ratholePrefs.enabled && ratholePrefs.noLogs) {
+    clearSensitiveBrowserState();
+    changed = true;
+  } else if (purgeExpiredChats(true)) {
+    changed = true;
+  }
+  return changed;
+}
+function ensureChatThread(hash) {
+  const threadKey = threadKeyForHash(hash);
+  if (!chatThreads[threadKey]) {
+    chatThreads[threadKey] = {
+      hash: hash || '',
+      messages: [],
+      blocked: false,
+      deletedAt: 0,
+      lastOpenedAt: 0,
+      updatedAt: 0,
+    };
+  }
+  if (!Array.isArray(chatThreads[threadKey].messages)) chatThreads[threadKey].messages = [];
+  return chatThreads[threadKey];
+}
+function getThreadUnreadCount(hash) {
+  const thread = chatThreads[threadKeyForHash(hash)];
+  if (!thread || !Array.isArray(thread.messages)) return 0;
+  return thread.messages.filter(msg => msg.direction === 'in' && !msg.opened).length;
+}
+function syncUnreadCountsFromThreads() {
+  unreadCounts = {};
+  Object.keys(chatThreads).forEach(threadKey => {
+    const hash = hashForThreadKey(threadKey);
+    if (!hash) return;
+    const count = getThreadUnreadCount(hash);
+    if (count > 0) unreadCounts[hash] = count;
+  });
+}
+function isThreadBlocked(hash) {
+  return !!ensureChatThread(hash).blocked;
+}
+function appendMessageToThread(hash, message) {
+  const thread = ensureChatThread(hash);
+  thread.updatedAt = message.ts || Date.now();
+  thread.deletedAt = 0;
+  thread.messages.push(message);
+  if (thread.messages.length > CHAT_THREAD_LIMIT) {
+    thread.messages.splice(0, thread.messages.length - CHAT_THREAD_LIMIT);
+  }
+  saveChatThreads();
+  syncUnreadCountsFromThreads();
+}
+function markThreadOpened(hash, source = 'ui') {
+  const thread = ensureChatThread(hash);
+  let changed = false;
+  thread.messages.forEach(msg => {
+    if (msg.direction === 'in' && !msg.opened) {
+      msg.opened = true;
+      msg.openedAt = Date.now();
+      msg.openedSource = source;
+      changed = true;
+    }
+  });
+  thread.lastOpenedAt = Date.now();
+  if (changed) saveChatThreads();
+  syncUnreadCountsFromThreads();
+}
+function deleteChatThread(hash) {
+  const threadKey = threadKeyForHash(hash);
+  if (chatThreads[threadKey]) {
+    delete chatThreads[threadKey];
+    saveChatThreads();
+    syncUnreadCountsFromThreads();
+  }
+}
+function formatChatThreadTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
+}
+function getSortedChatThreadEntries() {
+  return Object.entries(chatThreads)
+    .filter(([, thread]) => thread && Array.isArray(thread.messages) && thread.messages.length)
+    .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+}
+function ensureContactMeta(hash) {
+  if (!hash) return {};
+  if (!contactMeta[hash]) {
+    contactMeta[hash] = {
+      firstSeen: Date.now(),
+      lastSeen: Date.now(),
+      msgCount: 0,
+      inCount: 0,
+      outCount: 0,
+      encryptedIn: 0,
+      encryptedOut: 0,
+      lastMsg: '',
+      alias: '',
+      notes: '',
+      bestRSSI: '',
+      bestSNR: '',
+      lastRSSI: '',
+      lastSNR: '',
+      lastHops: '',
+      lastAge: '',
+      profileViews: 0,
+      blockedCount: 0,
+      lastBlockedAt: 0,
+    };
+  }
+  return contactMeta[hash];
+}
+function getPeerDisplayName(hash, fallback = '') {
+  if (!hash) return fallback || 'Unknown';
+  const node = detectedNodes.get(hash);
+  const meta = contactMeta[hash] || {};
+  return meta.alias || node?.name || meta.name || fallback || (hash.slice(0, 8) + '..');
+}
 function isFavorite(hash) { return favoriteHashes.includes(hash); }
 function toggleFavorite(hash) {
   const idx = favoriteHashes.indexOf(hash);
@@ -1803,18 +3480,48 @@ function toggleFavorite(hash) {
   saveFavorites();
   updatePeerPills();
   updateContactsList();
+  updateContactProfile();
+  updateChatHeader();
+  renderChatThreadList();
 }
 function touchContactMeta(hash, name) {
-  if (!contactMeta[hash]) contactMeta[hash] = { firstSeen: Date.now(), lastSeen: Date.now(), msgCount: 0, lastMsg: '' };
-  contactMeta[hash].lastSeen = Date.now();
-  if (name) contactMeta[hash].name = name;
+  const meta = ensureContactMeta(hash);
+  meta.lastSeen = Date.now();
+  if (name) meta.name = name;
   saveContactMeta();
 }
-function recordContactMessage(hash, text) {
-  if (!contactMeta[hash]) contactMeta[hash] = { firstSeen: Date.now(), lastSeen: Date.now(), msgCount: 0, lastMsg: '' };
-  contactMeta[hash].msgCount = (contactMeta[hash].msgCount || 0) + 1;
-  contactMeta[hash].lastMsg = text.slice(0, 50);
-  contactMeta[hash].lastSeen = Date.now();
+function recordContactMessage(hash, text, direction = 'in', encrypted = false) {
+  const meta = ensureContactMeta(hash);
+  meta.msgCount = (meta.msgCount || 0) + 1;
+  meta.lastMsg = text.slice(0, 80);
+  meta.lastSeen = Date.now();
+  if (direction === 'out') {
+    meta.outCount = (meta.outCount || 0) + 1;
+    if (encrypted) meta.encryptedOut = (meta.encryptedOut || 0) + 1;
+  } else {
+    meta.inCount = (meta.inCount || 0) + 1;
+    if (encrypted) meta.encryptedIn = (meta.encryptedIn || 0) + 1;
+  }
+  saveContactMeta();
+}
+function updateContactRadioStats(hash, info) {
+  const meta = ensureContactMeta(hash);
+  if (info.name) meta.name = info.name;
+  meta.lastSeen = Date.now();
+  if (info.rssi !== '' && info.rssi !== undefined) {
+    meta.lastRSSI = info.rssi;
+    const best = parseFloat(meta.bestRSSI);
+    const current = parseFloat(info.rssi);
+    if (!Number.isFinite(best) || current > best) meta.bestRSSI = info.rssi;
+  }
+  if (info.snr !== '' && info.snr !== undefined) {
+    meta.lastSNR = info.snr;
+    const bestSnr = parseFloat(meta.bestSNR);
+    const currentSnr = parseFloat(info.snr);
+    if (!Number.isFinite(bestSnr) || currentSnr > bestSnr) meta.bestSNR = info.snr;
+  }
+  if (info.hops !== undefined) meta.lastHops = String(info.hops);
+  if (info.age !== undefined) meta.lastAge = String(info.age);
   saveContactMeta();
 }
 
@@ -1840,7 +3547,18 @@ const repeaterState = {
   snr: '—',
   name: '—',
   hash: '—',
-  refreshAt: '—'
+  refreshAt: '—',
+  ledChannels: {
+    green: { available: 'on', idle: 'heartbeat', rx: 'off', tx: 'off', morse: 'off' },
+    blue: { available: 'on', idle: 'off', rx: 'on', tx: 'on', morse: 'errors' },
+    red: { available: 'off', idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+  },
+  ledAlertMode: 'once',
+  ledAlertCount: '3',
+  ledAlertInterval: '20',
+  ledAlertWatch: '',
+  ratHoleEnabled: 'off',
+  ratHoleBootReset: 'off',
 };
 
 let cmdHistory = [], cmdIdx = -1;
@@ -1874,6 +3592,39 @@ window.addEventListener('DOMContentLoaded', refreshModeToggleUi);
 window.addEventListener('DOMContentLoaded', applyPrimaryModeUi);
 window.addEventListener('DOMContentLoaded', updateStatusUi);
 window.addEventListener('DOMContentLoaded', updateProfileHint);
+window.addEventListener('DOMContentLoaded', applyHubQueryConfig);
+window.addEventListener('DOMContentLoaded', loadRefreshPrefsIntoUi);
+window.addEventListener('DOMContentLoaded', loadRatHolePrefsIntoUi);
+window.addEventListener('DOMContentLoaded', updateLedCardUi);
+window.addEventListener('DOMContentLoaded', renderChatThreadList);
+window.addEventListener('DOMContentLoaded', renderActiveChatThread);
+window.addEventListener('DOMContentLoaded', () => {
+  /* Auth init */
+  updateLockBtnUi();
+  updateSecurityTabUi();
+  if (authHasPassword() && !authSessionToken()) {
+    authUnlocked = false;
+  } else if (authHasPassword() && authSessionToken()) {
+    authUnlocked = true;
+    resetAuthIdleTimer();
+  }
+  /* Track user activity for idle lock */
+  ['click','keydown','mousemove','scroll'].forEach(evt =>
+    document.addEventListener(evt, authBumpActivity, { passive: true })
+  );
+
+  const changed = applyRatHoleLocalPolicy();
+  if (changed) {
+    updatePeerSelector();
+    updateContactProfile();
+  }
+  window.setInterval(() => {
+    if (purgeExpiredChats(true)) {
+      updatePeerSelector();
+      updateContactProfile();
+    }
+  }, 60000);
+});
 
 function buildNoCacheUrl(url) {
   const sep = url.includes('?') ? '&' : '?';
@@ -2324,7 +4075,9 @@ function refreshModeToggleUi() {
   repeaterBtn.classList.toggle('active', activeMode === 'repeater' && repeaterReady);
 
   if (repeaterReady) {
-    hint.textContent = 'Repeater mode available. Use it for live status and repeater controls.';
+    hint.textContent = isRepeaterAccessLocked()
+      ? 'Repeater detected, but access is locked. Unlock first to use repeater controls.'
+      : 'Repeater mode available. Use it for live status and repeater controls.';
   } else if (connected && repeaterDetected && repeaterCaps.legacyDetected) {
     hint.textContent = 'Legacy repeater firmware detected. Flash the latest RatTunnel build to unlock Repeater mode controls.';
   } else if (connected) {
@@ -2338,6 +4091,10 @@ function setActiveMode(mode) {
   if (mode === 'repeater' && !canUseRepeaterMode()) {
     showFlashAlert('warn', 'Repeater mode is unavailable until a connected repeater is detected.');
     activeMode = 'flasher';
+  } else if (mode === 'repeater' && isRepeaterAccessLocked()) {
+    activeMode = 'flasher';
+    authShowOverlay();
+    showFlashAlert('info', 'Unlock repeater access before opening repeater mode.');
   } else {
     activeMode = (mode === 'repeater') ? 'repeater' : 'flasher';
     hideFlashAlert();
@@ -2352,12 +4109,12 @@ function setSectionVisible(id, visible) {
 }
 
 function applyPrimaryModeUi() {
-  if (activeMode === 'repeater' && !canUseRepeaterMode()) {
+  if (activeMode === 'repeater' && !canAccessRepeaterMode()) {
     activeMode = 'flasher';
   }
 
   const showFlasher = activeMode === 'flasher';
-  const showRepeater = activeMode === 'repeater' && canUseRepeaterMode();
+  const showRepeater = activeMode === 'repeater' && canAccessRepeaterMode();
 
   setSectionVisible('stepTrack', showFlasher);
   setSectionVisible('cardVersion', showFlasher);
@@ -2370,6 +4127,7 @@ function applyPrimaryModeUi() {
   if (repeaterPanel) repeaterPanel.style.display = showRepeater ? 'block' : 'none';
 
   refreshModeToggleUi();
+  updateConsoleAccessUi();
 
   if (!showFlasher) {
     hideFlashAlert();
@@ -2484,9 +4242,433 @@ function updateStatusUi() {
   if (repName && repeaterState.name && repeaterState.name !== '—' && repName.value.trim() === '') {
     repName.value = repeaterState.name;
   }
+  const annName = document.getElementById('repAnnounceName');
+  if (annName && repeaterState.name && repeaterState.name !== '—' && annName.value.trim() === '') {
+    annName.value = repeaterState.name;
+  }
+  const ledAlertMode = document.getElementById('repLedAlertMode');
+  const ledAlertCount = document.getElementById('repLedAlertCount');
+  const ledAlertInterval = document.getElementById('repLedAlertInterval');
+  const ledAlertWatch = document.getElementById('repLedAlertWatch');
+  if (ledAlertMode && repeaterState.ledAlertMode) ledAlertMode.value = repeaterState.ledAlertMode;
+  if (ledAlertCount && repeaterState.ledAlertCount) ledAlertCount.value = repeaterState.ledAlertCount;
+  if (ledAlertInterval && repeaterState.ledAlertInterval) ledAlertInterval.value = repeaterState.ledAlertInterval;
+  if (ledAlertWatch) ledAlertWatch.value = repeaterState.ledAlertWatch || '';
+  updateLedUiFromState();
+  updateAnnouncePreview();
+  updateAutoRefreshUi();
 
   updateDetectedNodesUi();
   loadSettingsFromStatus(true);
+}
+
+function saveRefreshPrefs() {
+  localStorage.setItem(REFRESH_PREFS_KEY, JSON.stringify(refreshPrefs));
+}
+
+function getLedChannelUi(color) {
+  return {
+    available: repeaterState.ledChannels?.[color]?.available || (color === 'red' ? 'off' : 'on'),
+    idle: document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedIdleMode`)?.value || 'off',
+    rx: document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedRxMode`)?.value || 'off',
+    tx: document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedTxMode`)?.value || 'off',
+    morse: document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedMorseMode`)?.value || 'off',
+  };
+}
+
+function setLedChannelUi(color, cfg = {}) {
+  const prefix = `rep${color[0].toUpperCase() + color.slice(1)}Led`;
+  const idleEl = document.getElementById(`${prefix}IdleMode`);
+  const rxEl = document.getElementById(`${prefix}RxMode`);
+  const txEl = document.getElementById(`${prefix}TxMode`);
+  const morseEl = document.getElementById(`${prefix}MorseMode`);
+  if (idleEl && cfg.idle) idleEl.value = cfg.idle;
+  if (rxEl && cfg.rx) rxEl.value = cfg.rx;
+  if (txEl && cfg.tx) txEl.value = cfg.tx;
+  if (morseEl && cfg.morse) morseEl.value = cfg.morse;
+}
+
+function updateLedUiFromState() {
+  ['green', 'blue', 'red'].forEach(color => setLedChannelUi(color, repeaterState.ledChannels?.[color] || {}));
+  updateLedCardUi();
+}
+
+function anyLedMorseEnabled() {
+  return ['green', 'blue', 'red'].some(color => getLedChannelUi(color).morse !== 'off');
+}
+
+function loadRefreshPrefsIntoUi() {
+  const intervalEl = document.getElementById('autoRefreshInterval');
+  const scopeEl = document.getElementById('autoRefreshScope');
+  const peerEl = document.getElementById('peerRefreshMode');
+  if (intervalEl) intervalEl.value = String(refreshPrefs.intervalMs);
+  if (scopeEl) scopeEl.value = refreshPrefs.scope;
+  if (peerEl) peerEl.value = refreshPrefs.peerMode;
+  /* activate the correct preset chip */
+  const savedPreset = refreshPrefs.powerPreset || 'balanced';
+  document.querySelectorAll('.led-preset-chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === savedPreset);
+  });
+  const presetConfig = getPowerPresetConfig(savedPreset);
+  setLedChannelUi('green', presetConfig.leds.green);
+  setLedChannelUi('blue', presetConfig.leds.blue);
+  setLedChannelUi('red', presetConfig.leds.red);
+  updateAutoRefreshUi();
+  updateLedCardUi();
+}
+
+function readRefreshPrefsFromUi() {
+  const intervalEl = document.getElementById('autoRefreshInterval');
+  const scopeEl = document.getElementById('autoRefreshScope');
+  const peerEl = document.getElementById('peerRefreshMode');
+  const activeChip = document.querySelector('.led-preset-chip.active');
+  refreshPrefs.intervalMs = Math.max(5000, Number(intervalEl?.value || DEFAULT_REFRESH_PREFS.intervalMs));
+  refreshPrefs.scope = scopeEl?.value || DEFAULT_REFRESH_PREFS.scope;
+  refreshPrefs.peerMode = peerEl?.value || DEFAULT_REFRESH_PREFS.peerMode;
+  refreshPrefs.powerPreset = activeChip ? activeChip.dataset.preset : (DEFAULT_REFRESH_PREFS.powerPreset || 'balanced');
+}
+
+function updateAutoRefreshUi() {
+  const btn = document.getElementById('autoRefreshBtn');
+  const hint = document.getElementById('autoRefreshHint');
+  if (btn) btn.textContent = refreshPrefs.enabled ? `Auto: on (${Math.round(refreshPrefs.intervalMs / 1000)}s)` : 'Auto: off';
+  if (hint) {
+    const peerText = refreshPrefs.peerMode === 'manual'
+      ? 'Peers refresh manually.'
+      : refreshPrefs.peerMode === 'alternate'
+        ? 'Peers refresh every other cycle.'
+        : refreshPrefs.peerMode === 'rare'
+          ? 'Peers refresh every third cycle.'
+          : 'Peers refresh every cycle.';
+    hint.textContent = `Overview auto refresh is ${refreshPrefs.enabled ? 'enabled' : 'disabled'} by default. ${peerText}`;
+  }
+}
+
+function onRefreshPrefChanged() {
+  readRefreshPrefsFromUi();
+  saveRefreshPrefs();
+  updateAutoRefreshUi();
+  if (autoRefreshTimer && refreshPrefs.enabled) startAutoRefresh(false, false);
+}
+
+function shouldRefreshPeersThisCycle() {
+  if (refreshPrefs.peerMode === 'manual') return false;
+  if (refreshPrefs.peerMode === 'alternate') return (autoRefreshCycle % 2) === 0;
+  if (refreshPrefs.peerMode === 'rare') return (autoRefreshCycle % 3) === 0;
+  return true;
+}
+
+function getPowerPresetConfig(preset) {
+  if (preset === 'low-power') {
+    return {
+      refresh: { intervalMs: 60000, scope: 'light', peerMode: 'rare' },
+      leds: {
+        green: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+        blue: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+        red: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+      },
+    };
+  }
+  if (preset === 'dark') {
+    return {
+      refresh: { intervalMs: 30000, scope: 'standard', peerMode: 'alternate' },
+      leds: {
+        green: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+        blue: { idle: 'off', rx: 'off', tx: 'off', morse: 'errors' },
+        red: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+      },
+    };
+  }
+  return {
+    refresh: { intervalMs: 10000, scope: 'full', peerMode: 'always' },
+    leds: {
+      green: { idle: 'heartbeat', rx: 'off', tx: 'off', morse: 'off' },
+      blue: { idle: 'off', rx: 'on', tx: 'on', morse: 'errors' },
+      red: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
+    },
+  };
+}
+
+function applyPowerPresetToForm(updateStoredPrefs = true) {
+  const activeChip = document.querySelector('.led-preset-chip.active');
+  const preset = activeChip ? activeChip.dataset.preset : 'balanced';
+  const config = getPowerPresetConfig(preset);
+  const intervalEl = document.getElementById('autoRefreshInterval');
+  const scopeEl = document.getElementById('autoRefreshScope');
+  const peerEl = document.getElementById('peerRefreshMode');
+  if (intervalEl) intervalEl.value = String(config.refresh.intervalMs);
+  if (scopeEl) scopeEl.value = config.refresh.scope;
+  if (peerEl) peerEl.value = config.refresh.peerMode;
+  setLedChannelUi('green', config.leds.green);
+  setLedChannelUi('blue', config.leds.blue);
+  setLedChannelUi('red', config.leds.red);
+  if (updateStoredPrefs) onRefreshPrefChanged();
+  updateLedCardUi();
+}
+
+function savePowerDefaults() {
+  readRefreshPrefsFromUi();
+  saveRefreshPrefs();
+  updateAutoRefreshUi();
+  showFlashAlert('info', 'Browser-side repeater defaults saved. They will be reused on the next connection.');
+}
+
+/* ── LED card UI helpers ─────────────────── */
+function selectLedPreset(preset) {
+  document.querySelectorAll('.led-preset-chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === preset);
+  });
+  const config = getPowerPresetConfig(preset);
+  setLedChannelUi('green', config.leds.green);
+  setLedChannelUi('blue', config.leds.blue);
+  setLedChannelUi('red', config.leds.red);
+  /* also apply refresh prefs */
+  const intervalEl = document.getElementById('autoRefreshInterval');
+  const scopeEl = document.getElementById('autoRefreshScope');
+  const peerEl = document.getElementById('peerRefreshMode');
+  if (intervalEl) intervalEl.value = String(config.refresh.intervalMs);
+  if (scopeEl) scopeEl.value = config.refresh.scope;
+  if (peerEl) peerEl.value = config.refresh.peerMode;
+  onRefreshPrefChanged();
+  updateLedCardUi();
+}
+
+function updateLedCardUi() {
+  const green = getLedChannelUi('green');
+  const blue = getLedChannelUi('blue');
+  const red = getLedChannelUi('red');
+  const alertMode = document.getElementById('repLedAlertMode')?.value || 'once';
+
+  const channels = [
+    { color: 'green', cfg: green, dotId: 'ledDotGreen', tagId: 'ledTagGreen', cardId: 'ledCardGreen', dotClass: 'green' },
+    { color: 'blue', cfg: blue, dotId: 'ledDotBlue', tagId: 'ledTagBlue', cardId: 'ledCardBlue', dotClass: 'blue' },
+    { color: 'red', cfg: red, dotId: 'ledDotRed', tagId: 'ledTagRed', cardId: 'ledCardRed', dotClass: 'red' },
+  ];
+  channels.forEach(({ cfg, dotId, tagId, cardId, dotClass, color }) => {
+    const active = cfg.available === 'on' && (cfg.idle !== 'off' || cfg.rx === 'on' || cfg.tx === 'on' || cfg.morse !== 'off');
+    const dot = document.getElementById(dotId);
+    const tag = document.getElementById(tagId);
+    const card = document.getElementById(cardId);
+    if (dot) dot.className = `led-dot ${cfg.available === 'on' && active ? dotClass : 'off'}`;
+    if (tag) {
+      const parts = [];
+      if (cfg.available !== 'on') parts.push('unavailable');
+      else {
+        if (cfg.idle !== 'off') parts.push(cfg.idle);
+        if (cfg.rx === 'on') parts.push('rx');
+        if (cfg.tx === 'on') parts.push('tx');
+        if (cfg.morse !== 'off') parts.push(`morse:${cfg.morse}`);
+      }
+      tag.textContent = parts.length ? parts.join(' + ') : 'off';
+      tag.className = 'led-card-tag' + (active ? ' active' : '');
+    }
+    if (card) card.classList.toggle('section-disabled', cfg.available !== 'on');
+    if (card) card.classList.toggle('section-enabled', cfg.available === 'on');
+    if (color === 'red') {
+      const foot = document.getElementById('ledRedFoot');
+      if (foot) foot.textContent = cfg.available === 'on'
+        ? 'Red LED is available on this board and can be used like the other channels.'
+        : 'This WisBlock target does not expose a red LED pin. These controls are reserved for boards that add one later.';
+    }
+  });
+
+  const morsePanel = document.getElementById('morseDetailPanel');
+  if (morsePanel) morsePanel.className = 'led-sub-panel' + (anyLedMorseEnabled() ? ' show' : '');
+
+  const cntLabel = document.getElementById('lblAlertCount');
+  const intLabel = document.getElementById('lblAlertInterval');
+  if (cntLabel) cntLabel.style.display = alertMode === 'count' ? '' : 'none';
+  if (intLabel) intLabel.style.display = (alertMode === 'count' || alertMode === 'until-clear') ? '' : 'none';
+}
+
+async function applyAllLedSettings() {
+  await applyLedSettings(false);
+  await applyMorseBlinkSettings(true);
+  showFlashAlert('info', 'All LED & Morse settings applied and saved.');
+}
+
+function loadRatHolePrefsIntoUi() {
+  const enabledEl = document.getElementById('repRatHoleEnabled');
+  const noLogsEl = document.getElementById('repRatHoleNoLogs');
+  const retentionEl = document.getElementById('repRatHoleRetention');
+  const bootResetEl = document.getElementById('repRatHoleBootReset');
+  if (enabledEl) enabledEl.checked = !!ratholePrefs.enabled;
+  if (noLogsEl) noLogsEl.checked = !!ratholePrefs.noLogs;
+  if (retentionEl) retentionEl.value = String(ratholePrefs.retentionHours || DEFAULT_RATHOLE_PREFS.retentionHours);
+  if (bootResetEl) bootResetEl.checked = !!ratholePrefs.bootReset;
+  updateRatHoleUi();
+}
+
+function readRatHolePrefsFromUi() {
+  const enabledEl = document.getElementById('repRatHoleEnabled');
+  const noLogsEl = document.getElementById('repRatHoleNoLogs');
+  const retentionEl = document.getElementById('repRatHoleRetention');
+  const bootResetEl = document.getElementById('repRatHoleBootReset');
+  ratholePrefs.enabled = !!enabledEl?.checked;
+  ratholePrefs.noLogs = !!noLogsEl?.checked;
+  ratholePrefs.retentionHours = Math.max(1, Math.min(720, Number(retentionEl?.value || DEFAULT_RATHOLE_PREFS.retentionHours)));
+  ratholePrefs.bootReset = !!bootResetEl?.checked;
+}
+
+function updateRatHoleUi() {
+  const enabled = !!document.getElementById('repRatHoleEnabled')?.checked;
+  const noLogsEl = document.getElementById('repRatHoleNoLogs');
+  const retentionEl = document.getElementById('repRatHoleRetention');
+  const bootResetEl = document.getElementById('repRatHoleBootReset');
+  const hintEl = document.getElementById('ratholeHint');
+  const subOpts = document.getElementById('ratholeSubOptions');
+  const badge = document.getElementById('ratholeBadge');
+
+  /* Gray-out sub-options when RatHole is disabled */
+  if (subOpts) {
+    subOpts.classList.toggle('section-disabled', !enabled);
+    subOpts.classList.toggle('section-enabled', enabled);
+  }
+  if (noLogsEl) noLogsEl.disabled = !enabled;
+  if (retentionEl) retentionEl.disabled = !enabled;
+  if (bootResetEl) bootResetEl.disabled = !enabled;
+
+  /* Badge */
+  if (badge) {
+    badge.textContent = enabled ? 'Active' : 'Off';
+    badge.className = 'ss-badge ' + (enabled ? 'on' : 'off');
+  }
+
+  /* Hint */
+  if (hintEl) {
+    if (!enabled) {
+      hintEl.textContent = 'RatHole mode is off. Enable it to activate local no-log retention and device boot-scrub options.';
+    } else if (noLogsEl?.checked) {
+      hintEl.textContent = 'RatHole no-log mode is armed. Saving these defaults wipes browser chat threads, peer notes, and favorites immediately.';
+    } else {
+      hintEl.textContent = `RatHole retention is active. Messages older than ${retentionEl?.value || DEFAULT_RATHOLE_PREFS.retentionHours} hour(s) are purged locally.`;
+    }
+  }
+}
+
+function saveRatHoleDefaults(showAlert = true) {
+  readRatHolePrefsFromUi();
+  saveRatHolePrefs();
+  const changed = applyRatHoleLocalPolicy();
+  updateRatHoleUi();
+  updatePeerSelector();
+  updateContactProfile();
+  if (showAlert) {
+    if (ratholePrefs.enabled && ratholePrefs.noLogs) {
+      showFlashAlert('warn', 'RatHole defaults saved. Local chats, peer notes, and favorites were wiped and future logs will not be stored in this browser.');
+    } else {
+      showFlashAlert('info', changed
+        ? 'RatHole defaults saved and local retention rules were applied.'
+        : 'RatHole defaults saved for future sessions.');
+    }
+  }
+}
+
+function purgeRatHoleDataNow() {
+  readRatHolePrefsFromUi();
+  const changed = ratholePrefs.enabled && ratholePrefs.noLogs
+    ? (clearSensitiveBrowserState(), true)
+    : purgeExpiredChats(true);
+  updatePeerSelector();
+  updateContactProfile();
+  showFlashAlert(changed ? 'info' : 'warn', changed ? 'RatHole local data policy applied immediately.' : 'No local data matched the current RatHole policy.');
+}
+
+async function applyRatHoleSettings(saveAfter = true) {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'This connected firmware is missing required repeater commands. Flash latest RatTunnel firmware first.');
+    return;
+  }
+
+  saveRatHoleDefaults(false);
+  await sendCmd(`rathole ${ratholePrefs.enabled ? 'on' : 'off'}`);
+  await sleep(120);
+  await sendCmd(`rathole boot-reset ${ratholePrefs.bootReset ? 'on' : 'off'}`);
+  await sleep(120);
+  if (saveAfter) {
+    await sendCmd('save');
+    await sleep(120);
+  }
+  await sendCmd('rathole');
+
+  showFlashAlert('info', saveAfter
+    ? 'RatHole settings applied and saved to the device.'
+    : 'RatHole settings applied to the device.');
+  openRepeaterConsole();
+}
+
+function exportLocalState() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    refreshPrefs,
+    ratholePrefs,
+    favoriteHashes,
+    contactMeta,
+    chatThreads,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  link.href = url;
+  link.download = `rathole-export-${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showFlashAlert('info', 'Browser-side repeater data exported.');
+}
+
+function requestImportLocalState() {
+  document.getElementById('ratholeImportFile')?.click();
+}
+
+async function importLocalStateFromFile(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+
+  try {
+    const raw = await file.text();
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') throw new Error('Invalid backup format.');
+
+    refreshPrefs = { ...DEFAULT_REFRESH_PREFS, ...(parsed.refreshPrefs || {}) };
+    ratholePrefs = { ...DEFAULT_RATHOLE_PREFS, ...(parsed.ratholePrefs || {}) };
+    favoriteHashes = Array.isArray(parsed.favoriteHashes) ? parsed.favoriteHashes.slice(0, 512) : [];
+    contactMeta = parsed.contactMeta && typeof parsed.contactMeta === 'object' ? parsed.contactMeta : {};
+    chatThreads = parsed.chatThreads && typeof parsed.chatThreads === 'object' ? parsed.chatThreads : {};
+
+    saveRefreshPrefs();
+    saveRatHolePrefs();
+    loadRefreshPrefsIntoUi();
+    loadRatHolePrefsIntoUi();
+
+    if (ratholePrefs.enabled && ratholePrefs.noLogs) {
+      clearSensitiveBrowserState();
+      showFlashAlert('warn', 'Backup imported, but RatHole no-log mode is enabled so chat, peer, and favorite data was not retained locally.');
+    } else {
+      saveFavorites();
+      saveContactMeta();
+      saveChatThreads();
+      purgeExpiredChats(true);
+      showFlashAlert('info', 'Backup imported into this browser.');
+    }
+
+    syncUnreadCountsFromThreads();
+    selectedProfileHash = '';
+    if (typeof selectedPeerHash !== 'undefined') selectedPeerHash = '';
+    updatePeerSelector();
+    updateContactProfile();
+  } catch (err) {
+    showFlashAlert('error', `Import failed: ${err.message}`);
+  } finally {
+    if (event?.target) event.target.value = '';
+  }
 }
 
 function updateDetectedNodesUi() {
@@ -2592,6 +4774,84 @@ function updateProfileHint() {
   hintEl.textContent = 'Custom profile. Match your peer exactly, then use Apply + Save.';
 }
 
+function updateAnnouncePreview() {
+  const name = document.getElementById('repAnnounceName')?.value?.trim()
+    || document.getElementById('repName')?.value?.trim()
+    || (repeaterState.name !== '—' ? repeaterState.name : '');
+  const text = document.getElementById('repAnnounceText')?.value?.trim() || '';
+  const preview = document.getElementById('repAnnouncePreview');
+  if (!preview) return;
+  if (text) {
+    preview.value = `${name || 'Unnamed'} · payload: ${text.slice(0, 48)}`;
+  } else {
+    preview.value = name || 'No broadcast name set';
+  }
+}
+
+function syncAnnounceNameFromRadio() {
+  const radioName = document.getElementById('repName');
+  const announceName = document.getElementById('repAnnounceName');
+  if (radioName && announceName) announceName.value = radioName.value;
+  updateAnnouncePreview();
+}
+
+function syncRadioNameFromAnnounce() {
+  const radioName = document.getElementById('repName');
+  const announceName = document.getElementById('repAnnounceName');
+  if (radioName && announceName) radioName.value = announceName.value;
+  updateAnnouncePreview();
+}
+
+async function saveAnnounceSettings() {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  const nameEl = document.getElementById('repAnnounceName');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if (!name) {
+    showFlashAlert('warn', 'Enter a broadcast name first.');
+    return;
+  }
+  if (name.length > 32) {
+    showFlashAlert('error', 'Broadcast name must be 32 characters or fewer.');
+    return;
+  }
+  document.getElementById('repName').value = name;
+  await sendCmd(`name ${name}`);
+  await sleep(120);
+  await sendCmd('save');
+  await sleep(120);
+  await sendCmd('name');
+  repeaterState.name = name;
+  updateAnnouncePreview();
+  showFlashAlert('info', 'Announce name saved to the device.');
+}
+
+async function sendAnnounceFromUi(saveName = false) {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  const nameEl = document.getElementById('repAnnounceName');
+  const textEl = document.getElementById('repAnnounceText');
+  const name = nameEl ? nameEl.value.trim() : '';
+  const payload = textEl ? textEl.value.trim().replace(/\s+/g, ' ') : '';
+  if (name) {
+    document.getElementById('repName').value = name;
+    await sendCmd(`name ${name}`);
+    await sleep(120);
+    if (saveName) {
+      await sendCmd('save');
+      await sleep(120);
+    }
+  }
+  if (payload) await sendCmd(`announce ${payload}`);
+  else await sendCmd('announce');
+  updateAnnouncePreview();
+  showFlashAlert('info', payload ? 'Custom announce transmitted.' : 'Announce transmitted.');
+}
+
 function applyConnectivityProfileToForm(force = false) {
   const profileEl = document.getElementById('repProfile');
   if (!profileEl) return;
@@ -2662,19 +4922,24 @@ function parseStatusLine(line) {
   const peerMsg = t.match(/^\[PEERMSG\]\s+from\s+([0-9A-Fa-f]{16})\.\.:\s*(.+)$/i);
   if (peerMsg) {
     const sender = peerMsg[1].toUpperCase();
-    const senderNode = findNodeByHashPrefix(sender);
-    const label = senderNode && senderNode.name ? senderNode.name : sender + '..';
+    const label = getPeerDisplayName(sender, sender + '..');
     const isEncrypted = !peerMsg[2].startsWith('[encrypted,');
-    appendChatMessage(peerMsg[2], label, 'in', isEncrypted);
-    recordContactMessage(sender, peerMsg[2]);
-    // Track unread per sender
-    if (selectedPeerHash !== sender) {
-      if (!unreadCounts[sender]) unreadCounts[sender] = 0;
-      unreadCounts[sender]++;
-      updatePeerPills();
-      updateContactsList();
+    if (isThreadBlocked(sender)) {
+      const meta = ensureContactMeta(sender);
+      meta.blockedCount = (meta.blockedCount || 0) + 1;
+      meta.lastBlockedAt = Date.now();
+      saveContactMeta();
+      updateContactProfile();
+      return;
     }
-    playNotifyBeep();
+    appendChatMessage(peerMsg[2], label, 'in', isEncrypted, { hash: sender });
+    recordContactMessage(sender, peerMsg[2], 'in', isEncrypted);
+    syncUnreadCountsFromThreads();
+    updatePeerPills();
+    updateContactsList();
+    renderChatThreadList();
+    updateContactProfile();
+    if (selectedPeerHash !== sender) playNotifyBeep();
     return;
   }
 
@@ -2683,6 +4948,61 @@ function parseStatusLine(line) {
   if (notifyTag) {
     const sel = document.getElementById('msgNotifyMode');
     if (sel) sel.value = notifyTag[1].toLowerCase();
+    return;
+  }
+
+  const ledHwTag = t.match(/^\[LED_HW\]\s+available=([^\s]*)\s+missing=(.*)$/i);
+  if (ledHwTag) {
+    const available = (ledHwTag[1] || '').toLowerCase().split(',').map(v => v.trim()).filter(Boolean);
+    ['green', 'blue', 'red'].forEach(color => {
+      if (!repeaterState.ledChannels[color]) repeaterState.ledChannels[color] = { available: 'off', idle: 'off', rx: 'off', tx: 'off', morse: 'off' };
+      repeaterState.ledChannels[color].available = available.includes(color) ? 'on' : 'off';
+    });
+    updateStatusUi();
+    return;
+  }
+
+  const ledChannelTag = t.match(/^\[LED_CH\]\s+(green|blue|red)\s+available=(\w+)\s+idle=(\w+)\s+rx=(\w+)\s+tx=(\w+)\s+morse=([\w-]+)/i);
+  if (ledChannelTag) {
+    const color = ledChannelTag[1].toLowerCase();
+    repeaterState.ledChannels[color] = {
+      available: ledChannelTag[2].toLowerCase(),
+      idle: ledChannelTag[3].toLowerCase(),
+      rx: ledChannelTag[4].toLowerCase(),
+      tx: ledChannelTag[5].toLowerCase(),
+      morse: ledChannelTag[6].toLowerCase(),
+    };
+    updateStatusUi();
+    return;
+  }
+
+  const ledAlertTag = t.match(/^\[LED_ALERT\]\s+mode=([\w-]+)\s+count=(\d+)\s+interval=(\d+)\s+watch=(\d+)\s+pending=(\d+)/i);
+  if (ledAlertTag) {
+    repeaterState.ledAlertMode = ledAlertTag[1].toLowerCase();
+    repeaterState.ledAlertCount = ledAlertTag[2];
+    repeaterState.ledAlertInterval = ledAlertTag[3];
+    updateStatusUi();
+    return;
+  }
+
+  const ledAlertWatchTag = t.match(/^\[LED_ALERT_WATCH\]\s*(.*)$/i);
+  if (ledAlertWatchTag) {
+    const raw = (ledAlertWatchTag[1] || '').trim();
+    repeaterState.ledAlertWatch = raw === 'all' ? '' : raw.replace(/,/g, ', ');
+    updateStatusUi();
+    return;
+  }
+
+  const ratHoleTag = t.match(/^\[RATHOLE\]\s+enabled=(\w+)\s+boot_reset=(\w+)/i);
+  if (ratHoleTag) {
+    repeaterState.ratHoleEnabled = ratHoleTag[1].toLowerCase();
+    repeaterState.ratHoleBootReset = ratHoleTag[2].toLowerCase();
+    const enabledEl = document.getElementById('repRatHoleEnabled');
+    const bootResetEl = document.getElementById('repRatHoleBootReset');
+    if (enabledEl) enabledEl.checked = repeaterState.ratHoleEnabled === 'on';
+    if (bootResetEl) bootResetEl.checked = repeaterState.ratHoleBootReset === 'on';
+    updateRatHoleUi();
+    updateStatusUi();
     return;
   }
 
@@ -2699,6 +5019,7 @@ function parseStatusLine(line) {
     if (Number.isFinite(hops) && Number.isFinite(age)) {
       detectedNodes.set(destHash, { destHash, name, hops, rssi, snr, age });
       touchContactMeta(destHash, name);
+      updateContactRadioStats(destHash, { name, hops, rssi, snr, age });
       repeaterState.routeCount = String(detectedNodes.size);
       updateDetectedNodesUi();
     }
@@ -2717,6 +5038,13 @@ function parseStatusLine(line) {
         destHash,
         name: existing ? existing.name : '',
         hops, age,
+        rssi: existing ? existing.rssi : '',
+        snr: existing ? existing.snr : '',
+      });
+      updateContactRadioStats(destHash, {
+        name: existing ? existing.name : '',
+        hops,
+        age,
         rssi: existing ? existing.rssi : '',
         snr: existing ? existing.snr : '',
       });
@@ -2800,53 +5128,77 @@ async function refreshRepeaterSnapshot(force = false) {
   if (!force && (now - lastSnapshotAt) < SNAPSHOT_MIN_INTERVAL_MS) return;
   snapshotInFlight = true;
   lastSnapshotAt = now;
+  autoRefreshCycle += 1;
   try {
     repeaterState.routeCount = '0';
     detectedNodes.clear();
     updateDetectedNodesUi();
-    await sendCmd('version');
-    await sleep(120);
+    if (refreshPrefs.scope === 'full') {
+      await sendCmd('version');
+      await sleep(120);
+    }
     await sendCmd('status');
     await sleep(120);
-    await sendCmd('radio');
+    await sendCmd('rathole');
     await sleep(120);
+    if (refreshPrefs.scope === 'standard' || refreshPrefs.scope === 'full') {
+      await sendCmd('radio');
+      await sleep(120);
+    }
     await sendCmd('routes');
+    if (shouldRefreshPeersThisCycle()) {
+      await sleep(120);
+      await sendCmd('peers');
+    }
   } finally {
     snapshotInFlight = false;
   }
 }
 
-function stopAutoRefresh() {
+function stopAutoRefresh(updatePreference = false) {
   if (autoRefreshTimer) {
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
   }
-  const btn = document.getElementById('autoRefreshBtn');
-  if (btn) btn.textContent = 'Auto refresh: off';
+  if (updatePreference) {
+    refreshPrefs.enabled = false;
+    saveRefreshPrefs();
+  }
+  updateAutoRefreshUi();
 }
 
-function toggleAutoRefresh() {
-  const btn = document.getElementById('autoRefreshBtn');
+function startAutoRefresh(updatePreference = false, immediate = false) {
   if (!writer) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
   }
-  if (autoRefreshTimer) {
-    stopAutoRefresh();
-    return;
-  }
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
   autoRefreshTimer = setInterval(() => {
     if (!writer) {
-      stopAutoRefresh();
+      stopAutoRefresh(false);
       return;
     }
     refreshRepeaterSnapshot();
-  }, 10000);
-  if (btn) btn.textContent = 'Auto refresh: 10s';
-  refreshRepeaterSnapshot();
+  }, Math.max(5000, Number(refreshPrefs.intervalMs || DEFAULT_REFRESH_PREFS.intervalMs)));
+  if (updatePreference) {
+    refreshPrefs.enabled = true;
+    saveRefreshPrefs();
+  }
+  updateAutoRefreshUi();
+  if (immediate) refreshRepeaterSnapshot(true);
+}
+
+function toggleAutoRefresh() {
+  if (autoRefreshTimer || refreshPrefs.enabled) {
+    stopAutoRefresh(true);
+    return;
+  }
+  startAutoRefresh(true, true);
 }
 
 function openRepeaterConsole() {
+  if (!requireRepeaterAccess('Unlock repeater access to open the repeater console.')) return;
+  if (activeMode !== 'repeater') setActiveMode('repeater');
   const wrap = document.getElementById('consoleWrap');
   const toggle = document.getElementById('advToggle');
   if (!wrap.classList.contains('show')) {
@@ -2861,35 +5213,33 @@ async function runRepeaterAction(cmd, opts) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
   }
-  if (!canUseRepeaterMode()) {
-    showFlashAlert('warn', 'Repeater controls require current RatTunnel firmware. Flash latest firmware first.');
-    return;
-  }
+  if (!requireRepeaterAccess('Unlock repeater access to run repeater commands.')) return;
   await sendCmd(cmd);
   if (!(opts && opts.silent)) openRepeaterConsole();
 }
 
-function appendChatMessage(text, sender, direction, encrypted) {
-  // direction: 'in' | 'out' | 'system'
+function renderActiveChatThread() {
   const box = document.getElementById('commLog');
   if (!box) return;
-  const msg = (text || '').trim();
-  if (!msg) return;
+  box.innerHTML = '';
 
-  const bubble = document.createElement('div');
-  const ts = new Date().toLocaleTimeString();
+  const thread = ensureChatThread(selectedPeerHash);
+  const messages = Array.isArray(thread.messages) ? thread.messages : [];
+  messages.forEach(entry => {
+    const bubble = document.createElement('div');
+    if (entry.direction === 'system') {
+      bubble.className = 'chat-bubble chat-sys';
+      bubble.textContent = entry.text;
+      box.appendChild(bubble);
+      return;
+    }
 
-  if (direction === 'system') {
-    bubble.className = 'chat-bubble chat-sys';
-    bubble.textContent = msg;
-  } else {
-    bubble.className = 'chat-bubble ' + (direction === 'out' ? 'chat-out' : 'chat-in');
+    bubble.className = 'chat-bubble ' + (entry.direction === 'out' ? 'chat-out' : 'chat-in');
 
     const senderEl = document.createElement('div');
     senderEl.className = 'chat-sender';
-    const senderText = sender || (direction === 'out' ? 'You' : 'Unknown');
-    senderEl.textContent = senderText;
-    if (encrypted) {
+    senderEl.textContent = entry.sender || (entry.direction === 'out' ? 'You' : 'Unknown');
+    if (entry.encrypted) {
       const lock = document.createElement('span');
       lock.textContent = ' \uD83D\uDD12';
       lock.title = 'End-to-end encrypted';
@@ -2900,32 +5250,109 @@ function appendChatMessage(text, sender, direction, encrypted) {
 
     const textEl = document.createElement('div');
     textEl.className = 'chat-text';
-    textEl.textContent = msg;
+    textEl.textContent = entry.text;
     bubble.appendChild(textEl);
 
     const meta = document.createElement('div');
     meta.className = 'chat-meta';
-    meta.textContent = ts;
+    const opened = entry.direction === 'in' ? (entry.opened ? ' • opened' : ' • unread') : '';
+    meta.textContent = `${new Date(entry.ts || Date.now()).toLocaleTimeString()}${opened}`;
     bubble.appendChild(meta);
-  }
+    box.appendChild(bubble);
+  });
 
-  while (box.children.length > 80) box.removeChild(box.firstChild);
-  box.appendChild(bubble);
   box.scrollTop = box.scrollHeight;
 }
 
-// Keep legacy name for any other call sites
-function appendCommLog(line) { appendChatMessage(line, null, 'system'); }
+function renderChatThreadList() {
+  const listEl = document.getElementById('chatThreadList');
+  const emptyEl = document.getElementById('chatThreadEmpty');
+  const countEl = document.getElementById('chatThreadCount');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  const entries = getSortedChatThreadEntries();
+  if (countEl) countEl.textContent = `${entries.length} ${entries.length === 1 ? 'thread' : 'threads'}`;
+  if (emptyEl) emptyEl.style.display = entries.length ? 'none' : '';
+  if (!entries.length) return;
+
+  entries.forEach(([threadKey, thread]) => {
+    const hash = hashForThreadKey(threadKey);
+    const card = document.createElement('div');
+    card.className = 'chat-thread-card' + (hash === selectedPeerHash ? ' active' : '') + (thread.blocked ? ' blocked' : '');
+    card.onclick = () => selectPeerForMessaging(hash);
+
+    const top = document.createElement('div');
+    top.className = 'chat-thread-top';
+    top.innerHTML = `<span class="chat-thread-name">${escHtml(getPeerDisplayName(hash, hash ? hash.slice(0, 8) + '..' : 'Broadcast'))}</span><span class="chat-thread-time">${escHtml(formatChatThreadTime(thread.updatedAt))}</span>`;
+    card.appendChild(top);
+
+    const preview = document.createElement('div');
+    preview.className = 'chat-thread-preview';
+    preview.textContent = thread.messages[thread.messages.length - 1]?.text || '';
+    card.appendChild(preview);
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-thread-meta';
+    const unread = getThreadUnreadCount(hash);
+    if (unread > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'chat-thread-badge unread';
+      badge.textContent = unread > 99 ? '99+' : String(unread);
+      meta.appendChild(badge);
+    }
+    if (thread.blocked) {
+      const blocked = document.createElement('span');
+      blocked.className = 'chat-thread-badge blocked';
+      blocked.textContent = 'blocked';
+      meta.appendChild(blocked);
+    }
+    if (hash) {
+      const hashBadge = document.createElement('span');
+      hashBadge.className = 'chat-thread-badge';
+      hashBadge.textContent = hash.slice(0, 8) + '..';
+      meta.appendChild(hashBadge);
+    }
+    card.appendChild(meta);
+    listEl.appendChild(card);
+  });
+}
+
+function appendChatMessage(text, sender, direction, encrypted, opts = {}) {
+  const msg = (text || '').trim();
+  if (!msg) return;
+  const hash = Object.prototype.hasOwnProperty.call(opts, 'hash') ? (opts.hash || '') : (direction === 'in' ? selectedPeerHash : selectedPeerHash);
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    text: msg,
+    sender: sender || (direction === 'out' ? 'You' : 'Unknown'),
+    direction,
+    encrypted: !!encrypted,
+    ts: Date.now(),
+    opened: direction !== 'in' || hash === selectedPeerHash,
+  };
+  appendMessageToThread(hash, entry);
+  renderActiveChatThread();
+  renderChatThreadList();
+}
+
+function appendCommLog(line) { appendChatMessage(line, null, 'system', false, { hash: selectedPeerHash || '' }); }
 
 function clearCommLog() {
-  const box = document.getElementById('commLog');
-  if (box) box.innerHTML = '';
+  const thread = ensureChatThread(selectedPeerHash);
+  thread.messages = [];
+  thread.updatedAt = Date.now();
+  saveChatThreads();
+  syncUnreadCountsFromThreads();
+  renderActiveChatThread();
+  renderChatThreadList();
 }
 
 // ── Peer selection & notification helpers ─────────────────
 let selectedPeerHash = '';
 let notifyAudioCtx = null;
 let unreadCounts = {};  // { destHash: count }
+syncUnreadCountsFromThreads();
 
 function findNodeByHashPrefix(prefix) {
   const up = prefix.toUpperCase();
@@ -2939,6 +5366,9 @@ function updatePeerSelector() {
   updatePeerPills();
   updateContactsList();
   updateChatHeader();
+  updateContactProfile();
+  renderChatThreadList();
+  renderActiveChatThread();
 }
 
 function updatePeerPills() {
@@ -2968,7 +5398,7 @@ function updatePeerPills() {
     pill.className = 'peer-pill' + (selectedPeerHash === node.destHash ? ' active' : '');
     pill.onclick = () => selectPeerForMessaging(node.destHash);
 
-    const label = node.name || node.destHash.slice(0, 8) + '..';
+    const label = getPeerDisplayName(node.destHash, node.destHash.slice(0, 8) + '..');
     pill.textContent = (isFavorite(node.destHash) ? '★ ' : '') + label;
 
     const count = unreadCounts[node.destHash] || 0;
@@ -2991,6 +5421,9 @@ function updateContactsList() {
   if (!listEl) return;
   listEl.innerHTML = '';
 
+  const search = (document.getElementById('contactsSearch')?.value || '').trim().toLowerCase();
+  const sort = document.getElementById('contactsSort')?.value || 'smart';
+
   const nodes = Array.from(detectedNodes.values());
 
   // Also show favorites that are offline (in contactMeta but not in detectedNodes)
@@ -3002,21 +5435,70 @@ function updateContactsList() {
   }
 
   const allNodes = [...nodes, ...offlineFavs];
-  if (countEl) countEl.textContent = `(${allNodes.length})`;
+  let filteredNodes = allNodes.filter(node => {
+    if (!search) return true;
+    const meta = contactMeta[node.destHash] || {};
+    const haystack = [
+      node.destHash,
+      node.name,
+      meta.name,
+      meta.alias,
+      meta.notes,
+      meta.lastMsg,
+    ].join(' ').toLowerCase();
+    return haystack.includes(search);
+  });
 
-  if (!allNodes.length) {
+  const compareSmart = (a, b) => {
+    const aMeta = contactMeta[a.destHash] || {};
+    const bMeta = contactMeta[b.destHash] || {};
+    const aFav = isFavorite(a.destHash) ? 0 : 1;
+    const bFav = isFavorite(b.destHash) ? 0 : 1;
+    if (aFav !== bFav) return aFav - bFav;
+    const aUnread = unreadCounts[a.destHash] || 0;
+    const bUnread = unreadCounts[b.destHash] || 0;
+    if (aUnread !== bUnread) return bUnread - aUnread;
+    const aOffline = a.offline ? 1 : 0;
+    const bOffline = b.offline ? 1 : 0;
+    if (aOffline !== bOffline) return aOffline - bOffline;
+    const aSeen = aMeta.lastSeen || 0;
+    const bSeen = bMeta.lastSeen || 0;
+    if (aSeen !== bSeen) return bSeen - aSeen;
+    const aRssi = parseFloat(a.rssi || aMeta.lastRSSI || '-999');
+    const bRssi = parseFloat(b.rssi || bMeta.lastRSSI || '-999');
+    if (aRssi !== bRssi) return bRssi - aRssi;
+    return getPeerDisplayName(a.destHash).localeCompare(getPeerDisplayName(b.destHash));
+  };
+
+  const compareBySort = {
+    smart: compareSmart,
+    recent: (a, b) => (contactMeta[b.destHash]?.lastSeen || 0) - (contactMeta[a.destHash]?.lastSeen || 0),
+    signal: (a, b) => parseFloat(b.rssi || contactMeta[b.destHash]?.lastRSSI || '-999') - parseFloat(a.rssi || contactMeta[a.destHash]?.lastRSSI || '-999'),
+    messages: (a, b) => (contactMeta[b.destHash]?.msgCount || 0) - (contactMeta[a.destHash]?.msgCount || 0),
+    name: (a, b) => getPeerDisplayName(a.destHash).localeCompare(getPeerDisplayName(b.destHash)),
+  };
+
+  filteredNodes.sort(compareBySort[sort] || compareSmart);
+
+  if (countEl) countEl.textContent = `(${filteredNodes.length})`;
+  if (!selectedProfileHash && filteredNodes.length) selectedProfileHash = filteredNodes[0].destHash;
+
+  if (!filteredNodes.length) {
     if (emptyEl) emptyEl.style.display = '';
+    if (emptyEl) emptyEl.innerHTML = search
+      ? 'No peers match the current search.'
+      : 'No peers discovered yet.<br>Run <strong>Announce</strong> to broadcast your identity and wait for peers to respond.';
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
   // Split into favorites and others
-  const favs = allNodes.filter(n => isFavorite(n.destHash)).sort((a, b) => {
+  const favs = filteredNodes.filter(n => isFavorite(n.destHash)).sort((a, b) => {
     if (a.name && !b.name) return -1;
     if (!a.name && b.name) return 1;
     return a.destHash.localeCompare(b.destHash);
   });
-  const others = allNodes.filter(n => !isFavorite(n.destHash)).sort((a, b) => {
+  const others = filteredNodes.filter(n => !isFavorite(n.destHash)).sort((a, b) => {
     if (a.name && !b.name) return -1;
     if (!a.name && b.name) return 1;
     return a.destHash.localeCompare(b.destHash);
@@ -3072,9 +5554,9 @@ function buildSignalBar(rssi) {
 
 function buildContactCard(node) {
   const card = document.createElement('div');
-  card.className = 'contact-card' + (selectedPeerHash === node.destHash ? ' selected' : '');
+  card.className = 'contact-card' + (selectedProfileHash === node.destHash ? ' selected' : '');
 
-  const meta = contactMeta[node.destHash] || {};
+  const meta = ensureContactMeta(node.destHash);
   const isOffline = node.offline === true;
 
   // Top row: star + dot + name + hash + unread badge
@@ -3099,7 +5581,7 @@ function buildContactCard(node) {
 
   const name = document.createElement('span');
   name.className = 'contact-name';
-  name.textContent = node.name || meta.name || 'Unknown';
+  name.textContent = getPeerDisplayName(node.destHash, 'Unknown');
   top.appendChild(name);
 
   const hash = document.createElement('span');
@@ -3166,9 +5648,124 @@ function buildContactCard(node) {
     card.appendChild(lastMsgEl);
   }
 
-  card.onclick = () => { selectPeerForMessaging(node.destHash); switchRepeaterTab('tabMsg'); };
+  card.onclick = () => openPeerProfile(node.destHash, true);
 
   return card;
+}
+
+function openPeerProfile(destHash, persistView = false) {
+  if (!destHash) return;
+  selectedProfileHash = destHash;
+  const meta = ensureContactMeta(destHash);
+  if (persistView) {
+    meta.profileViews = (meta.profileViews || 0) + 1;
+    saveContactMeta();
+  }
+  updateContactsList();
+  updateContactProfile();
+}
+
+function updateContactProfile() {
+  const emptyEl = document.getElementById('peerProfileEmpty');
+  const contentEl = document.getElementById('peerProfileContent');
+  if (!emptyEl || !contentEl) return;
+  if (!selectedProfileHash) {
+    emptyEl.style.display = '';
+    contentEl.style.display = 'none';
+    return;
+  }
+  const meta = ensureContactMeta(selectedProfileHash);
+  const node = detectedNodes.get(selectedProfileHash);
+  const nameEl = document.getElementById('peerProfileName');
+  const hashEl = document.getElementById('peerProfileHash');
+  const statusEl = document.getElementById('peerProfileStatus');
+  const statsEl = document.getElementById('peerProfileStats');
+  const aliasEl = document.getElementById('peerAliasInput');
+  const notesEl = document.getElementById('peerNotesInput');
+
+  emptyEl.style.display = 'none';
+  contentEl.style.display = 'block';
+  if (nameEl) nameEl.textContent = (isFavorite(selectedProfileHash) ? '★ ' : '') + getPeerDisplayName(selectedProfileHash, 'Unknown');
+  if (hashEl) hashEl.textContent = selectedProfileHash;
+  if (statusEl) {
+    const online = !!node && !node.offline;
+    statusEl.textContent = online ? `Online · hops ${node.hops}` : 'Offline / remembered';
+    statusEl.className = 'peer-profile-status ' + (online ? 'online' : 'offline');
+  }
+  if (aliasEl) aliasEl.value = meta.alias || '';
+  if (notesEl) notesEl.value = meta.notes || '';
+
+  if (statsEl) {
+    const statRows = [
+      ['Observed name', node?.name || meta.name || '—'],
+      ['Chat state', isThreadBlocked(selectedProfileHash) ? 'Blocked' : 'Active'],
+      ['Last seen', formatTimeAgo(meta.lastSeen)],
+      ['First seen', meta.firstSeen ? new Date(meta.firstSeen).toLocaleString() : '—'],
+      ['Messages', String(meta.msgCount || 0)],
+      ['Inbound', `${meta.inCount || 0}${meta.encryptedIn ? ` · enc ${meta.encryptedIn}` : ''}`],
+      ['Outbound', `${meta.outCount || 0}${meta.encryptedOut ? ` · enc ${meta.encryptedOut}` : ''}`],
+      ['Unread', String(unreadCounts[selectedProfileHash] || 0)],
+      ['Profile views', String(meta.profileViews || 0)],
+      ['Last RSSI', meta.lastRSSI ? `${meta.lastRSSI} dBm` : '—'],
+      ['Best RSSI', meta.bestRSSI ? `${meta.bestRSSI} dBm` : '—'],
+      ['Last SNR', meta.lastSNR ? `${meta.lastSNR} dB` : '—'],
+      ['Best SNR', meta.bestSNR ? `${meta.bestSNR} dB` : '—'],
+      ['Last hops', meta.lastHops || '—'],
+      ['Last age', meta.lastAge ? `${meta.lastAge}s` : '—'],
+      ['Last message', meta.lastMsg || '—'],
+      ['Blocked messages', String(meta.blockedCount || 0)],
+      ['Local note size', `${(meta.notes || '').length}/600`],
+    ];
+    statsEl.innerHTML = statRows.map(([label, value]) =>
+      `<div class="peer-profile-stat"><span class="pps-label">${escHtml(label)}</span><span class="pps-value">${escHtml(String(value))}</span></div>`
+    ).join('');
+  }
+}
+
+function savePeerProfile() {
+  if (!selectedProfileHash) return;
+  const meta = ensureContactMeta(selectedProfileHash);
+  meta.alias = (document.getElementById('peerAliasInput')?.value || '').trim();
+  meta.notes = (document.getElementById('peerNotesInput')?.value || '').trim();
+  saveContactMeta();
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
+  updateContactProfile();
+  renderChatThreadList();
+  showFlashAlert('info', 'Peer profile saved locally in this browser.');
+}
+
+function messageSelectedProfilePeer() {
+  if (!selectedProfileHash) return;
+  selectedPeerHash = selectedProfileHash;
+  if (selectedPeerHash) {
+    markThreadOpened(selectedPeerHash, 'profile-open');
+    clearDeviceLedAlert(selectedPeerHash);
+  }
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
+  renderChatThreadList();
+  renderActiveChatThread();
+  switchRepeaterTab('tabMsg');
+  document.getElementById('commText')?.focus();
+}
+
+function clearPeerUnread() {
+  if (!selectedProfileHash) return;
+  markThreadOpened(selectedProfileHash, 'profile-clear');
+  clearDeviceLedAlert(selectedProfileHash);
+  updatePeerPills();
+  updateContactsList();
+  updateContactProfile();
+  renderChatThreadList();
+}
+
+function toggleProfileBlocked() {
+  if (!selectedProfileHash) return;
+  selectedPeerHash = selectedProfileHash;
+  toggleCurrentThreadBlocked();
 }
 
 function updateChatHeader() {
@@ -3177,39 +5774,49 @@ function updateChatHeader() {
   const dotEl = document.getElementById('chatHeaderDot');
   const closeBtn = document.getElementById('chatClearTarget');
   const encBadge = document.getElementById('chatEncBadge');
+  const markReadBtn = document.getElementById('chatMarkReadBtn');
+  const blockBtn = document.getElementById('chatBlockBtn');
+  const deleteBtn = document.getElementById('chatDeleteBtn');
 
   if (!nameEl) return;
 
   if (selectedPeerHash) {
     const node = detectedNodes.get(selectedPeerHash);
-    const displayName = node?.name || selectedPeerHash.slice(0, 8) + '..';
+    const displayName = getPeerDisplayName(selectedPeerHash, selectedPeerHash.slice(0, 8) + '..');
     nameEl.textContent = (isFavorite(selectedPeerHash) ? '★ ' : '') + displayName;
     detailEl.textContent = selectedPeerHash.slice(0, 8) + '..';
     if (dotEl) { dotEl.classList.add('active'); }
     if (closeBtn) closeBtn.style.display = '';
     if (encBadge) encBadge.style.display = '';
+    if (markReadBtn) markReadBtn.style.display = '';
+    if (deleteBtn) deleteBtn.style.display = '';
+    if (blockBtn) {
+      blockBtn.style.display = '';
+      blockBtn.textContent = isThreadBlocked(selectedPeerHash) ? 'Unblock' : 'Block';
+    }
   } else {
     nameEl.textContent = 'Broadcast';
     detailEl.textContent = 'all peers';
     if (dotEl) dotEl.classList.remove('active');
     if (closeBtn) closeBtn.style.display = 'none';
     if (encBadge) encBadge.style.display = 'none';
+    if (markReadBtn) markReadBtn.style.display = 'none';
+    if (deleteBtn) deleteBtn.style.display = 'none';
+    if (blockBtn) blockBtn.style.display = 'none';
   }
 }
 
 function selectPeerForMessaging(destHash) {
-  if (selectedPeerHash === destHash && destHash !== '') {
-    selectedPeerHash = '';
-  } else {
-    selectedPeerHash = destHash;
-  }
-  // Clear unread for selected peer
+  selectedPeerHash = destHash || '';
   if (selectedPeerHash) {
-    delete unreadCounts[selectedPeerHash];
+    markThreadOpened(selectedPeerHash, 'open-chat');
+    clearDeviceLedAlert(selectedPeerHash);
   }
   updatePeerPills();
+  renderChatThreadList();
   updateContactsList();
   updateChatHeader();
+  renderActiveChatThread();
   switchRepeaterTab('tabMsg');
   document.getElementById('commText')?.focus();
 }
@@ -3217,8 +5824,47 @@ function selectPeerForMessaging(destHash) {
 function clearChatTarget() {
   selectedPeerHash = '';
   updatePeerPills();
+  renderChatThreadList();
   updateContactsList();
   updateChatHeader();
+  renderActiveChatThread();
+}
+
+function markCurrentThreadRead() {
+  if (!selectedPeerHash) return;
+  markThreadOpened(selectedPeerHash, 'manual-read');
+  clearDeviceLedAlert(selectedPeerHash);
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
+  renderChatThreadList();
+  renderActiveChatThread();
+  updateContactProfile();
+}
+
+function toggleCurrentThreadBlocked() {
+  if (!selectedPeerHash) return;
+  const thread = ensureChatThread(selectedPeerHash);
+  thread.blocked = !thread.blocked;
+  saveChatThreads();
+  if (thread.blocked) clearDeviceLedAlert(selectedPeerHash);
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
+  renderChatThreadList();
+  updateContactProfile();
+}
+
+function deleteCurrentThread() {
+  if (!selectedPeerHash) return;
+  deleteChatThread(selectedPeerHash);
+  selectedPeerHash = '';
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
+  renderChatThreadList();
+  renderActiveChatThread();
+  updateContactProfile();
 }
 
 function updateCharCount() {
@@ -3277,9 +5923,10 @@ async function sendPeerMessage() {
     // Targeted encrypted message
     await sendCmd(`msg @${selectedPeerHash.slice(0, 8)} ${clean}`);
     const node = detectedNodes.get(selectedPeerHash);
-    const label = node && node.name ? node.name : selectedPeerHash.slice(0, 8) + '..';
+    const label = getPeerDisplayName(selectedPeerHash, selectedPeerHash.slice(0, 8) + '..');
     appendChatMessage(clean, `You → ${label}`, 'out', true);
-    recordContactMessage(selectedPeerHash, clean);
+    recordContactMessage(selectedPeerHash, clean, 'out', true);
+    updateContactProfile();
   } else {
     // Broadcast
     await sendCmd(`msg ${clean}`);
@@ -3427,7 +6074,7 @@ async function applyRepeaterSettings(saveAfter = false) {
   openRepeaterConsole();
 }
 
-async function applyMorseBlinkSettings() {
+async function applyMorseBlinkSettings(saveAfter = true) {
   if (!writer) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
@@ -3437,37 +6084,111 @@ async function applyMorseBlinkSettings() {
     return;
   }
 
-  const modeEl = document.getElementById('repMorseMode');
   const msgEl = document.getElementById('repMorseDefault');
-  const mode = (modeEl && modeEl.value ? modeEl.value : 'errors').trim().toLowerCase();
   const msgRaw = msgEl ? msgEl.value.trim().toUpperCase() : '';
   const msgClean = msgRaw.replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-
-  if (!['off', 'errors', 'incoming', 'both', 'default'].includes(mode)) {
-    showFlashAlert('error', 'Invalid Morse mode selected.');
-    return;
-  }
 
   if (msgClean.length > 16) {
     showFlashAlert('error', 'Default Morse message must be 16 characters or fewer.');
     return;
   }
 
-  await sendCmd(`morse mode ${mode}`);
-  await sleep(120);
   if (msgClean) {
     await sendCmd(`morse default ${msgClean}`);
     await sleep(120);
-  } else if (mode === 'default') {
+  } else {
     await sendCmd('morse default clear');
     await sleep(120);
   }
-  await sendCmd('save');
-  await sleep(120);
+  if (saveAfter) {
+    await sendCmd('save');
+    await sleep(120);
+  }
   await sendCmd('morse');
 
-  showFlashAlert('info', 'Morse blinker settings applied and saved.');
+  showFlashAlert('info', saveAfter ? 'Default Morse message applied and saved.' : 'Default Morse message applied.');
   openRepeaterConsole();
+}
+
+async function applyLedSettings(saveAfter = true) {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'This connected firmware is missing required repeater commands. Flash latest RatTunnel firmware first.');
+    return;
+  }
+
+  const channels = {
+    green: getLedChannelUi('green'),
+    blue: getLedChannelUi('blue'),
+    red: getLedChannelUi('red'),
+  };
+  const alertMode = document.getElementById('repLedAlertMode')?.value || 'once';
+  const alertCount = Math.max(1, Math.min(9, Number(document.getElementById('repLedAlertCount')?.value || 3)));
+  const alertInterval = Math.max(1, Math.min(3600, Number(document.getElementById('repLedAlertInterval')?.value || 20)));
+  const alertWatchRaw = (document.getElementById('repLedAlertWatch')?.value || '').trim();
+  const alertWatchList = alertWatchRaw
+    ? Array.from(new Set(alertWatchRaw.split(',').map(v => v.trim().toUpperCase()).filter(v => /^[0-9A-F]{16}$/.test(v))))
+    : [];
+
+  for (const [color, cfg] of Object.entries(channels)) {
+    if (cfg.available !== 'on') continue;
+    await sendCmd(`led ${color} idle ${cfg.idle}`);
+    await sleep(120);
+    await sendCmd(`led ${color} rx ${cfg.rx}`);
+    await sleep(120);
+    await sendCmd(`led ${color} tx ${cfg.tx}`);
+    await sleep(120);
+    await sendCmd(`led ${color} morse ${cfg.morse}`);
+    await sleep(120);
+  }
+  await sendCmd(`led alert mode ${alertMode}`);
+  await sleep(120);
+  await sendCmd(`led alert count ${alertCount}`);
+  await sleep(120);
+  await sendCmd(`led alert interval ${alertInterval}`);
+  await sleep(120);
+  await sendCmd('led alert watch clear');
+  await sleep(120);
+  for (const hash of alertWatchList) {
+    await sendCmd(`led alert watch add ${hash}`);
+    await sleep(120);
+  }
+  if (saveAfter) {
+    await sendCmd('save');
+    await sleep(120);
+  }
+  await sendCmd('led');
+
+  showFlashAlert('info', saveAfter ? 'LED settings applied and saved.' : 'LED settings applied.');
+  openRepeaterConsole();
+}
+
+function addSelectedPeerToLedAlerts() {
+  const current = document.getElementById('repLedAlertWatch');
+  const hash = selectedProfileHash || selectedPeerHash;
+  if (!current || !hash) {
+    showFlashAlert('warn', 'Select a peer first from Contacts or Messages.');
+    return;
+  }
+  const next = Array.from(new Set((current.value || '').split(',').map(v => v.trim().toUpperCase()).filter(Boolean).concat(hash)));
+  current.value = next.join(', ');
+}
+
+async function clearDeviceLedAlert(hash) {
+  if (!writer || !hash) return;
+  try {
+    await sendCmd(`led alert pending clear ${hash}`);
+  } catch (_) {}
+}
+
+async function applyPowerPresetToDevice() {
+  applyPowerPresetToForm(true);
+  await applyLedSettings(true);
+  await applyMorseBlinkSettings();
+  showFlashAlert('info', 'Power preset applied to browser defaults and device LED/Morse behavior.');
 }
 
 async function probeRepeaterFirmware() {
@@ -3509,7 +6230,7 @@ async function openSelectedPort(selectedPort) {
   morseLineBuffer = '';
   lastDecodedMorse = '';
   updateConnChip(true);
-  document.getElementById('consoleInput').disabled = false;
+  updateConsoleAccessUi();
 
   const dec = new TextDecoderStream();
   port.readable.pipeTo(dec.writable);
@@ -3525,10 +6246,13 @@ async function openSelectedPort(selectedPort) {
 
   looping = true;
   readLoop();
-  await sendCmd('', { quiet: true, bypassCooldown: true });
+  await sendCmd('', { quiet: true, bypassCooldown: true, allowLocked: true });
   sysLog('Serial connected.\n');
   updateRepeaterUi();
   setTimeout(() => { if (writer) refreshRepeaterSnapshot(true); }, SERIAL_BOOT_GRACE_MS + 300);
+  setTimeout(() => {
+    if (writer && refreshPrefs.enabled) startAutoRefresh(false, false);
+  }, SERIAL_BOOT_GRACE_MS + 900);
   advanceWizard(2);
 }
 
@@ -3588,7 +6312,7 @@ async function enterDfuMode() {
   }
 
   try {
-    await sendCmd('dfu', { bypassCooldown: true });
+    await sendCmd('dfu', { bypassCooldown: true, allowLocked: true });
     sysLog('DFU command sent.\n');
     showFlashAlert('info', 'DFU command sent. The RAK4631 USB drive should appear in a few seconds.');
     advanceWizard(2);
@@ -3627,7 +6351,7 @@ async function doDisconnect(opts = {}) {
     serialCommandQueue = Promise.resolve();
 
     looping = false;
-    stopAutoRefresh();
+    stopAutoRefresh(false);
     try { if (reader) { await reader.cancel(); reader = null; } } catch (_) {}
     try { if (writer) { await writer.close();  writer = null; } } catch (_) {}
     try { if (port)   { await port.close();    port   = null; } } catch (_) {}
@@ -3642,7 +6366,7 @@ async function doDisconnect(opts = {}) {
     lastDecodedMorse = '';
     activeMode = 'flasher';
     updateConnChip(false);
-    document.getElementById('consoleInput').disabled = true;
+    updateConsoleAccessUi();
     if (!suppressLog) sysLog('Serial disconnected.\n');
     updateActionButtons();
     updateRepeaterUi();
@@ -3699,6 +6423,7 @@ async function readLoop() {
 ════════════════════════════════════════════ */
 async function startFlash(eraseBeforeFlash = false) {
   toggleFlasherMode(true);
+  authLockNow({ showOverlay: false });
   // Reset UI
   document.getElementById('flashBtn').disabled = true;
   document.getElementById('successPanel').classList.remove('show');
@@ -3739,7 +6464,7 @@ async function startFlash(eraseBeforeFlash = false) {
     if (eraseBeforeFlash && connected && writer) {
       try {
         sysLog('Sending factory-reset before flash…\n');
-        await sendCmd('factory-reset', { bypassCooldown: true });
+        await sendCmd('factory-reset', { bypassCooldown: true, allowLocked: true });
         await sleep(1800);
       } catch (e) {
         sysLog(`Factory reset command failed: ${e.message}\n`);
@@ -3752,7 +6477,7 @@ async function startFlash(eraseBeforeFlash = false) {
     if (connected && writer) {
       try {
         sysLog('Sending DFU command…\n');
-        await sendCmd('dfu', { bypassCooldown: true });
+        await sendCmd('dfu', { bypassCooldown: true, allowLocked: true });
         // Give device a moment to disconnect
         await sleep(2500);
         dfuTriggered = true;
@@ -4277,8 +7002,13 @@ function saveLog() {
   URL.revokeObjectURL(url);
 }
 async function sendCmd(cmd, opts = {}) {
-  const { quiet = false, bypassCooldown = false } = opts;
+  const { quiet = false, bypassCooldown = false, allowLocked = false } = opts;
   if (!writer) return false;
+  if (!allowLocked && canUseRepeaterMode() && isRepeaterAccessLocked()) {
+    authShowOverlay();
+    showFlashAlert('info', 'Unlock repeater access before sending repeater commands.');
+    return false;
+  }
   const queuedSessionId = serialSessionId;
 
   const safeCmd = typeof cmd === 'string' ? cmd.trim() : '';
@@ -4441,6 +7171,12 @@ function switchRepeaterTab(tabId) {
   if (pane) pane.classList.add('show');
   const btn = document.querySelector(`#repeaterPanel .tab-bar .tab[onclick*="${tabId}"]`);
   if (btn) btn.classList.add('active');
+  if (tabId === 'tabContacts' && writer && !snapshotInFlight) {
+    runRepeaterAction('peers', { silent: true });
+  }
+  if (tabId === 'tabSecurity') {
+    updateSecurityTabUi();
+  }
 }
 
 async function runDiag(cmd) {
@@ -4448,6 +7184,7 @@ async function runDiag(cmd) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
   }
+  if (!requireRepeaterAccess('Unlock repeater access to run diagnostic commands.')) return;
   await sendCmd(cmd);
   openRepeaterConsole();
 }

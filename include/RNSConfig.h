@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    31
-#define FW_VERSION_STRING   "1.0.31"
+#define FW_VERSION_PATCH    32
+#define FW_VERSION_STRING   "1.0.32"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.31"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.32"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -42,6 +42,7 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // LEDs (active HIGH)
 #define PIN_LED_GREEN       35
 #define PIN_LED_BLUE        36
+#define PIN_LED_RED         -1
 
 // ── LoRa default parameters ──────────────────────────────
 #define LORA_FREQ_MHZ       915.0f   // US ISM band
@@ -76,9 +77,11 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define RNODE_LORA_HEADER_FLAGS_UNSPLIT 0x00
 
 // ── Transport tuning (fits comfortably in 256 KB RAM) ────
-#define PATH_TABLE_MAX       64
-#define HASH_CACHE_MAX      128
-#define ANNOUNCE_QUEUE_MAX    8
+#define PATH_TABLE_MAX      200
+#define HASH_CACHE_MAX      256
+#define ANNOUNCE_QUEUE_MAX   32
+#define ANNOUNCE_CACHE_MAX  128
+#define ANNOUNCE_CACHE_RAW_MAX 256
 #define PATH_EXPIRY_MS       (24UL * 3600UL * 1000UL)  // 24 h
 #define DEDUP_EXPIRY_MS      (5UL  * 60UL   * 1000UL)  // 5 min
 #define ANNOUNCE_JITTER_MS   2000
@@ -87,6 +90,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define ANNOUNCE_INTERVAL_MS       (60UL * 1000UL)
 #define ANNOUNCE_FAST_INTERVAL_MS  (15UL * 1000UL)   // faster announces for first 5 min after boot
 #define ANNOUNCE_FAST_PERIOD_MS    (5UL * 60UL * 1000UL)
+#define DISCOVERY_STARTUP_DELAY_MS (ANNOUNCE_STARTUP_DELAY_MS + 3000UL)
+#define DISCOVERY_INTERVAL_MS      (2UL * 60UL * 1000UL)
+#define DISCOVERY_FAST_INTERVAL_MS (30UL * 1000UL)
+#define DISCOVERY_RESPONSE_COOLDOWN_MS 3000UL
 
 // ── Peer messaging ────────────────────────────────────────
 #define PEER_NAME_MAX        16
@@ -100,6 +107,16 @@ enum MsgNotifyMode : uint8_t {
     NOTIFY_SILENT = 3,   // suppress all notification
 };
 
+enum LedAlertMode : uint8_t {
+    LED_ALERT_ONCE = 0,
+    LED_ALERT_REPEAT_COUNT = 1,
+    LED_ALERT_UNTIL_CLEAR = 2,
+};
+
+static const uint8_t LED_ALERT_PREFIX_BYTES = 8;
+static const uint8_t LED_ALERT_WATCH_MAX = 6;
+static const uint8_t LED_CONFIG_VERSION = 2;
+
 // ── Watchdog timeout (seconds) ───────────────────────────
 #define WDT_TIMEOUT_SEC      8
 
@@ -108,6 +125,8 @@ enum MsgNotifyMode : uint8_t {
 #define CONFIG_FILE          "/config.bin"
 #define ANNOUNCE_NAME_FILE   "/announce_name.txt"
 #define MORSE_CONFIG_FILE    "/morse.bin"
+#define LED_CONFIG_FILE      "/leds.bin"
+#define SECURITY_CONFIG_FILE "/security.bin"
 #define PATH_TABLE_FILE      "/paths.bin"
 
 // ── Safe-boot: hold this pin LOW during reset to skip main app

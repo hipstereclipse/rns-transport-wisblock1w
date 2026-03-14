@@ -43,6 +43,28 @@ struct MorseBlinkConfigBlob {
     uint32_t checksum;
 };
 
+struct LedConfigBlob {
+    uint8_t version;
+    uint8_t reserved[3];
+    uint8_t idleModes[3];
+    uint8_t rxFlashEnabled[3];
+    uint8_t txFlashEnabled[3];
+    uint8_t morseModes[3];
+    uint8_t alertMode;
+    uint8_t alertRepeatCount;
+    uint8_t alertWatchCount;
+    uint16_t alertIntervalSec;
+    uint8_t alertWatchPrefixes[LED_ALERT_WATCH_MAX][LED_ALERT_PREFIX_BYTES];
+    uint32_t checksum;
+};
+
+struct SecurityConfigBlob {
+    uint8_t enabled;
+    uint8_t wipeOnBoot;
+    uint8_t reserved[2];
+    uint32_t checksum;
+};
+
 // ── Identity blob layout (fixed 160 bytes) ────────────────
 struct IdentityBlob {
     uint8_t  privEncKey[32];
@@ -281,15 +303,124 @@ public:
 #endif
     }
 
-    // ── Factory reset: erase all persisted data ───────────
-    void factoryReset() {
+    bool loadLedConfig(LedConfigBlob& cfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+
+        File f = InternalFS.open(LED_CONFIG_FILE, FILE_O_READ);
+        if (!f) return false;
+
+        LedConfigBlob stored;
+        if (f.read((uint8_t*)&stored, sizeof(stored)) != sizeof(stored)) {
+            f.close();
+            return false;
+        }
+        f.close();
+
+        if (computeLedChecksum(stored) != stored.checksum) return false;
+        if (stored.version != LED_CONFIG_VERSION) {
+            InternalFS.remove(LED_CONFIG_FILE);
+            return false;
+        }
+
+        cfg = stored;
+        cfg.alertWatchCount = cfg.alertWatchCount > LED_ALERT_WATCH_MAX ? LED_ALERT_WATCH_MAX : cfg.alertWatchCount;
+        return true;
+#else
+        (void)cfg;
+        return false;
+#endif
+    }
+
+    bool saveLedConfig(const LedConfigBlob& inputCfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+
+        LedConfigBlob cfg;
+        memcpy(&cfg, &inputCfg, sizeof(cfg));
+        cfg.version = LED_CONFIG_VERSION;
+        cfg.alertWatchCount = cfg.alertWatchCount > LED_ALERT_WATCH_MAX ? LED_ALERT_WATCH_MAX : cfg.alertWatchCount;
+        cfg.checksum = computeLedChecksum(cfg);
+
+        InternalFS.remove(LED_CONFIG_FILE);
+        File f = InternalFS.open(LED_CONFIG_FILE, FILE_O_WRITE);
+        if (!f) return false;
+
+        size_t written = f.write((uint8_t*)&cfg, sizeof(cfg));
+        f.close();
+        return written == sizeof(cfg);
+#else
+        (void)inputCfg;
+        return false;
+#endif
+    }
+
+    bool loadSecurityConfig(bool& enabled, bool& wipeOnBoot) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+
+        File f = InternalFS.open(SECURITY_CONFIG_FILE, FILE_O_READ);
+        if (!f) return false;
+
+        SecurityConfigBlob cfg;
+        if (f.read((uint8_t*)&cfg, sizeof(cfg)) != sizeof(cfg)) {
+            f.close();
+            return false;
+        }
+        f.close();
+
+        if (computeSecurityChecksum(cfg) != cfg.checksum) return false;
+
+        enabled = cfg.enabled != 0;
+        wipeOnBoot = cfg.wipeOnBoot != 0;
+        return true;
+#else
+        (void)enabled; (void)wipeOnBoot;
+        return false;
+#endif
+    }
+
+    bool saveSecurityConfig(bool enabled, bool wipeOnBoot) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+
+        SecurityConfigBlob cfg;
+        memset(&cfg, 0, sizeof(cfg));
+        cfg.enabled = enabled ? 1 : 0;
+        cfg.wipeOnBoot = wipeOnBoot ? 1 : 0;
+        cfg.checksum = computeSecurityChecksum(cfg);
+
+        InternalFS.remove(SECURITY_CONFIG_FILE);
+        File f = InternalFS.open(SECURITY_CONFIG_FILE, FILE_O_WRITE);
+        if (!f) return false;
+
+        size_t written = f.write((uint8_t*)&cfg, sizeof(cfg));
+        f.close();
+        return written == sizeof(cfg);
+#else
+        (void)enabled; (void)wipeOnBoot;
+        return false;
+#endif
+    }
+
+    void wipeRuntimeStatePreserveSecurity() {
 #ifndef NATIVE_TEST
         if (!fsReady) return;
         InternalFS.remove(IDENTITY_FILE);
         InternalFS.remove(CONFIG_FILE);
         InternalFS.remove(ANNOUNCE_NAME_FILE);
         InternalFS.remove(MORSE_CONFIG_FILE);
+        InternalFS.remove(LED_CONFIG_FILE);
         InternalFS.remove(PATH_TABLE_FILE);
+#endif
+    }
+
+    // ── Factory reset: erase all persisted data ───────────
+    void factoryReset() {
+#ifndef NATIVE_TEST
+        if (!fsReady) return;
+        wipeRuntimeStatePreserveSecurity();
+        InternalFS.remove(SECURITY_CONFIG_FILE);
 #endif
     }
 
@@ -315,6 +446,22 @@ private:
         uint32_t cs = 0xC3C3C3C3;
         const uint8_t* p = (const uint8_t*)&c;
         for (size_t i = 0; i < offsetof(MorseBlinkConfigBlob, checksum); i++)
+            cs ^= ((uint32_t)p[i] << ((i % 4) * 8));
+        return cs;
+    }
+
+    uint32_t computeLedChecksum(const LedConfigBlob& c) {
+        uint32_t cs = 0xE1D0C0DE;
+        const uint8_t* p = (const uint8_t*)&c;
+        for (size_t i = 0; i < offsetof(LedConfigBlob, checksum); i++)
+            cs ^= ((uint32_t)p[i] << ((i % 4) * 8));
+        return cs;
+    }
+
+    uint32_t computeSecurityChecksum(const SecurityConfigBlob& c) {
+        uint32_t cs = 0x51524345;
+        const uint8_t* p = (const uint8_t*)&c;
+        for (size_t i = 0; i < offsetof(SecurityConfigBlob, checksum); i++)
             cs ^= ((uint32_t)p[i] << ((i % 4) * 8));
         return cs;
     }

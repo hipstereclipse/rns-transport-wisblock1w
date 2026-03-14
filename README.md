@@ -1,4 +1,4 @@
-# RatTunnel V. 1.0.5 — WisBlock 1W
+# RatTunnel V. 1.0.32 — WisBlock 1W
 
 `RatTunnel` is a standalone Reticulum transport/repeater firmware for the RAKwireless WisBlock 1W stack (`RAK3401 + RAK13302`).
 The name **RatTunnel** is a nod to [Ratspeak](https://github.com/ratspeak/), a messaging app/platform built on **Reticulum**.
@@ -11,7 +11,7 @@ It is designed for safe field updates with:
 
 ## Current Status
 
-- Firmware brand/version: `RatTunnel V. 1.0.5`
+- Firmware brand/version: `RatTunnel V. 1.0.32`
 - Hardware target: WisBlock 1W (`nRF52840 + SX1262`)
 - Primary flashing path: Web flasher (`flasher/index.html`) served over HTTP
 - Secondary flashing path: UF2 drag-and-drop bootloader drive
@@ -19,12 +19,92 @@ It is designed for safe field updates with:
 
 ## What RatTunnel Currently Supports
 
-- Reticulum-compatible announce handling and route learning
-- Packet forwarding/relay behavior for mesh/backbone transport
-- Duplicate suppression and path table management
-- USB serial command console (`status`, `radio`, `routes`, `identity`, `set`, `save`, `dfu`, etc.)
-- Runtime radio parameter changes and persistence to flash
-- Safe reboot into Adafruit nRF52 DFU bootloader
+- Reticulum-compatible announce handling, route learning, and path table persistence (up to 200 entries, 24 h expiry)
+- Packet forwarding/relay for mesh/backbone transport with duplicate suppression
+- Announce relay queue with jitter and hop-count-aware flooding (32-slot queue)
+- Active peer discovery via periodic discovery sweeps; nearby nodes replay cached signed announces
+- Fast announce schedule for the first 5 minutes after boot (15 s), then every 60 s
+- **Encrypted peer-to-peer messaging** using X25519 + Ed25519 (per-peer public keys extracted from announces)
+- Broadcast announce-sideband messaging for peers without known keys
+- Per-peer addressing by hash prefix or name (`msg @<hash>`, `msg @<name>`)
+- Auto-reply to safe diagnostic prompts (`RT?PING7`, `RT?UP7`, `RT?MESH7`) — encrypted, rate-limited
+- RSSI and SNR tracked per peer in the routing table
+- USB serial command console with rich command set (see table below)
+- Runtime radio parameter changes and persistence to flash (LittleFS)
+- Per-channel LED behavior: idle mode (off / solid / heartbeat), RX/TX flash, Morse alert mode
+- Morse code blink notifications for incoming messages and fault codes on-air
+- LED incoming-message alert system with watch-list, repeat-count, and sticky modes
+- **RatHole security mode**: optional identity wipe-on-boot for operational security
+- Hardware watchdog (8 s timeout) — device auto-recovers from hangs
+- Safe reboot into Adafruit nRF52 DFU bootloader (`dfu` command or button)
+
+## Network Scope
+
+This firmware target is for the RAK3401 + RAK13302 LoRa stack. It does not include an on-device Wi-Fi interface or TCP/IP stack for direct connection to a LAN or Reticulum TCP server.
+
+To reach the Ratspeak Hub, use the host computer's network connection together with the built-in browser bridge:
+- Run `python tools/serve_flasher.py --hub-bridge`
+- Open the flasher UI and use the `Hub` tab
+- The local WebSocket bridge forwards packets between the USB-connected radio and `rns.ratspeak.org:4242`
+
+This gives the practical result most users want: the WisBlock radio participates in LoRa locally, and your network-connected computer bridges it into the wider Ratspeak/Reticulum hub.
+
+## LED Behavior
+
+The WisBlock 1W exposes two physical LEDs (green = P35, blue = P36). The firmware controls them independently per-channel:
+
+| State | Meaning |
+|---|---|
+| Green heartbeat (2 s) | Running normally |
+| Blue pulse | Packet activity (RX or TX) |
+| Green Morse digit loop | Fault code (e.g. `1` = radio init failed) |
+| Alternating green/blue | Fatal error |
+
+LED behavior is configurable at runtime with the `led` command and persisted to flash with `save`. Each channel supports:
+- **Idle mode**: off, solid, or 2-second heartbeat blink
+- **RX/TX flash**: brief pulse on packet activity
+- **Morse alert mode**: blink Morse code for incoming messages (`incoming`), fault codes (`errors`), or both
+
+### Incoming message alerts
+
+The `led alert` system can:
+- Blink a Morse alert immediately on every incoming message (`once`)
+- Repeat the alert a configurable number of times at a configurable interval (`count`)
+- Continue blinking until the conversation is opened (`until-clear`)
+- Filter alerts to specific sender hash prefixes (`led alert watch <hash16>`)
+
+## Peer Messaging
+
+RatTunnel supports text messaging over the Reticulum radio link:
+
+- `msg <text>` — broadcast to all peers; automatically uses encrypted path for peers with known public keys
+- `msg @<hash> <text>` or `msg @<name> <text>` — address a specific peer; sends encrypted if key is available, falls back to broadcast sideband
+- Encrypted messages use X25519 (key exchange) + Ed25519 (identity) keys extracted from announce packets
+- Peer public keys are stored in the path table and survive path refreshes
+
+### Auto-reply diagnostic prompts
+
+Any peer can send the following exact strings to trigger a safe automated encrypted reply:
+
+| Prompt | Reply | Meaning |
+|---|---|---|
+| `RT?PING7` | `RT!PONG7 ok` | Connectivity check |
+| `RT?UP7` | `RT!UP7 <fresh\|warm\|steady\|longrun>` | Uptime bucket |
+| `RT?MESH7` | `RT!MESH7 <none\|few\|many>` | Path table size |
+
+Replies are encrypted-only to authenticated peers, coarse-grained, and rate-limited per sender (15 s cooldown).
+
+## RatHole Security Mode
+
+RatHole provides a lightweight operational security feature for nodes that need to avoid persistent identity:
+
+```bash
+rathole on               # enable RatHole mode
+rathole boot-reset on    # wipe identity and config on every reboot
+save                     # persist the setting
+```
+
+When `boot-reset` is on, each power cycle generates a fresh identity key pair — the node appears as a different Reticulum destination on every boot. The RatHole flag itself is preserved across wipes so the setting survives reboot.
 
 ## Hardware Requirements
 
@@ -73,11 +153,20 @@ Default behavior:
 ```bash
 python tools/serve_flasher.py --host 0.0.0.0 --port 8080
 python tools/serve_flasher.py --no-open
+python tools/serve_flasher.py --hub-bridge
+python tools/serve_flasher.py --hub-bridge --hub-ws-port 8765 --hub-tcp-host rns.ratspeak.org --hub-tcp-port 4242
 ```
 
-- `--host`: bind interface (`127.0.0.1` local-only, `0.0.0.0` LAN-visible)
-- `--port`: server port
-- `--no-open`: do not auto-launch browser
+| Flag | Default | Purpose |
+|---|---|---|
+| `--host` | `127.0.0.1` | Bind interface (`0.0.0.0` = LAN-visible) |
+| `--port` | `8000` | HTTP server port |
+| `--no-open` | off | Do not auto-launch browser |
+| `--hub-bridge` | off | Also start local WebSocket→TCP bridge for Ratspeak Hub |
+| `--hub-ws-host` | `127.0.0.1` | WebSocket bind host for bridge |
+| `--hub-ws-port` | `8765` | WebSocket bind port for bridge |
+| `--hub-tcp-host` | `rns.ratspeak.org` | Upstream hub hostname |
+| `--hub-tcp-port` | `4242` | Upstream hub TCP port |
 
 ## Web Flasher Workflow
 
@@ -125,20 +214,85 @@ Once a release exists with valid assets, the web flasher will list it automatica
 
 ## Console Commands (Runtime)
 
+### Core status and identity
+
 | Command | Purpose |
 |---|---|
-| `status` / `stats` | Core node counters and health |
-| `radio` | Current LoRa parameters |
-| `routes` | Routing table summary |
-| `identity` | Device identity and keys |
-| `set freq|sf|bw|cr|txpower|syncword|preamble` | Live radio tuning (`txpower` capped to 17 dBm for stability) |
-| `profile rnode-eu|rnode-us|ratspeak-us` | One-shot Reticulum LoRa preset |
-| `save` | Persist current config |
-| `announce` | Trigger local announce |
-| `dfu` | Reboot to bootloader mode |
+| `status` / `stats` | Core node counters, radio health, uptime, free RAM |
+| `radio` | Current LoRa parameters and last RSSI/SNR |
+| `routes` | Routing table (dest hash, hops, age) |
+| `peers` | Known peers with name, hops, RSSI, SNR, age |
+| `identity` | Node identity hash and public keys |
+| `version` | Firmware brand, version, build tag |
+| `test` / `ping` | One-line health response (machine-readable) |
+
+### Radio configuration
+
+| Command | Purpose |
+|---|---|
+| `set freq\|sf\|bw\|cr\|txpower\|syncword\|preamble <value>` | Live radio tuning |
+| `profile rnode-eu\|rnode-us\|ratspeak-us` | One-shot Reticulum LoRa preset |
+
+### Naming and messaging
+
+| Command | Purpose |
+|---|---|
+| `name [text]` | Show or set the node broadcast name |
+| `msg <text>` | Broadcast message to all peers |
+| `msg @<hash\|name> <text>` | Send message to specific peer (encrypted if key known) |
+| `notify sound\|morse\|both\|silent` | Configure incoming message notification mode |
+| `announce [payload]` | Transmit local announce (optional raw payload) |
+| `discover` | Send manual discovery sweep to elicit peer announce replies |
+
+### LED and Morse
+
+| Command | Purpose |
+|---|---|
+| `led` | Show per-channel LED configuration and alert status |
+| `led <green\|blue> idle <off\|solid\|heartbeat>` | Set channel idle mode |
+| `led <green\|blue> rx <on\|off>` | Enable/disable RX-activity flash |
+| `led <green\|blue> tx <on\|off>` | Enable/disable TX-activity flash |
+| `led <green\|blue> morse <off\|errors\|incoming\|both>` | Set channel Morse blink mode |
+| `led alert mode <once\|count\|until-clear>` | Alert repeat strategy |
+| `led alert count <n>` | Repeat count for `count` mode |
+| `led alert interval <s>` | Seconds between alert repeats |
+| `led alert watch <hash16>` | Add a sender prefix to watch list |
+| `led alert clear` | Clear pending alerts |
+| `morse mode <off\|errors\|incoming\|both\|default>` | Set Morse mode for all available LEDs |
+| `morse default <message\|clear>` | Set or clear the default Morse message |
+| `morse test [message]` | Queue a Morse blink test immediately |
+
+### Security
+
+| Command | Purpose |
+|---|---|
+| `rathole` | Show RatHole security state |
+| `rathole <on\|off>` | Enable/disable RatHole mode |
+| `rathole boot-reset <on\|off>` | Wipe identity and config on every boot |
+
+### Persistence and device management
+
+| Command | Purpose |
+|---|---|
+| `save` | Persist all current config to flash |
+| `factory-reset` | Erase stored identity and config |
+| `dfu` | Reboot into Adafruit nRF52 bootloader |
 | `reboot` | Restart firmware |
-| `factory-reset` | Erase stored identity/config |
-| `version` | Show brand/version/build |
+| `reinit` | Retry radio hardware init without rebooting |
+
+### Diagnostics (advanced)
+
+| Command | Purpose |
+|---|---|
+| `rxdiag` | Dump last raw received packet details |
+| `irqmon [on\|off]` | Toggle IRQ monitoring output |
+| `rxraw` | Print next raw received frame |
+| `txraw <hex>` | Transmit raw hex-encoded frame |
+| `pktdump [on\|off]` | Toggle packet dump on all received frames |
+| `nfloor` | Measure noise floor (RSSI with TX off) |
+| `regdump` | Dump SX1262 register state |
+| `lorascan` | Scan common LoRa frequencies for activity |
+| `pintest` | Full 48-pin GPIO scan to identify SX1262 wiring |
 
 ## Troubleshooting
 
