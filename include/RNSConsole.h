@@ -885,7 +885,6 @@ private:
             | (1UL << RADIOLIB_IRQ_CRC_ERR)
             | (1UL << RADIOLIB_IRQ_TIMEOUT);
         radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, monFlags, monFlags, 0);
-        uint32_t prevIrq = 0;
         uint32_t end = millis() + (uint32_t)seconds * 1000;
         uint32_t ticks = 0;
         uint32_t preambles = 0, syncs = 0, rxDone = 0, crcErr = 0, timeouts = 0, hdrErr = 0;
@@ -894,9 +893,29 @@ private:
             if (io->available()) break;  // key pressed
             if (keepAlive) keepAlive();
             uint32_t irq = radio->lora.getIrqFlags();
-            if (irq != prevIrq) {
+
+            if (irq != 0) {
+                // Event detected — let the RX chain settle before logging.
+                // Wait up to 500ms for sync/header; extend to 3s if header seen.
+                uint32_t settleEnd = millis() + 500;
+                bool headerSeen = false;
+                while (millis() < settleEnd) {
+                    if (keepAlive) keepAlive();
+                    uint32_t cur = radio->lora.getIrqFlags();
+                    if (cur != irq) irq = cur;
+                    if ((irq & (1UL << RADIOLIB_IRQ_HEADER_VALID)) && !headerSeen) {
+                        headerSeen = true;
+                        settleEnd = millis() + 3000; // full packet may follow
+                    }
+                    if (irq & ((1UL << RADIOLIB_IRQ_RX_DONE) |
+                               (1UL << RADIOLIB_IRQ_HEADER_ERR) |
+                               (1UL << RADIOLIB_IRQ_TIMEOUT))) break;
+                    delay(1);
+                }
+
+                // Log accumulated IRQ state
                 uint32_t dt = millis();
-                io->print(F("  [")); io->print(dt / 1000); io->print(F(".")); 
+                io->print(F("  [")); io->print(dt / 1000); io->print(F("."));
                 io->print((dt % 1000) / 100); io->print(F("s] IRQ=0x")); io->print(irq, HEX);
                 if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED))  { io->print(F(" PREAMBLE")); preambles++; }
                 if (irq & (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID))    { io->print(F(" SYNC")); syncs++; }
@@ -905,18 +924,23 @@ private:
                 if (irq & (1UL << RADIOLIB_IRQ_CRC_ERR))            { io->print(F(" CRC_ERR")); crcErr++; }
                 if (irq & (1UL << RADIOLIB_IRQ_HEADER_ERR))         { io->print(F(" HDR_ERR")); hdrErr++; }
                 if (irq & (1UL << RADIOLIB_IRQ_TIMEOUT))            { io->print(F(" TIMEOUT")); timeouts++; }
+
+                // Show RSSI: packet RSSI+SNR on RX_DONE, instantaneous RSSI otherwise
+                if (irq & (1UL << RADIOLIB_IRQ_RX_DONE)) {
+                    io->print(F(" RSSI=")); io->print(radio->lora.getRSSI(), 1);
+                    io->print(F(" SNR=")); io->print(radio->lora.getSNR(), 1);
+                } else if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)) {
+                    io->print(F(" instRSSI=")); io->print(radio->lora.getRSSI(false), 1);
+                }
                 io->println();
-                prevIrq = irq;
-                
+
                 // If RX_DONE, dump the packet
                 if (irq & (1UL << RADIOLIB_IRQ_RX_DONE)) {
                     int len = radio->lora.getPacketLength();
                     if (len > 0 && len <= RNS_MTU) {
                         uint8_t buf[RNS_MTU];
                         radio->lora.readData(buf, len);
-                        io->print(F("    RSSI=")); io->print(radio->lora.getRSSI(), 1);
-                        io->print(F(" SNR=")); io->print(radio->lora.getSNR(), 1);
-                        io->print(F(" len=")); io->println(len);
+                        io->print(F("    len=")); io->println(len);
                         io->print(F("    HEX: "));
                         for (int i = 0; i < len && i < 64; i++) {
                             if (buf[i] < 0x10) io->print('0');
@@ -926,9 +950,10 @@ private:
                         if (len > 64) io->print(F("..."));
                         io->println();
                     }
-                    radio->lora.startReceive(); // re-enter RX
-                    prevIrq = 0;
                 }
+
+                // Restart RX with full monitoring flags (clears sticky IRQ bits)
+                radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, monFlags, monFlags, 0);
             }
             ticks++;
             delay(1);
@@ -943,7 +968,7 @@ private:
         io->print(F("    HDR_ERR: ")); io->println(hdrErr);
         io->print(F("    Timeouts: ")); io->println(timeouts);
 
-        radio->lora.startReceive(); // make sure we end in RX
+        radio->lora.startReceive(); // restore normal RX
 #endif
     }
 
