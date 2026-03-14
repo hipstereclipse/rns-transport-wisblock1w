@@ -15,8 +15,13 @@
 #include "RNSIdentity.h"
 
 #ifndef NATIVE_TEST
+#include <nrf_gpio.h>
 extern "C" char* sbrk(int incr);
 #endif
+
+// Stringify helper for pin numbers in F() strings
+#define PIN_STR_INNER(x) #x
+#define PIN_STR(x) PIN_STR_INNER(x)
 
 // Forward declaration for persistence (optional)
 class RNSPersistence;
@@ -109,6 +114,8 @@ private:
         else if (strcmp(command, "morse")     == 0) cmdMorse(args);
         else if (strcmp(command, "test")      == 0) cmdTest();
         else if (strcmp(command, "ping")      == 0) cmdTest();
+        else if (strcmp(command, "reinit")    == 0) cmdReinit();
+        else if (strcmp(command, "pintest")   == 0) cmdPintest();
         else if (strcmp(command, "version")   == 0) cmdVersion();
         else if (strcmp(command, "help")      == 0) cmdHelp();
         else {
@@ -474,6 +481,250 @@ private:
         io->println();
     }
 
+    // ── reinit (retry radio init without rebooting) ───────
+    void cmdReinit() {
+        io->println(F("Retrying radio initialization..."));
+        io->println(F("(watch serial output for [DIAG] lines)"));
+        bool ok = radio->begin(transport);
+        if (ok) {
+            io->println(F("Radio init SUCCESS — SX1262 is now live."));
+        } else {
+            io->println(F("Radio init FAILED again."));
+            io->print(F("  Last error: ")); io->println(radio->lastInitState);
+            io->println(F("  Try: reseat RAK13302, check base board 3V3_S rail."));
+        }
+    }
+
+    // ── pintest (scan IO pins to identify SX1262 connections) ─
+    void cmdPintest() {
+#ifndef NATIVE_TEST
+        // ── Full GPIO scan: ALL 48 pins (0-47) ──────────────────
+        // Exclude only active SPI data lines that could cause bus
+        // contention: SCK(3), MISO(29), MOSI(30), NSS(26).
+        // We include everything else to find SX1262 BUSY/DIO1/RST
+        // which may be on unexpected pins.
+        static const uint8_t spiPins[] = {3, 26, 29, 30};
+        auto isSpiPin = [&](uint8_t p) {
+            for (uint8_t s : spiPins) { if (p == s) return true; }
+            return false;
+        };
+
+        io->println(F("── PIN SCAN: full 48-GPIO power+RST cycle test ──"));
+        io->println(F("  PIN_LORA_ENABLE(P34)=WB_IO2, PIN_LORA_RESET(P17)=WB_IO1"));
+        io->println(F("  Skipping SPI pins: 3(SCK) 26(NSS) 29(MISO) 30(MOSI)"));
+        io->println();
+
+        // Remove any pull-down/pull-up overrides from init code
+        for (uint8_t p = 0; p < 48; p++) {
+            if (isSpiPin(p)) continue;
+            nrf_gpio_cfg_input(p, NRF_GPIO_PIN_NOPULL);
+        }
+
+        uint8_t ph[4][48];  // phase readings for all 48 GPIOs
+
+        // Phase 1: Read with power ON (current state)
+        for (uint8_t p = 0; p < 48; p++)
+            ph[0][p] = isSpiPin(p) ? 2 : digitalRead(p);
+
+        // Phase 2: Drive P34 LOW (power-gate test)
+        pinMode(PIN_LORA_ENABLE, OUTPUT);
+        digitalWrite(PIN_LORA_ENABLE, LOW);
+        delay(100);
+        for (uint8_t p = 0; p < 48; p++)
+            ph[1][p] = isSpiPin(p) ? 2 : digitalRead(p);
+
+        // Phase 3: P34 HIGH + RST toggle, read at +5ms
+        digitalWrite(PIN_LORA_ENABLE, HIGH);
+        delay(10);
+        pinMode(PIN_LORA_RESET, OUTPUT);
+        digitalWrite(PIN_LORA_RESET, LOW);
+        delay(5);
+        digitalWrite(PIN_LORA_RESET, HIGH);
+        delay(5);
+        for (uint8_t p = 0; p < 48; p++)
+            ph[2][p] = isSpiPin(p) ? 2 : digitalRead(p);
+
+        // Phase 4: Wait for boot to finish (+500ms = BUSY LOW)
+        delay(500);
+        for (uint8_t p = 0; p < 48; p++)
+            ph[3][p] = isSpiPin(p) ? 2 : digitalRead(p);
+
+        // ── Print only pins that CHANGED between any phase ──────
+        io->println(F("  Pins that CHANGED during cycle:"));
+        io->println(F("  Pin   PRE P34L +5ms  +500ms  Signature"));
+        io->println(F("  ────  ─── ──── ────  ──────  ─────────"));
+        uint8_t changedCount = 0;
+        for (uint8_t p = 0; p < 48; p++) {
+            if (isSpiPin(p)) continue;
+            bool changed = false;
+            for (uint8_t j = 1; j < 4; j++) {
+                if (ph[j][p] != ph[0][p]) { changed = true; break; }
+            }
+            if (!changed) continue;
+            changedCount++;
+            io->print(F("  P")); if (p < 10) io->print(' ');
+            io->print(p);
+            for (uint8_t j = 0; j < 4; j++) {
+                io->print(F("   ")); io->print(ph[j][p]);
+            }
+            // Identify signature
+            io->print(F("     "));
+            uint8_t a=ph[0][p], b=ph[1][p], c=ph[2][p], d=ph[3][p];
+            if (a==1 && b==0 && c==1 && d==1) io->print(F("← POWER-GATE (lost during P34=LOW)"));
+            else if (a==1 && b==1 && c==0 && d==1) io->print(F("← RST pin (dropped at RST)"));
+            else if (b==0 && c==1 && d==0) io->print(F("← BUSY candidate (0→1→0)"));
+            else if (b==0 && c==1 && d==1) io->print(F("← BUSY-stuck or TCXO fail (0→1→1)"));
+            else if (b==0 && c==0 && d==1) io->print(F("← late-rise (DIO1?)"));
+            else io->print(F("← other"));
+            io->println();
+        }
+        if (changedCount == 0)
+            io->println(F("  (NONE — no pins changed! SX1262 may be disconnected)"));
+
+        // ── Print all pins that are STATIC LOW ──────────────────
+        io->println();
+        io->print(F("  Static LOW:  "));
+        for (uint8_t p = 0; p < 48; p++) {
+            if (isSpiPin(p)) continue;
+            bool allSame = true;
+            for (uint8_t j = 1; j < 4; j++) { if (ph[j][p] != ph[0][p]) { allSame = false; break; } }
+            if (allSame && ph[0][p] == 0) { io->print('P'); io->print(p); io->print(' '); }
+        }
+        io->println();
+        io->print(F("  Static HIGH: "));
+        for (uint8_t p = 0; p < 48; p++) {
+            if (isSpiPin(p)) continue;
+            bool allSame = true;
+            for (uint8_t j = 1; j < 4; j++) { if (ph[j][p] != ph[0][p]) { allSame = false; break; } }
+            if (allSame && ph[0][p] == 1) { io->print('P'); io->print(p); io->print(' '); }
+        }
+        io->println();
+
+        // ── BUSY brute-force discovery ──────────────────────────
+        // For each candidate pin, try it as BUSY: wait for it to
+        // go LOW, then do an SPI read and check for non-0xD2 data.
+        io->println();
+        io->println(F("  ── BUSY discovery (SPI probe per pin) ──"));
+
+        // First power-cycle + hard reset the module
+        pinMode(PIN_LORA_ENABLE, OUTPUT);
+        digitalWrite(PIN_LORA_ENABLE, LOW);
+        delay(50);
+        digitalWrite(PIN_LORA_ENABLE, HIGH);
+        delay(10);
+        pinMode(PIN_LORA_RESET, OUTPUT);
+        digitalWrite(PIN_LORA_RESET, LOW);
+        delay(5);
+        digitalWrite(PIN_LORA_RESET, HIGH);
+        delay(500);  // generous settle time
+
+        // Re-init SPI
+        static SPIClass& scanSPI = *(new SPIClass(NRF_SPIM3, PIN_LORA_MISO, PIN_LORA_SCK, PIN_LORA_MOSI));
+        scanSPI.begin();
+        pinMode(PIN_LORA_NSS, OUTPUT);
+        digitalWrite(PIN_LORA_NSS, HIGH);
+
+        // Raw SPI read of reg 0x0320 (version string byte 0)
+        auto spiProbe = [&]() -> uint8_t {
+            scanSPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+            digitalWrite(PIN_LORA_NSS, LOW);
+            delayMicroseconds(200);
+            scanSPI.transfer(0x1D);
+            scanSPI.transfer(0x03);
+            scanSPI.transfer(0x20);
+            scanSPI.transfer(0x00);
+            uint8_t val = scanSPI.transfer(0x00);
+            digitalWrite(PIN_LORA_NSS, HIGH);
+            scanSPI.endTransaction();
+            return val;
+        };
+
+        // Baseline: what we get without any BUSY management
+        uint8_t baseline = spiProbe();
+        io->print(F("  Baseline SPI read (no BUSY): 0x"));
+        io->println(baseline, HEX);
+
+        // Now try each candidate as BUSY input
+        for (uint8_t p = 0; p < 48; p++) {
+            if (isSpiPin(p)) continue;
+            if (p == PIN_LORA_ENABLE) continue;  // don't mess with power
+
+            // Configure pin as input, no pull
+            nrf_gpio_cfg_input(p, NRF_GPIO_PIN_NOPULL);
+            uint8_t rawState = digitalRead(p);
+
+            // Wait for this pin to go LOW (max 50ms)
+            bool wentLow = (rawState == LOW);
+            if (!wentLow) {
+                uint32_t t0 = millis();
+                while (millis() - t0 < 50) {
+                    if (digitalRead(p) == LOW) { wentLow = true; break; }
+                    delayMicroseconds(100);
+                }
+            }
+
+            if (!wentLow) continue;  // skip pins stuck HIGH
+
+            // This pin is LOW — do SPI probe
+            uint8_t val = spiProbe();
+            if (val != baseline && val != 0x00 && val != 0xFF) {
+                io->print(F("  *** P")); io->print(p);
+                io->print(F(" → SPI read=0x")); io->print(val, HEX);
+                io->println(F(" ← LIKELY BUSY PIN! ***"));
+            }
+        }
+
+        // ── Multi-CS probe ──────────────────────────────────────
+        // Try alternate CS pins in case module is on a different slot
+        io->println();
+        io->println(F("  ── Multi-CS probe ──"));
+        uint8_t csPins[] = {26, 36, 32, 42, 6, 19, 25};
+        for (uint8_t cs : csPins) {
+            if (cs == PIN_LORA_NSS) continue;
+            pinMode(cs, OUTPUT);
+            digitalWrite(cs, HIGH);
+            delay(1);
+
+            // Read with this alternate CS
+            scanSPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+            digitalWrite(cs, LOW);
+            delayMicroseconds(200);
+            scanSPI.transfer(0x1D);
+            scanSPI.transfer(0x03);
+            scanSPI.transfer(0x20);
+            scanSPI.transfer(0x00);
+            uint8_t val = scanSPI.transfer(0x00);
+            digitalWrite(cs, HIGH);
+            scanSPI.endTransaction();
+
+            // Read 2nd byte for more info
+            scanSPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+            digitalWrite(cs, LOW);
+            delayMicroseconds(200);
+            uint8_t gs0 = scanSPI.transfer(0xC0);
+            uint8_t gs1 = scanSPI.transfer(0x00);
+            digitalWrite(cs, HIGH);
+            scanSPI.endTransaction();
+
+            io->print(F("  CS=P")); io->print(cs);
+            io->print(F(": reg=0x")); io->print(val, HEX);
+            io->print(F(" status=0x")); io->print(gs0, HEX);
+            io->print(F("/0x")); io->print(gs1, HEX);
+            if (val != 0x00 && val != 0xFF && val != baseline)
+                io->print(F(" ← DIFFERENT!"));
+            io->println();
+
+            // Restore as input
+            pinMode(cs, INPUT);
+        }
+
+        io->println();
+        io->println(F("  Current config: DIO1="PIN_STR(PIN_LORA_DIO1)
+                       " BUSY="PIN_STR(PIN_LORA_BUSY)
+                       " RST="PIN_STR(PIN_LORA_RESET)));
+#endif
+    }
+
     // ── help ──────────────────────────────────────────────
     void cmdHelp() {
         io->println(F("── Available Commands ──"));
@@ -492,6 +743,8 @@ private:
         io->println(F("  announce [txt] Broadcast announce (optional text payload)"));
         io->println(F("  morse          Configure Morse blinker (mode/default)"));
         io->println(F("  test|ping      Emit one-line node health response"));
+        io->println(F("  reinit         Retry radio initialization"));
+        io->println(F("  pintest        Scan IO pins to find SX1262 BUSY/DIO1/RST"));
         io->println(F("  version        Firmware version"));
         io->println(F("  help           This message"));
     }

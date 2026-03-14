@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    5
-#define FW_VERSION_STRING   "1.0.5"
+#define FW_VERSION_PATCH    13
+#define FW_VERSION_STRING   "1.0.13"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.5"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.13"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -33,10 +33,12 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define PIN_LORA_SCK         3   // WB_SPI_CLK
 #define PIN_LORA_MISO       29   // WB_SPI_MISO
 #define PIN_LORA_MOSI       30   // WB_SPI_MOSI
-#define PIN_LORA_DIO1       15   // IO-slot interrupt
-#define PIN_LORA_BUSY       16   // IO-slot BUSY
-#define PIN_LORA_RESET      17   // WB_IO1 → NRST
-#define PIN_LORA_ENABLE     34   // WB_IO2 — 3V3_S rail gate
+#define PIN_LORA_DIO1       15   // IO-slot interrupt (unverified)
+#define PIN_LORA_BUSY       34   // WB_IO2 (unverified — discovery in V1.0.12)
+#define PIN_LORA_RESET      17   // WB_IO1 (unverified — discovery in V1.0.12)
+#define PIN_LORA_ENABLE     34   // WB_IO2 → may be 3V3_S gate (tested in V1.0.12)
+// NOTE: P15=SERIAL1_RX, P16=SERIAL1_TX per variant.h — NOT LoRa pins.
+// V1.0.12 adds brute-force NRST/BUSY/power-gate discovery diagnostics.
 
 // LEDs (active HIGH)
 #define PIN_LED_GREEN       35
