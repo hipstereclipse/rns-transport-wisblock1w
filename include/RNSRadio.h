@@ -866,8 +866,38 @@ public:
         Serial.println(F(" dBm"));
 
         txActive = true;
-        int state = lora.transmit(txData, txLen);
+
+        // Non-blocking TX: RadioLib's blocking transmit() polls the DIO1
+        // GPIO for TX_DONE, but DIO1 is NC so it always times out.
+        // Use startTransmit() + SPI IRQ polling instead.
+        int state = lora.startTransmit(txData, txLen);
+        if (state != RADIOLIB_ERR_NONE) {
+            txActive = false;
+            Serial.print(F("[DIAG] startTransmit failed rc=")); Serial.println(state);
+            lora.startReceive();
+            return false;
+        }
+
+        // Poll SPI IRQ register for TX_DONE (max ~5 s for worst-case SF12)
+        static const uint32_t TX_TIMEOUT_MS = 5000;
+        uint32_t txWaitStart = millis();
+        bool txDone = false;
+        while (millis() - txWaitStart < TX_TIMEOUT_MS) {
+            uint32_t irq = lora.getIrqFlags();
+            if (irq & (1UL << RADIOLIB_IRQ_TX_DONE)) {
+                txDone = true;
+                break;
+            }
+            delay(1);
+        }
+
+        // Clean up TX state inside RadioLib
+        state = lora.finishTransmit();
         txActive = false;
+
+        if (!txDone) {
+            state = RADIOLIB_ERR_TX_TIMEOUT;
+        }
 
         uint32_t txElapsed = millis() - txStart;
         Serial.print(F("[DIAG] TX done: rc=")); Serial.print(state);
