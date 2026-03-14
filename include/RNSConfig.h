@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    26
-#define FW_VERSION_STRING   "1.0.28"
+#define FW_VERSION_PATCH    31
+#define FW_VERSION_STRING   "1.0.31"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.28"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.31"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -50,7 +50,7 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define LORA_CR             5        // coding rate 4/5
 #define LORA_TX_DBM         17       // safer default for power stability (PA adds ~8 dB)
 #define LORA_TX_DBM_MAX_SAFE 17
-#define LORA_TX_DBM_ANNOUNCE_SAFE 2
+#define LORA_TX_DBM_ANNOUNCE_SAFE LORA_TX_DBM  // Use full TX power so peers discover us
 #define LORA_PREAMBLE       18       // ratspeak-us balanced default
 #define LORA_SYNC_WORD      0x12     // private LoRa sync word
 
@@ -84,7 +84,21 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define ANNOUNCE_JITTER_MS   2000
 #define TRANSPORT_LOOP_MS    5
 #define ANNOUNCE_STARTUP_DELAY_MS  2000UL
-#define ANNOUNCE_INTERVAL_MS    (60UL * 1000UL)
+#define ANNOUNCE_INTERVAL_MS       (60UL * 1000UL)
+#define ANNOUNCE_FAST_INTERVAL_MS  (15UL * 1000UL)   // faster announces for first 5 min after boot
+#define ANNOUNCE_FAST_PERIOD_MS    (5UL * 60UL * 1000UL)
+
+// ── Peer messaging ────────────────────────────────────────
+#define PEER_NAME_MAX        16
+#define MSG_NOTIFY_FILE      "/notify.bin"
+
+// Notification modes for incoming peer messages
+enum MsgNotifyMode : uint8_t {
+    NOTIFY_SOUND  = 0,   // web UI plays audio notification
+    NOTIFY_MORSE  = 1,   // blink morse on blue LED
+    NOTIFY_BOTH   = 2,   // audio + morse
+    NOTIFY_SILENT = 3,   // suppress all notification
+};
 
 // ── Watchdog timeout (seconds) ───────────────────────────
 #define WDT_TIMEOUT_SEC      8

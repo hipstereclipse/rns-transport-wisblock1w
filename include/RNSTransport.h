@@ -21,6 +21,11 @@ struct PathEntry {
     uint32_t learnedAt;
     uint32_t expiresAt;
     bool     active;
+    float    lastRSSI;                ///< RSSI at which this peer was last heard
+    float    lastSNR;                 ///< SNR at which this peer was last heard
+    char     peerName[PEER_NAME_MAX]; ///< Display name from announce appData
+    uint8_t  peerPubKey[RNS_KEYSIZE]; ///< 64-byte public key (X25519+Ed25519) from announce
+    bool     hasPubKey;               ///< true if peerPubKey is populated
 };
 
 // ── Dedup hash-cache entry ────────────────────────────────
@@ -54,6 +59,8 @@ public:
     RNSIdentity*   identity = nullptr;
     RNSRadio*      radio    = nullptr;
     TransportStats stats;
+    float          lastRxRSSI = 0.0f;
+    float          lastRxSNR  = 0.0f;
 
 private:
     PathEntry          pathTable[PATH_TABLE_MAX];
@@ -63,6 +70,105 @@ private:
     uint8_t            cachedTransportDestHash[RNS_ADDR_LEN] = {0};
     uint8_t            cachedTransportNameHash[RNS_NAME_HASH_LEN] = {0};
     bool               announceHashCacheReady = false;
+
+    // ── Msgpack skip helper ───────────────────────────────
+    static bool skipMsgpackElem(const uint8_t* d, uint16_t len, uint16_t& p) {
+        if (p >= len) return false;
+        uint8_t b = d[p++];
+        if (b <= 0x7F || b >= 0xE0) return true;
+        if ((b & 0xF0) == 0x80) { uint8_t n = b & 0x0F; for (uint8_t i = 0; i < n*2; i++) { if (!skipMsgpackElem(d,len,p)) return false; } return true; }
+        if ((b & 0xF0) == 0x90) { uint8_t n = b & 0x0F; for (uint8_t i = 0; i < n; i++) { if (!skipMsgpackElem(d,len,p)) return false; } return true; }
+        if ((b & 0xE0) == 0xA0) { p += (b & 0x1F); return p <= len; }
+        if (b == 0xC0 || b == 0xC2 || b == 0xC3) return true;
+        if (b == 0xC4) { if (p>=len) return false; p += d[p]+1; return p<=len; }
+        if (b == 0xC5) { if (p+2>len) return false; uint16_t n=(d[p]<<8)|d[p+1]; p+=2+n; return p<=len; }
+        if (b == 0xCA) { p += 4; return p <= len; }
+        if (b == 0xCB) { p += 8; return p <= len; }
+        if (b >= 0xCC && b <= 0xCF) { static const uint8_t sz[]={1,2,4,8}; p+=sz[b-0xCC]; return p<=len; }
+        if (b >= 0xD0 && b <= 0xD3) { static const uint8_t sz[]={1,2,4,8}; p+=sz[b-0xD0]; return p<=len; }
+        if (b == 0xD9) { if (p>=len) return false; p+=d[p]+1; return p<=len; }
+        if (b == 0xDA) { if (p+2>len) return false; uint16_t n=(d[p]<<8)|d[p+1]; p+=2+n; return p<=len; }
+        if (b == 0xDE) { if (p+2>len) return false; uint16_t n=(d[p]<<8)|d[p+1]; p+=2; for(uint16_t i=0;i<n*2;i++){if(!skipMsgpackElem(d,len,p))return false;} return true; }
+        if (b == 0xDC) { if (p+2>len) return false; uint16_t n=(d[p]<<8)|d[p+1]; p+=2; for(uint16_t i=0;i<n;i++){if(!skipMsgpackElem(d,len,p))return false;} return true; }
+        return false;
+    }
+
+    // ── Read msgpack string or bin into char buffer ───────
+    static bool readMsgpackStr(const uint8_t* d, uint16_t len,
+                               uint16_t& p, char* out, uint16_t maxOut) {
+        if (p >= len || maxOut == 0) return false;
+        uint8_t b = d[p++];
+        uint16_t sLen = 0;
+        if ((b & 0xE0) == 0xA0) sLen = b & 0x1F;
+        else if (b == 0xD9) { if (p>=len) return false; sLen=d[p++]; }
+        else if (b == 0xDA) { if (p+2>len) return false; sLen=(d[p]<<8)|d[p+1]; p+=2; }
+        else if (b == 0xC4) { if (p>=len) return false; sLen=d[p++]; }
+        else if (b == 0xC5) { if (p+2>len) return false; sLen=(d[p]<<8)|d[p+1]; p+=2; }
+        else return false;
+        if (p + sLen > len) return false;
+        uint16_t cp = (sLen < maxOut-1) ? sLen : maxOut-1;
+        uint16_t oi = 0;
+        for (uint16_t i = 0; i < cp; i++) {
+            uint8_t c = d[p+i];
+            if (c >= 0x20 && c <= 0x7E) out[oi++] = (char)c;
+        }
+        out[oi] = '\0';
+        p += sLen;
+        return oi > 0;
+    }
+
+    // ── Parse decrypted LXMF payload for message text ─────
+    static bool parseLxmfMessage(const uint8_t* data, uint16_t len,
+                                 uint8_t srcHash[RNS_ADDR_LEN],
+                                 char* outText, uint16_t maxText) {
+        if (!data || len < 82 || !outText) return false;
+        uint16_t pos = 0;
+        uint8_t flags = data[pos++];
+        // Stamp length from lower 2 bits
+        static const uint8_t stampSz[] = {0, 16, 32, 64};
+        uint8_t stampLen = stampSz[flags & 0x03];
+        if (pos + stampLen + RNS_ADDR_LEN + RNS_SIGLENGTH >= len) return false;
+        pos += stampLen;
+        if (srcHash) memcpy(srcHash, data + pos, RNS_ADDR_LEN);
+        pos += RNS_ADDR_LEN;
+        pos += RNS_SIGLENGTH; // skip signature
+        if (pos >= len) return false;
+        // Parse msgpack array: [timestamp, title, content, fields]
+        uint8_t arr = data[pos++];
+        uint16_t arrLen = 0;
+        if ((arr & 0xF0) == 0x90) arrLen = arr & 0x0F;
+        else if (arr == 0xDC && pos+2 <= len) { arrLen=(data[pos]<<8)|data[pos+1]; pos+=2; }
+        else return false;
+        if (arrLen < 3) return false;
+        // Skip timestamp
+        if (!skipMsgpackElem(data, len, pos)) return false;
+        // Skip title
+        if (!skipMsgpackElem(data, len, pos)) return false;
+        // Read content (message text)
+        return readMsgpackStr(data, len, pos, outText, maxText);
+    }
+
+    // ── Pack LXMF content as msgpack ──────────────────────
+    static uint16_t packLxmfContent(const char* text, uint32_t uptimeMs,
+                                    uint8_t* out, uint16_t maxLen) {
+        if (!text || !out) return 0;
+        uint16_t tLen = strlen(text);
+        if (tLen > 200) tLen = 200;
+        uint16_t needed = 1 + 9 + 2 + (tLen >= 32 ? 2 : 1) + tLen + 1;
+        if (needed > maxLen) return 0;
+        uint16_t pos = 0;
+        out[pos++] = 0x94; // array of 4
+        out[pos++] = 0xCB; // float64 timestamp
+        double ts = (double)(uptimeMs / 1000);
+        uint8_t* tb = (uint8_t*)&ts;
+        for (int i = 7; i >= 0; i--) out[pos++] = tb[i]; // big-endian
+        out[pos++] = 0xC4; out[pos++] = 0x00; // empty bin8 title
+        if (tLen < 32) { out[pos++] = 0xA0 | (uint8_t)tLen; }
+        else { out[pos++] = 0xD9; out[pos++] = (uint8_t)tLen; }
+        memcpy(out + pos, text, tLen); pos += tLen;
+        out[pos++] = 0x80; // empty fixmap fields
+        return pos;
+    }
 
 public:
     /**
@@ -79,6 +185,10 @@ public:
         announceName[sizeof(announceName) - 1] = '\0';
         announceHashCacheReady = false;
     }
+
+    /** @brief Pre-compute dest hash so we can recognise packets for us
+     *         before the first announce is sent. Call after begin(). */
+    void initDestHashCache();
 
     bool setAnnounceName(const char* name) {
         if (!name) return false;
@@ -153,12 +263,16 @@ public:
         }
         stats.announces++;
 
-#ifndef NATIVE_TEST
+        // Extract peer name and messages from announce appData
+        char extractedName[PEER_NAME_MAX] = {0};
         const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
         const uint16_t sigLen = RNS_SIGLENGTH;
+#ifndef NATIVE_TEST
         if (pkt.dataLen > (baseLen + sigLen)) {
             const uint16_t appLen = pkt.dataLen - baseLen - sigLen;
             const uint8_t* app = pkt.data + baseLen + sigLen;
+
+            // Check for MSG: prefix (peer message)
             if (app && appLen > 4 && appLen < 96 &&
                 app[0] == 'M' && app[1] == 'S' && app[2] == 'G' && app[3] == ':') {
                 char msg[97] = {0};
@@ -180,11 +294,30 @@ public:
                     Serial.println(msg);
                 }
             }
+            // Check for MsgPack-encoded name: 0x91 (array[1]) + 0xA0|len (fixstr)
+            else if (app && appLen >= 3 && app[0] == 0x91 && (app[1] & 0xE0) == 0xA0) {
+                uint8_t nameLen = app[1] & 0x1F;
+                if (nameLen > 0 && (2 + nameLen) <= appLen && nameLen < PEER_NAME_MAX) {
+                    uint8_t outIdx = 0;
+                    for (uint8_t ni = 0; ni < nameLen && outIdx < (PEER_NAME_MAX - 1); ni++) {
+                        uint8_t c = app[2 + ni];
+                        if (c >= 0x20 && c <= 0x7E)
+                            extractedName[outIdx++] = (char)c;
+                    }
+                    extractedName[outIdx] = '\0';
+                }
+            }
         }
 #endif
 
+        // RSSI/SNR from last RX (set by radio before ingestPacket)
+        float rxRSSI = lastRxRSSI;
+        float rxSNR  = lastRxSNR;
+
         // Record path: destHash → arrived here at this hop count
-        updatePath(pkt.destHash, nullptr, pkt.hops);
+        updatePath(pkt.destHash, nullptr, pkt.hops, rxRSSI, rxSNR,
+                   extractedName[0] ? extractedName : nullptr,
+                   pkt.data);
 
         // Queue retransmission if within hop limit
         if (pkt.hops < RNS_MAX_HOPS) {
@@ -194,6 +327,12 @@ public:
 
     // ── Routable packet handling ──────────────────────────
     void handleRoutable(RNSPacket& pkt) {
+        // Check if packet is addressed to our own destination
+        if (announceHashCacheReady &&
+            memcmp(pkt.destHash, cachedTransportDestHash, RNS_ADDR_LEN) == 0) {
+            handleLocalDelivery(pkt);
+            return;
+        }
         PathEntry* path = lookupPath(pkt.destHash);
         if (path) {
             forwardPacket(pkt, path);
@@ -201,12 +340,82 @@ public:
         // Unknown destination → silently drop (standard Reticulum behaviour)
     }
 
+    // ── Handle DATA/LINK/PROOF packets addressed to us ────
+    void handleLocalDelivery(RNSPacket& pkt) {
+#ifndef NATIVE_TEST
+        if (pkt.isData() && identity && identity->initialized) {
+            // Attempt X25519/Fernet decryption
+            uint8_t plainBuf[RNS_MTU];
+            uint16_t plainLen = identity->decrypt(pkt.data, pkt.dataLen,
+                                                  plainBuf, sizeof(plainBuf));
+            if (plainLen > 0) {
+                // Parse LXMF: flags(1) + [stamp] + source_hash(16) + sig(64) + msgpack
+                uint8_t srcHash[RNS_ADDR_LEN] = {0};
+                char msgText[200] = {0};
+                if (parseLxmfMessage(plainBuf, plainLen, srcHash, msgText, sizeof(msgText))) {
+                    Serial.print(F("[PEERMSG] from "));
+                    for (int i = 0; i < 8; i++) {
+                        if (srcHash[i] < 0x10) Serial.print('0');
+                        Serial.print(srcHash[i], HEX);
+                    }
+                    Serial.print(F("..: "));
+                    Serial.println(msgText);
+                } else {
+                    // Decrypted but couldn't parse LXMF - show raw
+                    Serial.print(F("[PEERMSG] from "));
+                    if (pkt.headerType == HEADER_2) {
+                        for (int i = 0; i < 8; i++) {
+                            if (pkt.transportId[i] < 0x10) Serial.print('0');
+                            Serial.print(pkt.transportId[i], HEX);
+                        }
+                    } else {
+                        Serial.print(F("0000000000000000"));
+                    }
+                    Serial.print(F("..: [decrypted, "));
+                    Serial.print(plainLen);
+                    Serial.println(F(" bytes]"));
+                }
+            } else {
+                // Decryption failed - show encrypted notification
+                Serial.print(F("[PEERMSG] from "));
+                if (pkt.headerType == HEADER_2) {
+                    for (int i = 0; i < 8; i++) {
+                        if (pkt.transportId[i] < 0x10) Serial.print('0');
+                        Serial.print(pkt.transportId[i], HEX);
+                    }
+                } else {
+                    Serial.print(F("0000000000000000"));
+                }
+                Serial.print(F("..: [encrypted, "));
+                Serial.print(pkt.dataLen);
+                Serial.println(F(" bytes]"));
+            }
+        } else if (pkt.isData()) {
+            Serial.print(F("[PEERMSG] from 0000000000000000..: [encrypted, "));
+            Serial.print(pkt.dataLen);
+            Serial.println(F(" bytes]"));
+        } else {
+            const char* typeStr = "UNKNOWN";
+            if (pkt.isLinkRequest()) typeStr = "LINK_REQUEST";
+            else if (pkt.isProof())  typeStr = "PROOF";
+            Serial.print(F("[RNS] Local "));
+            Serial.print(typeStr);
+            Serial.print(F(" packet received ("));
+            Serial.print(pkt.dataLen);
+            Serial.println(F(" bytes)"));
+        }
+#endif
+    }
+
     // ── Forward packet (implemented in RNSTransport.cpp) ──
     void forwardPacket(RNSPacket& pkt, PathEntry* path);
 
     // ── Path table ────────────────────────────────────────
     void updatePath(const uint8_t destHash[RNS_ADDR_LEN],
-                    const uint8_t* nextHop, uint8_t hopCount) {
+                    const uint8_t* nextHop, uint8_t hopCount,
+                    float rssi = 0.0f, float snr = 0.0f,
+                    const char* name = nullptr,
+                    const uint8_t* pubKey = nullptr) {
         uint32_t now = millis();
 
         // Update existing entry if new path is equal or shorter
@@ -218,6 +427,17 @@ public:
                     pathTable[i].learnedAt = now;
                     pathTable[i].expiresAt = now + PATH_EXPIRY_MS;
                     if (nextHop) memcpy(pathTable[i].nextHop, nextHop, RNS_ADDR_LEN);
+                }
+                // Always update signal quality and name
+                if (rssi != 0.0f) pathTable[i].lastRSSI = rssi;
+                if (snr != 0.0f)  pathTable[i].lastSNR  = snr;
+                if (name && name[0]) {
+                    strncpy(pathTable[i].peerName, name, PEER_NAME_MAX - 1);
+                    pathTable[i].peerName[PEER_NAME_MAX - 1] = '\0';
+                }
+                if (pubKey) {
+                    memcpy(pathTable[i].peerPubKey, pubKey, RNS_KEYSIZE);
+                    pathTable[i].hasPubKey = true;
                 }
                 return;
             }
@@ -239,9 +459,23 @@ public:
         pathTable[slot].hops      = hopCount;
         pathTable[slot].learnedAt = now;
         pathTable[slot].expiresAt = now + PATH_EXPIRY_MS;
+        pathTable[slot].lastRSSI  = rssi;
+        pathTable[slot].lastSNR   = snr;
         memcpy(pathTable[slot].destHash, destHash, RNS_ADDR_LEN);
         if (nextHop) memcpy(pathTable[slot].nextHop, nextHop, RNS_ADDR_LEN);
         else         memset(pathTable[slot].nextHop, 0, RNS_ADDR_LEN);
+        if (name && name[0]) {
+            strncpy(pathTable[slot].peerName, name, PEER_NAME_MAX - 1);
+            pathTable[slot].peerName[PEER_NAME_MAX - 1] = '\0';
+        } else {
+            pathTable[slot].peerName[0] = '\0';
+        }
+        if (pubKey) {
+            memcpy(pathTable[slot].peerPubKey, pubKey, RNS_KEYSIZE);
+            pathTable[slot].hasPubKey = true;
+        } else {
+            pathTable[slot].hasPubKey = false;
+        }
 
         stats.pathEntries = countActivePaths();
     }
@@ -313,6 +547,52 @@ public:
     bool sendLocalAnnounce(const uint8_t* nameHash = nullptr,
                            const uint8_t* appData = nullptr,
                            uint16_t appDataLen = 0);
+
+    // ── Send a message-bearing announce ──────────────────
+    bool sendMessageAnnounce(const char* text);
+    // ── Send encrypted DATA message to a known peer ───
+    bool sendEncryptedMessage(const char* text, PathEntry* peer);
+    // ── Peer lookup by hex prefix ────────────────────────
+    PathEntry* lookupPeerByPrefix(const char* hexPrefix) {
+        if (!hexPrefix || !*hexPrefix) return nullptr;
+        size_t prefixLen = strlen(hexPrefix);
+        if (prefixLen > RNS_ADDR_LEN * 2) return nullptr;
+        for (int i = 0; i < PATH_TABLE_MAX; i++) {
+            if (!pathTable[i].active) continue;
+            bool match = true;
+            for (size_t j = 0; j < prefixLen && j / 2 < RNS_ADDR_LEN; j++) {
+                uint8_t nibble;
+                char c = hexPrefix[j];
+                if      (c >= '0' && c <= '9') nibble = c - '0';
+                else if (c >= 'a' && c <= 'f') nibble = c - 'a' + 10;
+                else if (c >= 'A' && c <= 'F') nibble = c - 'A' + 10;
+                else { match = false; break; }
+                uint8_t byte = pathTable[i].destHash[j / 2];
+                uint8_t actual = (j % 2 == 0) ? (byte >> 4) : (byte & 0x0F);
+                if (nibble != actual) { match = false; break; }
+            }
+            if (match) return &pathTable[i];
+        }
+        return nullptr;
+    }
+
+    // ── Peer lookup by name (case-insensitive prefix) ────
+    PathEntry* lookupPeerByName(const char* name) {
+        if (!name || !*name) return nullptr;
+        size_t nLen = strlen(name);
+        for (int i = 0; i < PATH_TABLE_MAX; i++) {
+            if (!pathTable[i].active || !pathTable[i].peerName[0]) continue;
+            bool match = true;
+            for (size_t j = 0; j < nLen; j++) {
+                char a = name[j], b = pathTable[i].peerName[j];
+                if (a >= 'a' && a <= 'z') a -= 'a' - 'A';
+                if (b >= 'a' && b <= 'z') b -= 'a' - 'A';
+                if (a != b) { match = false; break; }
+            }
+            if (match) return &pathTable[i];
+        }
+        return nullptr;
+    }
 
     // ── Expiry sweep ──────────────────────────────────────
     void expireEntries(uint32_t now) {

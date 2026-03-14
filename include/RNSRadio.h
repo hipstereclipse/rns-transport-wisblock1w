@@ -798,7 +798,11 @@ public:
             payload = &buf[1];
             payloadLen--;
 #endif
-            if (transport) transport->ingestPacket(payload, payloadLen);
+            if (transport) {
+                transport->lastRxRSSI = lastRSSI;
+                transport->lastRxSNR  = lastSNR;
+                transport->ingestPacket(payload, payloadLen);
+            }
         }
         lora.startReceive();
 #endif

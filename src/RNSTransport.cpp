@@ -116,25 +116,124 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 
-    int8_t originalTx = radio->curTxDbm;
-    int8_t announceTx = (originalTx > LORA_TX_DBM_ANNOUNCE_SAFE)
-        ? LORA_TX_DBM_ANNOUNCE_SAFE
-        : originalTx;
-    if (announceTx != originalTx) {
-        radio->setTxPower(announceTx);
-    }
-
+    // Transmit at configured TX power (no announce power reduction;
+    // full power ensures peers reliably discover this node).
     bool ok = radio->transmit(outBuf, outLen);
-
-    if (announceTx != originalTx) {
-        radio->setTxPower(originalTx);
-    }
 
     if (ok) {
         stats.txPackets++;
         return true;
     }
     return false;
+}
+
+/**
+ * @brief Send an announce carrying a MSG: text payload.
+ */
+bool RNSTransport::sendMessageAnnounce(const char* text) {
+    if (!text || !*text) return false;
+
+    // Build "MSG:<text>" appData
+    char payload[80] = "MSG:";
+    size_t prefixLen = 4;
+    size_t textLen = strlen(text);
+    if (textLen > sizeof(payload) - prefixLen - 1) textLen = sizeof(payload) - prefixLen - 1;
+    memcpy(payload + prefixLen, text, textLen);
+    payload[prefixLen + textLen] = '\0';
+
+    return sendLocalAnnounce(nullptr, (const uint8_t*)payload, (uint16_t)(prefixLen + textLen));
+}
+
+/**
+ * @brief Send an encrypted LXMF DATA packet to a specific peer.
+ *
+ * Builds an LXMF message, encrypts with the peer's X25519 public key,
+ * and transmits as a Reticulum SINGLE/DATA packet.
+ */
+bool RNSTransport::sendEncryptedMessage(const char* text, PathEntry* peer) {
+    if (!text || !*text || !peer || !peer->hasPubKey) return false;
+    if (!radio || !identity || !identity->initialized) return false;
+    if (!radio->hwReady) return false;
+
+    // 1. Pack msgpack content: [timestamp, title, content, fields]
+    uint8_t packedContent[256];
+    uint16_t contentLen = packLxmfContent(text, millis(), packedContent, sizeof(packedContent));
+    if (contentLen == 0) return false;
+
+    // 2. Sign: dest_hash + source_hash + packed_content
+    uint8_t signedBuf[RNS_MTU];
+    uint16_t signedLen = 0;
+    memcpy(signedBuf, peer->destHash, RNS_ADDR_LEN); signedLen += RNS_ADDR_LEN;
+    memcpy(signedBuf + signedLen, identity->identityHash, RNS_ADDR_LEN); signedLen += RNS_ADDR_LEN;
+    memcpy(signedBuf + signedLen, packedContent, contentLen); signedLen += contentLen;
+    uint8_t signature[64];
+    identity->sign(signedBuf, signedLen, signature);
+
+    // 3. Build LXMF payload: flags(1) + source_hash(16) + signature(64) + packed_content
+    uint8_t lxmfPayload[RNS_MTU];
+    uint16_t lxmfLen = 0;
+    lxmfPayload[lxmfLen++] = 0x00; // flags: no stamp
+    memcpy(lxmfPayload + lxmfLen, identity->identityHash, RNS_ADDR_LEN);
+    lxmfLen += RNS_ADDR_LEN;
+    memcpy(lxmfPayload + lxmfLen, signature, 64);
+    lxmfLen += 64;
+    memcpy(lxmfPayload + lxmfLen, packedContent, contentLen);
+    lxmfLen += contentLen;
+
+    // 4. Compute target identity hash from their public key
+    uint8_t targetIdHash[RNS_ADDR_LEN];
+    {
+        SHA256 sha; sha.reset();
+        sha.update(peer->peerPubKey, RNS_KEYSIZE);
+        uint8_t full[32];
+        sha.finalize(full, 32);
+        memcpy(targetIdHash, full, RNS_ADDR_LEN);
+    }
+
+    // 5. Encrypt (X25519 pub is first 32 bytes of peerPubKey)
+    uint8_t encrypted[RNS_MTU];
+    uint16_t encLen = RNSIdentity::encrypt(
+        peer->peerPubKey, targetIdHash,
+        lxmfPayload, lxmfLen,
+        encrypted, sizeof(encrypted));
+    if (encLen == 0) return false;
+
+    // 6. Build DATA packet
+    RNSPacket pkt;
+    pkt.ifacFlag    = false;
+    pkt.headerType  = HEADER_1;
+    pkt.contextFlag = false;
+    pkt.propType    = BROADCAST;
+    pkt.destType    = SINGLE;
+    pkt.packetType  = DATA;
+    pkt.hops        = 0;
+    memcpy(pkt.destHash, peer->destHash, RNS_ADDR_LEN);
+    pkt.context = 0x00;
+    pkt.data    = encrypted;
+    pkt.dataLen = encLen;
+
+    static uint8_t outBuf[RNS_MTU];
+    uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
+    if (outLen == 0) return false;
+
+    bool ok = radio->transmit(outBuf, outLen);
+    if (ok) stats.txPackets++;
+    return ok;
+}
+
+/**
+ * @brief Pre-compute the dest hash so we can recognise DATA packets
+ *        addressed to us before the first announce is sent.
+ */
+void RNSTransport::initDestHashCache() {
+    if (announceHashCacheReady) return;
+    if (!identity || !identity->initialized) return;
+
+    uint8_t publicKeyForHash[RNS_KEYSIZE];
+    identity->getPublicKey(publicKeyForHash);
+    RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, publicKeyForHash, cachedTransportDestHash);
+    computeNameHash10(RNS_TRANSPORT_DEST_NAME, cachedTransportNameHash);
+    announceHashCacheReady = true;
 }
 
 /**

@@ -108,6 +108,8 @@ private:
         else if (strcmp(command, "set")       == 0) cmdSet(args);
         else if (strcmp(command, "profile")   == 0) cmdProfile(args);
         else if (strcmp(command, "name")      == 0) cmdName(args);
+        else if (strcmp(command, "msg")       == 0) cmdMsg(args);
+        else if (strcmp(command, "notify")    == 0) cmdNotify(args);
         else if (strcmp(command, "save")      == 0) cmdSave();
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
         else if (strcmp(command, "dfu")       == 0) cmdDfu();
@@ -216,8 +218,8 @@ private:
     void cmdPeers() {
         const PathEntry* pt = transport->getPathTable();
         io->println(F("── Known Peers ──"));
-        io->println(F("  Peer Hash          Hops  Age(s)"));
-        io->println(F("  ────────────────── ───── ──────"));
+        io->println(F("  Peer Hash          Name            Hops  RSSI    SNR     Age(s)"));
+        io->println(F("  ────────────────── ─────────────── ───── ─────── ─────── ──────"));
 #ifndef NATIVE_TEST
         uint32_t now = millis();
 #else
@@ -229,8 +231,35 @@ private:
             io->print(F("  "));
             printHex(pt[i].destHash, 8);
             io->print(F("..  "));
+
+            // Print name (padded to 15 chars)
+            if (pt[i].peerName[0]) {
+                int nLen = (int)strlen(pt[i].peerName);
+                io->print(pt[i].peerName);
+                for (int p = nLen; p < 15; p++) io->print(' ');
+            } else {
+                io->print(F("(unknown)      "));
+            }
+            io->print(F(" "));
             io->print(pt[i].hops);
             io->print(F("     "));
+
+            // RSSI
+            if (pt[i].lastRSSI != 0.0f) {
+                io->print(pt[i].lastRSSI, 1);
+            } else {
+                io->print(F("---  "));
+            }
+            io->print(F("  "));
+
+            // SNR
+            if (pt[i].lastSNR != 0.0f) {
+                io->print(pt[i].lastSNR, 1);
+            } else {
+                io->print(F("--- "));
+            }
+            io->print(F("  "));
+
             io->println((now - pt[i].learnedAt) / 1000);
             count++;
         }
@@ -390,6 +419,128 @@ private:
 
     // ── morse blink settings ──────────────────────────────
     void cmdMorse(const char* args); // implemented in main.cpp
+
+    // ── msg <text> — send a broadcast peer message via announce ─
+    void cmdMsg(const char* args) {
+        if (!transport) {
+            io->println(F("Transport not available."));
+            return;
+        }
+        if (!radio->hwReady) {
+            io->println(F("Msg blocked: radio hardware not initialized."));
+            return;
+        }
+
+        while (args && *args == ' ') args++;
+        if (!args || *args == '\0') {
+            io->println(F("── Peer Messaging ──"));
+            io->println(F("  msg <text>           — broadcast message to all peers"));
+            io->println(F("  msg @<hash> <text>   — tag message for specific peer"));
+            io->println(F("                         (hash = 4+ char hex prefix)"));
+            io->println(F("  msg @<name> <text>   — tag message for peer by name"));
+            io->println(F("Example:"));
+            io->println(F("  msg hello everyone"));
+            io->println(F("  msg @941A hello"));
+            io->println(F("  msg @Eclipse hello"));
+            return;
+        }
+
+        // Check for @target prefix
+        char targetLabel[20] = {0};
+        const char* text = args;
+        if (args[0] == '@') {
+            const char* sp = strchr(args + 1, ' ');
+            if (sp && (sp - args - 1) < (int)sizeof(targetLabel)) {
+                size_t tLen = sp - args - 1;
+                strncpy(targetLabel, args + 1, tLen);
+                targetLabel[tLen] = '\0';
+                text = sp + 1;
+                while (*text == ' ') text++;
+            }
+        }
+
+        if (!*text) {
+            io->println(F("No message text specified."));
+            return;
+        }
+
+        // Resolve target peer for display
+        if (targetLabel[0]) {
+            PathEntry* peer = transport->lookupPeerByPrefix(targetLabel);
+            if (!peer) peer = transport->lookupPeerByName(targetLabel);
+            if (peer) {
+                io->print(F("Target peer: "));
+                printHex(peer->destHash, 8);
+                io->print(F(".."));
+                if (peer->peerName[0]) {
+                    io->print(F(" (")); io->print(peer->peerName); io->print(F(")"));
+                }
+                io->println();
+                // Use encrypted DATA if peer has a known public key
+                if (peer->hasPubKey) {
+                    io->println(F("[encrypted]"));
+                    if (transport->sendEncryptedMessage(text, peer)) {
+                        io->print(F("Encrypted message sent: ")); io->println(text);
+                    } else {
+                        io->println(F("Encrypted send failed, falling back to broadcast."));
+                        if (transport->sendMessageAnnounce(text)) {
+                            io->print(F("Broadcast message sent: ")); io->println(text);
+                        } else {
+                            io->println(F("Message send failed (radio busy/offline)."));
+                        }
+                    }
+                    return;
+                }
+            } else {
+                io->print(F("Warning: no peer matching '")); io->print(targetLabel);
+                io->println(F("' found. Sending broadcast anyway."));
+            }
+        }
+
+        if (transport->sendMessageAnnounce(text)) {
+            io->print(F("Message sent: ")); io->println(text);
+        } else {
+            io->println(F("Message send failed (radio busy/offline)."));
+        }
+    }
+
+    // ── notify — configure message notification mode ──────
+    void cmdNotify(const char* args) {
+        while (args && *args == ' ') args++;
+
+        if (!args || *args == '\0') {
+            io->println(F("── Notification Settings ──"));
+            io->println(F("  Current mode: reported to web UI via [NOTIFY] tag"));
+            io->println(F("Usage:"));
+            io->println(F("  notify sound    — web UI plays audio on incoming message"));
+            io->println(F("  notify morse    — blink Morse code on blue LED"));
+            io->println(F("  notify both     — audio + Morse"));
+            io->println(F("  notify silent   — suppress all notifications"));
+            io->println(F("Tip: notifications are also configurable from the web UI."));
+            return;
+        }
+
+        MsgNotifyMode mode;
+        if (strcmp(args, "sound") == 0)       mode = NOTIFY_SOUND;
+        else if (strcmp(args, "morse") == 0)  mode = NOTIFY_MORSE;
+        else if (strcmp(args, "both") == 0)   mode = NOTIFY_BOTH;
+        else if (strcmp(args, "silent") == 0 || strcmp(args, "off") == 0) mode = NOTIFY_SILENT;
+        else {
+            io->println(F("Invalid mode. Use: sound, morse, both, silent"));
+            return;
+        }
+
+        // Emit a [NOTIFY] tag that the web UI parses
+        io->print(F("[NOTIFY] mode="));
+        switch (mode) {
+            case NOTIFY_SOUND:  io->println(F("sound"));  break;
+            case NOTIFY_MORSE:  io->println(F("morse"));  break;
+            case NOTIFY_BOTH:   io->println(F("both"));   break;
+            case NOTIFY_SILENT: io->println(F("silent")); break;
+        }
+        io->println(F("Notification mode updated."));
+        io->println(F("Tip: run 'save' to persist."));
+    }
 
     // ── factory-reset ─────────────────────────────────────
     void cmdFactoryReset();  // implemented in main.cpp
@@ -1666,12 +1817,14 @@ private:
         io->println(F("── Available Commands ──"));
         io->println(F("  status         Node status and counters"));
         io->println(F("  routes         Show routing table"));
-        io->println(F("  peers          Show known peers (learned routes)"));
+        io->println(F("  peers          Show known peers (name, RSSI, SNR)"));
         io->println(F("  identity       Display node identity hash + keys"));
         io->println(F("  radio          Current radio configuration"));
         io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower/syncword/preamble)"));
         io->println(F("  profile <p>    One-shot radio preset (rnode-eu/rnode-us/ratspeak-us)"));
         io->println(F("  name <text>    Set/display broadcast announce name"));
+        io->println(F("  msg [text]     Send peer message via announce (broadcast)"));
+        io->println(F("  notify <mode>  Set notification mode (sound/morse/both/silent)"));
         io->println(F("  save           Persist config to flash"));
         io->println(F("  factory-reset  Erase all persisted data"));
         io->println(F("  dfu            Reboot into bootloader (USB flashing)"));

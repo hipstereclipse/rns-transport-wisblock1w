@@ -39,6 +39,7 @@ static RNSPersistence persist;
 
 static bool radioOk = false;
 static uint32_t nextAnnounceAt = 0;
+static uint32_t bootTime       = 0;
 
 static void printResetReason() {
 #ifndef NATIVE_TEST
@@ -647,6 +648,7 @@ void setup() {
 
     // ── Transport engine ──────────────────────────────────
     transport.begin(&nodeIdentity, &radio);
+    transport.initDestHashCache();
     Serial.println(F("[RNS] Transport engine: OK"));
 
     char loadedName[RNS_ANNOUNCE_NAME_MAX + 1] = {0};
@@ -721,6 +723,7 @@ void setup() {
     lastAnnounceCount = startupStats.announces;
 
     nextAnnounceAt = millis() + ANNOUNCE_STARTUP_DELAY_MS;
+    bootTime = millis();
 }
 
 // ── Main loop ─────────────────────────────────────────────
@@ -728,7 +731,10 @@ static uint32_t lastTransportLoop = 0;
 static uint32_t lastLedToggle     = 0;
 
 static inline void scheduleNextAnnounce(uint32_t now) {
-    nextAnnounceAt = now + ANNOUNCE_INTERVAL_MS;
+    uint32_t interval = ((now - bootTime) < ANNOUNCE_FAST_PERIOD_MS)
+                        ? ANNOUNCE_FAST_INTERVAL_MS
+                        : ANNOUNCE_INTERVAL_MS;
+    nextAnnounceAt = now + interval;
 }
 
 void loop() {
