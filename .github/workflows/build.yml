@@ -63,15 +63,24 @@ jobs:
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Extract firmware version from RNSConfig.h
+        id: fwver
+        run: |
+          MAJOR=$(grep -E '^\s*#define\s+FW_VERSION_MAJOR\s+' include/RNSConfig.h | awk '{print $3}')
+          MINOR=$(grep -E '^\s*#define\s+FW_VERSION_MINOR\s+' include/RNSConfig.h | awk '{print $3}')
+          PATCH=$(grep -E '^\s*#define\s+FW_VERSION_PATCH\s+' include/RNSConfig.h | awk '{print $3}')
+          echo "tag=v${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
+          echo "version=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
+
       - name: Convert HEX → UF2
         run: |
           python tools/generate_uf2.py \
             .pio/build/wisblock_1w_transport/firmware.hex \
-            rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+            rns-transport-wisblock1w-${{ steps.fwver.outputs.tag }}-${{ steps.sha.outputs.short }}.uf2
 
       - name: Verify UF2 was created
         run: |
-          ls -lh rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+          ls -lh rns-transport-wisblock1w-${{ steps.fwver.outputs.tag }}-${{ steps.sha.outputs.short }}.uf2
           echo "UF2 artifact ready."
 
       # ── Publish rolling "latest" release ─────────────────────────────────────
@@ -87,10 +96,33 @@ jobs:
 
             **Commit:** [`${{ steps.sha.outputs.short }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
             **Built:** ${{ github.event.head_commit.timestamp }}
+            **Version:** ${{ steps.fwver.outputs.version }}
 
             Flash this firmware using the [web flasher](https://hipstereclipse.github.io/rns-transport-wisblock1w/flasher/).
-          artifacts: "rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2"
+          artifacts: "rns-transport-wisblock1w-${{ steps.fwver.outputs.tag }}-${{ steps.sha.outputs.short }}.uf2"
           allowUpdates: true        # overwrite the release on every push
           replacesArtifacts: true   # replace the previous .uf2 asset
           makeLatest: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Publish versioned release ─────────────────────────────────────────────
+      # Creates (or updates) a release tagged with the firmware version (e.g. v1.0.33).
+      # If the tag already exists with the same version, the release body and asset
+      # are updated to reflect the latest build of that version.
+      - name: Publish versioned GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.fwver.outputs.tag }}
+          name: "RatTunnel ${{ steps.fwver.outputs.version }}"
+          body: |
+            **RatTunnel firmware ${{ steps.fwver.outputs.version }}** for WisBlock 1W (`RAK3401 + RAK13302`).
+
+            **Commit:** [`${{ steps.sha.outputs.short }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **Built:** ${{ github.event.head_commit.timestamp }}
+
+            Flash this firmware using the [web flasher](https://hipstereclipse.github.io/rns-transport-wisblock1w/flasher/).
+          artifacts: "rns-transport-wisblock1w-${{ steps.fwver.outputs.tag }}-${{ steps.sha.outputs.short }}.uf2"
+          allowUpdates: true        # overwrite the release if the version tag already exists
+          replacesArtifacts: true   # replace any previous asset for this version
+          makeLatest: false         # "latest" release retains the makeLatest designation
           token: ${{ secrets.GITHUB_TOKEN }}
