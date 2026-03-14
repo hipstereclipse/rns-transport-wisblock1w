@@ -1159,6 +1159,78 @@
     color: var(--green);
     font-family: var(--mono);
   }
+
+  /* ── Favorites ────────────────────────────── */
+  .contacts-section-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.35rem 0.1rem 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .contacts-section-label .sec-icon { font-size: 0.72rem; }
+  .fav-star {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.35;
+    transition: opacity 0.12s, transform 0.12s;
+    flex-shrink: 0;
+  }
+  .fav-star:hover { opacity: 0.7; transform: scale(1.2); }
+  .fav-star.favorited { opacity: 1; }
+  .contact-card .contact-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.15rem 0.6rem;
+    margin-top: 0.25rem;
+  }
+  .contact-card .ci-label {
+    font-size: 0.62rem;
+    color: var(--dim);
+    font-family: var(--mono);
+  }
+  .contact-card .ci-value {
+    font-size: 0.62rem;
+    color: var(--text);
+    font-family: var(--mono);
+    text-align: right;
+  }
+  .contact-card .ci-value.good { color: var(--green); }
+  .contact-card .ci-value.fair { color: var(--yellow); }
+  .contact-card .ci-value.poor { color: var(--red); }
+  .signal-bar {
+    display: inline-flex;
+    gap: 1px;
+    align-items: flex-end;
+    height: 10px;
+    vertical-align: middle;
+    margin-left: 0.2rem;
+  }
+  .signal-bar span {
+    width: 3px;
+    border-radius: 1px;
+    background: var(--border);
+  }
+  .signal-bar span.filled { background: var(--green); }
+  .signal-bar span.filled.fair { background: var(--yellow); }
+  .signal-bar span.filled.poor { background: var(--red); }
+  .contact-last-msg {
+    font-size: 0.62rem;
+    color: var(--dim);
+    font-style: italic;
+    margin-top: 0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -1202,6 +1274,7 @@
       <button class="tab" onclick="switchRepeaterTab('tabDiag')">Diagnostics</button>
       <button class="tab" onclick="switchRepeaterTab('tabMsg')">Messages</button>
       <button class="tab" onclick="switchRepeaterTab('tabContacts')">Contacts</button>
+      <button class="tab" onclick="switchRepeaterTab('tabHub')">Hub</button>
     </div>
 
     <!-- ── Overview Tab ──────────────────────── -->
@@ -1421,11 +1494,11 @@
       <div class="contacts-header">
         <div>
           <span class="contacts-header-title">Known Peers</span>
-          <span class="contacts-count" id="contactsCount">0</span>
+          <span class="contacts-count" id="contactsCount">(0)</span>
         </div>
         <div style="display:flex;gap:0.3rem;">
-          <button class="qbtn" onclick="runRepeaterAction('peers')">↻ Refresh</button>
-          <button class="qbtn" onclick="runRepeaterAction('announce')">Announce</button>
+          <button class="qbtn" onclick="runRepeaterAction('peers',{silent:true})">↻ Refresh</button>
+          <button class="qbtn" onclick="runRepeaterAction('announce',{silent:true})">Announce</button>
         </div>
       </div>
       <div class="contacts-list" id="contactsList"></div>
@@ -1433,8 +1506,41 @@
         No peers discovered yet.<br>Run <strong>Announce</strong> to broadcast your identity and wait for peers to respond.
       </div>
       <div class="contacts-actions">
-        <button class="qbtn" onclick="runRepeaterAction('peers')">Refresh peers</button>
+        <button class="qbtn" onclick="runRepeaterAction('peers',{silent:true})">Refresh peers</button>
         <button class="qbtn" onclick="switchRepeaterTab('tabMsg')">Open chat</button>
+      </div>
+    </div>
+
+    <!-- ── Hub Tab (TCP Bridge) ──────────────────── -->
+    <div class="tab-pane" id="tabHub">
+      <div style="padding:0.5rem;">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;">
+          <span style="font-weight:600;color:var(--accent);">Ratspeak Hub</span>
+          <span class="hub-status" id="hubStatus" style="font-size:0.78rem;color:var(--dim);">Disconnected</span>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:end;margin-bottom:0.5rem;">
+          <label style="font-size:0.78rem;color:var(--dim);">
+            Bridge WS
+            <input id="hubWsUrl" type="text" value="ws://127.0.0.1:8765" style="width:12rem;font-size:0.82rem;padding:0.2rem 0.4rem;background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;">
+          </label>
+          <button class="qbtn" id="hubConnectBtn" onclick="toggleHubConnection()">Connect</button>
+        </div>
+
+        <div style="font-size:0.75rem;color:var(--dim);margin-bottom:0.5rem;">
+          Bridges Reticulum packets from your LoRa radio to a TCP hub via WebSocket proxy.<br>
+          Start the proxy: <code style="color:var(--accent);">python tools/tcp_bridge.py</code>
+          (default: rns.ratspeak.org:4242)
+        </div>
+
+        <div style="display:flex;gap:0.3rem;margin-bottom:0.4rem;">
+          <span style="font-size:0.78rem;color:var(--dim);">
+            TX → Hub: <strong id="hubTxCount">0</strong> &nbsp;|&nbsp;
+            RX ← Hub: <strong id="hubRxCount">0</strong>
+          </span>
+        </div>
+
+        <div id="hubLog" style="background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:0.4rem;font-family:monospace;font-size:0.72rem;max-height:14rem;overflow-y:auto;color:var(--dim);"></div>
       </div>
     </div>
   </div>
@@ -1681,6 +1787,36 @@ const linkVerifyState = {
 };
 
 const detectedNodes = new Map();
+
+// ── Favorites & contact metadata (persisted in localStorage) ──
+let favoriteHashes = JSON.parse(localStorage.getItem('rattunnel_favorites') || '[]');
+// contactMeta: { hash: { firstSeen, lastSeen, msgCount, lastMsg } }
+let contactMeta = JSON.parse(localStorage.getItem('rattunnel_contact_meta') || '{}');
+
+function saveFavorites() { localStorage.setItem('rattunnel_favorites', JSON.stringify(favoriteHashes)); }
+function saveContactMeta() { localStorage.setItem('rattunnel_contact_meta', JSON.stringify(contactMeta)); }
+function isFavorite(hash) { return favoriteHashes.includes(hash); }
+function toggleFavorite(hash) {
+  const idx = favoriteHashes.indexOf(hash);
+  if (idx >= 0) favoriteHashes.splice(idx, 1);
+  else favoriteHashes.push(hash);
+  saveFavorites();
+  updatePeerPills();
+  updateContactsList();
+}
+function touchContactMeta(hash, name) {
+  if (!contactMeta[hash]) contactMeta[hash] = { firstSeen: Date.now(), lastSeen: Date.now(), msgCount: 0, lastMsg: '' };
+  contactMeta[hash].lastSeen = Date.now();
+  if (name) contactMeta[hash].name = name;
+  saveContactMeta();
+}
+function recordContactMessage(hash, text) {
+  if (!contactMeta[hash]) contactMeta[hash] = { firstSeen: Date.now(), lastSeen: Date.now(), msgCount: 0, lastMsg: '' };
+  contactMeta[hash].msgCount = (contactMeta[hash].msgCount || 0) + 1;
+  contactMeta[hash].lastMsg = text.slice(0, 50);
+  contactMeta[hash].lastSeen = Date.now();
+  saveContactMeta();
+}
 
 const repeaterState = {
   firmware: '—',
@@ -2516,14 +2652,21 @@ function parseStatusLine(line) {
   const t = line.trim();
   if (!t) return;
 
+  // ── Hub bridge: forward PKTDUMP hex to WebSocket hub ──
+  const pktHex = t.match(/^\s*HEX:\s*([0-9A-Fa-f\s]+)$/);
+  if (pktHex && hubWs && hubWs.readyState === 1) {
+    hubForwardToHub(pktHex[1]);
+  }
+
   // ── Incoming peer message ───────────────────────
   const peerMsg = t.match(/^\[PEERMSG\]\s+from\s+([0-9A-Fa-f]{16})\.\.:\s*(.+)$/i);
   if (peerMsg) {
     const sender = peerMsg[1].toUpperCase();
     const senderNode = findNodeByHashPrefix(sender);
     const label = senderNode && senderNode.name ? senderNode.name : sender + '..';
-    const isEncrypted = !peerMsg[2].startsWith('[encrypted');
+    const isEncrypted = !peerMsg[2].startsWith('[encrypted,');
     appendChatMessage(peerMsg[2], label, 'in', isEncrypted);
+    recordContactMessage(sender, peerMsg[2]);
     // Track unread per sender
     if (selectedPeerHash !== sender) {
       if (!unreadCounts[sender]) unreadCounts[sender] = 0;
@@ -2555,6 +2698,7 @@ function parseStatusLine(line) {
     const age = Number(peerMatch[6]);
     if (Number.isFinite(hops) && Number.isFinite(age)) {
       detectedNodes.set(destHash, { destHash, name, hops, rssi, snr, age });
+      touchContactMeta(destHash, name);
       repeaterState.routeCount = String(detectedNodes.size);
       updateDetectedNodesUi();
     }
@@ -2712,7 +2856,7 @@ function openRepeaterConsole() {
   document.getElementById('consoleInput').focus();
 }
 
-async function runRepeaterAction(cmd) {
+async function runRepeaterAction(cmd, opts) {
   if (!writer) {
     showFlashAlert('warn', 'Connect to the repeater first.');
     return;
@@ -2722,7 +2866,7 @@ async function runRepeaterAction(cmd) {
     return;
   }
   await sendCmd(cmd);
-  openRepeaterConsole();
+  if (!(opts && opts.silent)) openRepeaterConsole();
 }
 
 function appendChatMessage(text, sender, direction, encrypted) {
@@ -2781,6 +2925,7 @@ function clearCommLog() {
 // ── Peer selection & notification helpers ─────────────────
 let selectedPeerHash = '';
 let notifyAudioCtx = null;
+let unreadCounts = {};  // { destHash: count }
 
 function findNodeByHashPrefix(prefix) {
   const up = prefix.toUpperCase();
@@ -2791,93 +2936,297 @@ function findNodeByHashPrefix(prefix) {
 }
 
 function updatePeerSelector() {
-  const sel = document.getElementById('msgPeerSelect');
-  if (!sel) return;
-  const prev = sel.value;
-  while (sel.options.length > 1) sel.remove(1);
-
-  const nodes = Array.from(detectedNodes.values()).sort((a, b) => {
-    if (a.name && !b.name) return -1;
-    if (!a.name && b.name) return 1;
-    return a.destHash.localeCompare(b.destHash);
-  });
-
-  for (const node of nodes) {
-    const opt = document.createElement('option');
-    opt.value = node.destHash;
-    opt.textContent = node.name
-      ? `${node.name} (${node.destHash.slice(0, 8)}..)`
-      : `${node.destHash.slice(0, 8)}.. (hops ${node.hops})`;
-    sel.appendChild(opt);
-  }
-
-  if (prev && detectedNodes.has(prev)) sel.value = prev;
-  else sel.value = '';
-  selectedPeerHash = sel.value;
-
-  updatePeerChips();
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
 }
 
-function updatePeerChips() {
-  const container = document.getElementById('peerChips');
+function updatePeerPills() {
+  const container = document.getElementById('peerPills');
   if (!container) return;
   container.innerHTML = '';
 
+  // "All" broadcast pill
+  const allPill = document.createElement('button');
+  allPill.className = 'peer-pill' + (!selectedPeerHash ? ' active' : '');
+  allPill.textContent = 'All';
+  allPill.onclick = () => selectPeerForMessaging('');
+  container.appendChild(allPill);
+
   const nodes = Array.from(detectedNodes.values()).sort((a, b) => {
+    // Favorites first
+    const aFav = isFavorite(a.destHash) ? 0 : 1;
+    const bFav = isFavorite(b.destHash) ? 0 : 1;
+    if (aFav !== bFav) return aFav - bFav;
     if (a.name && !b.name) return -1;
     if (!a.name && b.name) return 1;
     return a.destHash.localeCompare(b.destHash);
   });
 
   for (const node of nodes) {
-    const chip = document.createElement('div');
-    chip.className = 'peer-chip' + (selectedPeerHash === node.destHash ? ' selected' : '');
-    chip.onclick = () => selectPeerForMessaging(node.destHash);
+    const pill = document.createElement('button');
+    pill.className = 'peer-pill' + (selectedPeerHash === node.destHash ? ' active' : '');
+    pill.onclick = () => selectPeerForMessaging(node.destHash);
 
-    if (node.name) {
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'pc-name';
-      nameSpan.textContent = node.name;
-      chip.appendChild(nameSpan);
+    const label = node.name || node.destHash.slice(0, 8) + '..';
+    pill.textContent = (isFavorite(node.destHash) ? '★ ' : '') + label;
+
+    const count = unreadCounts[node.destHash] || 0;
+    if (count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'pill-unread show';
+      badge.textContent = count > 9 ? '9+' : String(count);
+      pill.appendChild(badge);
     }
 
-    const hashSpan = document.createElement('span');
-    hashSpan.className = 'pc-hash';
-    hashSpan.textContent = node.destHash.slice(0, 8) + '..';
-    chip.appendChild(hashSpan);
+    pill.title = `${label} · hops ${node.hops}${node.rssi ? ' · RSSI ' + node.rssi : ''}`;
+    container.appendChild(pill);
+  }
+}
 
+function updateContactsList() {
+  const listEl = document.getElementById('contactsList');
+  const emptyEl = document.getElementById('contactsEmpty');
+  const countEl = document.getElementById('contactsCount');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  const nodes = Array.from(detectedNodes.values());
+
+  // Also show favorites that are offline (in contactMeta but not in detectedNodes)
+  const offlineFavs = [];
+  for (const hash of favoriteHashes) {
+    if (!detectedNodes.has(hash) && contactMeta[hash]) {
+      offlineFavs.push({ destHash: hash, name: contactMeta[hash].name || '', hops: -1, rssi: '', snr: '', age: -1, offline: true });
+    }
+  }
+
+  const allNodes = [...nodes, ...offlineFavs];
+  if (countEl) countEl.textContent = `(${allNodes.length})`;
+
+  if (!allNodes.length) {
+    if (emptyEl) emptyEl.style.display = '';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // Split into favorites and others
+  const favs = allNodes.filter(n => isFavorite(n.destHash)).sort((a, b) => {
+    if (a.name && !b.name) return -1;
+    if (!a.name && b.name) return 1;
+    return a.destHash.localeCompare(b.destHash);
+  });
+  const others = allNodes.filter(n => !isFavorite(n.destHash)).sort((a, b) => {
+    if (a.name && !b.name) return -1;
+    if (!a.name && b.name) return 1;
+    return a.destHash.localeCompare(b.destHash);
+  });
+
+  if (favs.length) {
+    const label = document.createElement('div');
+    label.className = 'contacts-section-label';
+    label.innerHTML = '<span class="sec-icon">⭐</span> Favorites';
+    listEl.appendChild(label);
+    for (const node of favs) listEl.appendChild(buildContactCard(node));
+  }
+
+  if (others.length) {
+    if (favs.length) {
+      const label = document.createElement('div');
+      label.className = 'contacts-section-label';
+      label.innerHTML = '<span class="sec-icon">📡</span> All Peers';
+      listEl.appendChild(label);
+    }
+    for (const node of others) listEl.appendChild(buildContactCard(node));
+  }
+}
+
+function formatTimeAgo(ts) {
+  if (!ts) return 'never';
+  const diff = Date.now() - ts;
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+  return Math.floor(diff / 86400000) + 'd ago';
+}
+
+function buildSignalBar(rssi) {
+  const val = parseFloat(rssi);
+  if (!Number.isFinite(val)) return '';
+  // 4 bars: >-60 = 4, >-80 = 3, >-100 = 2, >-110 = 1, else 0
+  let bars = 0;
+  let quality = 'poor';
+  if (val > -60) { bars = 4; quality = 'good'; }
+  else if (val > -80) { bars = 3; quality = 'good'; }
+  else if (val > -100) { bars = 2; quality = 'fair'; }
+  else if (val > -115) { bars = 1; quality = 'poor'; }
+  const heights = [3, 5, 7, 10];
+  let html = '<span class="signal-bar">';
+  for (let i = 0; i < 4; i++) {
+    const filled = i < bars;
+    html += `<span style="height:${heights[i]}px" class="${filled ? 'filled ' + quality : ''}"></span>`;
+  }
+  html += '</span>';
+  return html;
+}
+
+function buildContactCard(node) {
+  const card = document.createElement('div');
+  card.className = 'contact-card' + (selectedPeerHash === node.destHash ? ' selected' : '');
+
+  const meta = contactMeta[node.destHash] || {};
+  const isOffline = node.offline === true;
+
+  // Top row: star + dot + name + hash + unread badge
+  const top = document.createElement('div');
+  top.className = 'contact-top';
+
+  const star = document.createElement('button');
+  star.className = 'fav-star' + (isFavorite(node.destHash) ? ' favorited' : '');
+  star.textContent = isFavorite(node.destHash) ? '★' : '☆';
+  star.title = isFavorite(node.destHash) ? 'Remove from favorites' : 'Add to favorites';
+  star.onclick = (e) => { e.stopPropagation(); toggleFavorite(node.destHash); };
+  top.appendChild(star);
+
+  const dot = document.createElement('div');
+  dot.className = 'contact-dot';
+  if (isOffline) { dot.style.background = 'var(--red)'; }
+  else {
+    const isRecent = (node.age || 0) < 120;
+    dot.style.background = isRecent ? 'var(--green)' : 'var(--dim)';
+  }
+  top.appendChild(dot);
+
+  const name = document.createElement('span');
+  name.className = 'contact-name';
+  name.textContent = node.name || meta.name || 'Unknown';
+  top.appendChild(name);
+
+  const hash = document.createElement('span');
+  hash.className = 'contact-hash';
+  hash.textContent = node.destHash.slice(0, 8) + '..';
+  top.appendChild(hash);
+
+  const count = unreadCounts[node.destHash] || 0;
+  if (count > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'contact-unread show';
+    badge.textContent = count > 99 ? '99+' : String(count);
+    top.appendChild(badge);
+  }
+
+  card.appendChild(top);
+
+  // Info grid: structured details
+  const grid = document.createElement('div');
+  grid.className = 'contact-info-grid';
+
+  if (!isOffline) {
+    // Hops
+    grid.innerHTML += `<span class="ci-label">Hops</span><span class="ci-value">${node.hops}</span>`;
+    // RSSI + signal bar
     if (node.rssi) {
-      const rssiSpan = document.createElement('span');
-      rssiSpan.className = 'pc-rssi';
-      rssiSpan.textContent = `${node.rssi}dB`;
-      chip.appendChild(rssiSpan);
+      const rssiClass = parseFloat(node.rssi) > -80 ? 'good' : parseFloat(node.rssi) > -100 ? 'fair' : 'poor';
+      grid.innerHTML += `<span class="ci-label">RSSI</span><span class="ci-value ${rssiClass}">${node.rssi} dBm${buildSignalBar(node.rssi)}</span>`;
     }
+    // SNR
+    if (node.snr) {
+      const snrClass = parseFloat(node.snr) > 5 ? 'good' : parseFloat(node.snr) > 0 ? 'fair' : 'poor';
+      grid.innerHTML += `<span class="ci-label">SNR</span><span class="ci-value ${snrClass}">${node.snr} dB</span>`;
+    }
+    // Last heard
+    grid.innerHTML += `<span class="ci-label">Last heard</span><span class="ci-value">${node.age}s ago</span>`;
+  } else {
+    grid.innerHTML += `<span class="ci-label">Status</span><span class="ci-value poor">Offline</span>`;
+  }
 
-    chip.title = `Click to target ${node.name || node.destHash.slice(0, 8) + '..'}`;
-    container.appendChild(chip);
+  // Last seen (persistent)
+  if (meta.lastSeen) {
+    grid.innerHTML += `<span class="ci-label">Last seen</span><span class="ci-value">${formatTimeAgo(meta.lastSeen)}</span>`;
+  }
+
+  // First seen (persistent)
+  if (meta.firstSeen) {
+    const d = new Date(meta.firstSeen);
+    grid.innerHTML += `<span class="ci-label">First seen</span><span class="ci-value">${d.toLocaleDateString()}</span>`;
+  }
+
+  // Message count
+  if (meta.msgCount) {
+    grid.innerHTML += `<span class="ci-label">Messages</span><span class="ci-value">${meta.msgCount}</span>`;
+  }
+
+  card.appendChild(grid);
+
+  // Last message preview
+  if (meta.lastMsg) {
+    const lastMsgEl = document.createElement('div');
+    lastMsgEl.className = 'contact-last-msg';
+    lastMsgEl.textContent = '💬 ' + meta.lastMsg;
+    card.appendChild(lastMsgEl);
+  }
+
+  card.onclick = () => { selectPeerForMessaging(node.destHash); switchRepeaterTab('tabMsg'); };
+
+  return card;
+}
+
+function updateChatHeader() {
+  const nameEl = document.getElementById('chatTargetName');
+  const detailEl = document.getElementById('chatTargetDetail');
+  const dotEl = document.getElementById('chatHeaderDot');
+  const closeBtn = document.getElementById('chatClearTarget');
+  const encBadge = document.getElementById('chatEncBadge');
+
+  if (!nameEl) return;
+
+  if (selectedPeerHash) {
+    const node = detectedNodes.get(selectedPeerHash);
+    const displayName = node?.name || selectedPeerHash.slice(0, 8) + '..';
+    nameEl.textContent = (isFavorite(selectedPeerHash) ? '★ ' : '') + displayName;
+    detailEl.textContent = selectedPeerHash.slice(0, 8) + '..';
+    if (dotEl) { dotEl.classList.add('active'); }
+    if (closeBtn) closeBtn.style.display = '';
+    if (encBadge) encBadge.style.display = '';
+  } else {
+    nameEl.textContent = 'Broadcast';
+    detailEl.textContent = 'all peers';
+    if (dotEl) dotEl.classList.remove('active');
+    if (closeBtn) closeBtn.style.display = 'none';
+    if (encBadge) encBadge.style.display = 'none';
   }
 }
 
 function selectPeerForMessaging(destHash) {
-  const sel = document.getElementById('msgPeerSelect');
-  if (selectedPeerHash === destHash) {
-    // Deselect — go back to broadcast
+  if (selectedPeerHash === destHash && destHash !== '') {
     selectedPeerHash = '';
-    if (sel) sel.value = '';
   } else {
     selectedPeerHash = destHash;
-    if (sel) sel.value = destHash;
   }
-  updatePeerChips();
-  // Switch to Messages tab
+  // Clear unread for selected peer
+  if (selectedPeerHash) {
+    delete unreadCounts[selectedPeerHash];
+  }
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
   switchRepeaterTab('tabMsg');
   document.getElementById('commText')?.focus();
 }
 
-function onPeerSelectChange() {
-  const sel = document.getElementById('msgPeerSelect');
-  selectedPeerHash = sel ? sel.value : '';
-  updatePeerChips();
+function clearChatTarget() {
+  selectedPeerHash = '';
+  updatePeerPills();
+  updateContactsList();
+  updateChatHeader();
+}
+
+function updateCharCount() {
+  const input = document.getElementById('commText');
+  const counter = document.getElementById('chatCharCount');
+  if (input && counter) {
+    counter.textContent = `${input.value.length}/72`;
+  }
 }
 
 function onNotifyModeChange() {
@@ -2923,21 +3272,20 @@ async function sendPeerMessage() {
   }
 
   const clean = raw.replace(/\s+/g, ' ').trim().slice(0, 72);
-  const peerSel = document.getElementById('msgPeerSelect');
-  const target = peerSel ? peerSel.value : '';
 
-  if (target) {
-    // Use msg command with @hash targeting
-    await sendCmd(`msg @${target.slice(0, 8)} ${clean}`);
-    const node = detectedNodes.get(target);
-    const label = node && node.name ? node.name : target.slice(0, 8) + '..';
-    appendChatMessage(clean, `You → ${label}`, 'out');
+  if (selectedPeerHash) {
+    // Targeted encrypted message
+    await sendCmd(`msg @${selectedPeerHash.slice(0, 8)} ${clean}`);
+    const node = detectedNodes.get(selectedPeerHash);
+    const label = node && node.name ? node.name : selectedPeerHash.slice(0, 8) + '..';
+    appendChatMessage(clean, `You → ${label}`, 'out', true);
+    recordContactMessage(selectedPeerHash, clean);
   } else {
     // Broadcast
     await sendCmd(`msg ${clean}`);
-    appendChatMessage(clean, 'You (broadcast)', 'out');
+    appendChatMessage(clean, 'You (broadcast)', 'out', false);
   }
-  if (input) input.value = '';
+  if (input) { input.value = ''; updateCharCount(); }
 }
 
 async function verifyLink() {
@@ -3981,6 +4329,107 @@ function escHtml(s) {
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ════════════════════════════════════════════
+   Ratspeak Hub TCP Bridge (WebSocket)
+════════════════════════════════════════════ */
+let hubWs = null;
+let hubTxCount = 0;
+let hubRxCount = 0;
+
+function hubLog(msg) {
+  const el = document.getElementById('hubLog');
+  if (!el) return;
+  const ts = new Date().toLocaleTimeString();
+  el.innerHTML += `<div>${escHtml(ts)} ${escHtml(msg)}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateHubStatus(status, color) {
+  const el = document.getElementById('hubStatus');
+  if (el) { el.textContent = status; el.style.color = color || 'var(--dim)'; }
+}
+
+function toggleHubConnection() {
+  if (hubWs && hubWs.readyState <= 1) {
+    hubWs.close();
+    return;
+  }
+  const url = document.getElementById('hubWsUrl')?.value?.trim();
+  if (!url) { hubLog('No WebSocket URL specified'); return; }
+
+  updateHubStatus('Connecting…', 'orange');
+  hubLog('Connecting to ' + url);
+  const btn = document.getElementById('hubConnectBtn');
+  if (btn) btn.textContent = 'Disconnect';
+
+  try {
+    hubWs = new WebSocket(url);
+    hubWs.binaryType = 'arraybuffer';
+  } catch (e) {
+    hubLog('WebSocket error: ' + e.message);
+    updateHubStatus('Error', '#e55');
+    if (btn) btn.textContent = 'Connect';
+    return;
+  }
+
+  hubWs.onopen = () => {
+    updateHubStatus('Connected', 'var(--accent)');
+    hubLog('Connected to hub via WebSocket bridge');
+    // Auto-enable pktdump so we can forward received packets
+    if (writer) sendCmd('pktdump on');
+  };
+
+  hubWs.onmessage = (evt) => {
+    hubRxCount++;
+    const el = document.getElementById('hubRxCount');
+    if (el) el.textContent = hubRxCount;
+    // Forward received TCP data to the serial device as a raw packet
+    if (evt.data instanceof ArrayBuffer && evt.data.byteLength > 0) {
+      hubForwardToSerial(new Uint8Array(evt.data));
+    }
+  };
+
+  hubWs.onclose = () => {
+    updateHubStatus('Disconnected', 'var(--dim)');
+    hubLog('WebSocket closed');
+    if (btn) btn.textContent = 'Connect';
+    // Disable pktdump when hub disconnects
+    if (writer) sendCmd('pktdump off');
+    hubWs = null;
+  };
+
+  hubWs.onerror = (e) => {
+    hubLog('WebSocket error');
+    updateHubStatus('Error', '#e55');
+  };
+}
+
+// Forward a raw Reticulum packet from the hub to the serial device
+function hubForwardToSerial(data) {
+  if (!writer) return;
+  // Send as hex via the txraw console command
+  let hex = '';
+  for (let i = 0; i < data.length; i++) hex += data[i].toString(16).padStart(2, '0');
+  sendCmd('txraw ' + hex);
+  hubLog('← Hub RX: ' + data.length + ' bytes → radio');
+}
+
+// Called from the serial read loop when a raw packet is received
+// (hook into the PKTDUMP output to forward to hub)
+function hubForwardToHub(hexBytes) {
+  if (!hubWs || hubWs.readyState !== 1) return;
+  // Convert hex string to binary
+  const clean = hexBytes.replace(/\s+/g, '');
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
+  }
+  hubWs.send(bytes.buffer);
+  hubTxCount++;
+  const el = document.getElementById('hubTxCount');
+  if (el) el.textContent = hubTxCount;
+}
 
 /* ════════════════════════════════════════════
    Repeater tab switching

@@ -11,6 +11,8 @@
 #define NATIVE_TEST
 #endif
 
+#define private public
+
 class SHA256 {
     uint8_t buf[4096]; size_t len=0;
 public:
@@ -31,6 +33,8 @@ namespace Curve25519 {
 #include "RNSPacket.h"
 #include "RNSIdentity.h"
 #include "RNSTransport.h"
+
+#undef private
 
 class RNSRadio {
 public:
@@ -105,6 +109,26 @@ int main(){
         RNSTransport t; t.begin(&id,(RNSRadio*)&rad);
         uint8_t h[16]; memset(h,0xEE,16);
         chk(t.lookupPath(h)==nullptr, "miss returns null");
+    }
+
+    // Parse standard LXMF message layout: dest + source + sig + payload
+    {
+        uint8_t payload[64] = {0};
+        uint16_t payloadLen = RNSTransport::packLxmfContent("test", 1234, payload, sizeof(payload));
+        chk(payloadLen > 0, "lxmf payload packed");
+
+        uint8_t lxmf[160] = {0};
+        memset(lxmf, 0xA1, 16);
+        memset(lxmf+16, 0xB2, 16);
+        memset(lxmf+32, 0x33, 64);
+        memcpy(lxmf+96, payload, payloadLen);
+
+        uint8_t src[16] = {0};
+        char msg[32] = {0};
+        bool okParse = RNSTransport::parseLxmfMessage(lxmf, (uint16_t)(96+payloadLen), src, msg, sizeof(msg));
+        chk(okParse, "parse standard lxmf bytes");
+        chk(memcmp(src, lxmf+16, 16) == 0, "extract source hash");
+        chk(strcmp(msg, "test") == 0, "extract lxmf content");
     }
 
     printf("\n%d passed, %d failed\n",ok,bad);

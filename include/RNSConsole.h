@@ -497,8 +497,25 @@ private:
             }
         }
 
-        if (transport->sendMessageAnnounce(text)) {
-            io->print(F("Message sent: ")); io->println(text);
+        uint16_t delivered = 0;
+        const PathEntry* peers = transport->getPathTable();
+        for (int i = 0; i < PATH_TABLE_MAX; i++) {
+            if (!peers[i].active || !peers[i].hasPubKey) continue;
+            if (transport->sendEncryptedMessage(text, transport->getPathTableMut() + i)) {
+                delivered++;
+            }
+        }
+
+        if (delivered > 0) {
+            io->print(F("Encrypted message sent to "));
+            io->print(delivered);
+            io->print(F(" peer"));
+            if (delivered != 1) io->print(F("s"));
+            io->print(F(": "));
+            io->println(text);
+        } else if (transport->sendMessageAnnounce(text)) {
+            io->print(F("Message sent via announce sideband: "));
+            io->println(text);
         } else {
             io->println(F("Message send failed (radio busy/offline)."));
         }

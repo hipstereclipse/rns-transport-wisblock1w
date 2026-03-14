@@ -759,7 +759,7 @@ public:
         if (!rxFlag) return;
         rxFlag = false;
 
-        uint8_t buf[RNS_MTU + 1];
+        static uint8_t buf[RNS_MTU + 1];
         int len = lora.getPacketLength();
         if (len <= 0 || len > (RNS_MTU + 1)) {
             lora.startReceive();

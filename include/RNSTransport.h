@@ -69,6 +69,9 @@ private:
     char               announceName[RNS_ANNOUNCE_NAME_MAX + 1] = "RatTunnel";
     uint8_t            cachedTransportDestHash[RNS_ADDR_LEN] = {0};
     uint8_t            cachedTransportNameHash[RNS_NAME_HASH_LEN] = {0};
+    uint8_t            cachedPathReqDestHash[RNS_ADDR_LEN] = {0};
+    bool               pathReqHashReady = false;
+    uint32_t           lastPathReqAnnounceAt = 0;
     bool               announceHashCacheReady = false;
 
     // ── Msgpack skip helper ───────────────────────────────
@@ -121,25 +124,19 @@ private:
     static bool parseLxmfMessage(const uint8_t* data, uint16_t len,
                                  uint8_t srcHash[RNS_ADDR_LEN],
                                  char* outText, uint16_t maxText) {
-        if (!data || len < 82 || !outText) return false;
-        uint16_t pos = 0;
-        uint8_t flags = data[pos++];
-        // Stamp length from lower 2 bits
-        static const uint8_t stampSz[] = {0, 16, 32, 64};
-        uint8_t stampLen = stampSz[flags & 0x03];
-        if (pos + stampLen + RNS_ADDR_LEN + RNS_SIGLENGTH >= len) return false;
-        pos += stampLen;
-        if (srcHash) memcpy(srcHash, data + pos, RNS_ADDR_LEN);
-        pos += RNS_ADDR_LEN;
-        pos += RNS_SIGLENGTH; // skip signature
-        if (pos >= len) return false;
-        // Parse msgpack array: [timestamp, title, content, fields]
+        const uint16_t lxmfOverhead = (2 * RNS_ADDR_LEN) + RNS_SIGLENGTH;
+        if (!data || len < lxmfOverhead + 8 || !outText) return false;
+
+        if (srcHash) memcpy(srcHash, data + RNS_ADDR_LEN, RNS_ADDR_LEN);
+
+        uint16_t pos = lxmfOverhead;
+        // Parse msgpack array: [timestamp, title, content, fields, ...optional stamp]
         uint8_t arr = data[pos++];
         uint16_t arrLen = 0;
         if ((arr & 0xF0) == 0x90) arrLen = arr & 0x0F;
         else if (arr == 0xDC && pos+2 <= len) { arrLen=(data[pos]<<8)|data[pos+1]; pos+=2; }
         else return false;
-        if (arrLen < 3) return false;
+        if (arrLen < 4) return false;
         // Skip timestamp
         if (!skipMsgpackElem(data, len, pos)) return false;
         // Skip title
@@ -228,7 +225,7 @@ public:
      * Called by RNSRadio::poll() when a valid packet arrives.
      */
     void ingestPacket(const uint8_t* buf, uint16_t len) {
-        RNSPacket pkt;
+        static RNSPacket pkt;
         if (!pkt.parse(buf, len)) {
             stats.invalidPackets++;
             return;
@@ -243,6 +240,8 @@ public:
 
         if (pkt.isAnnounce()) {
             handleAnnounce(pkt);
+        } else if (pkt.isData() && pkt.destType == PLAIN) {
+            handlePlainData(pkt);
         } else if (pkt.isData() || pkt.isLinkRequest() || pkt.isProof()) {
             handleRoutable(pkt);
         }
@@ -294,8 +293,10 @@ public:
                     Serial.println(msg);
                 }
             }
-            // Check for MsgPack-encoded name: 0x91 (array[1]) + 0xA0|len (fixstr)
-            else if (app && appLen >= 3 && app[0] == 0x91 && (app[1] & 0xE0) == 0xA0) {
+            // Check for MsgPack-encoded name: fixarray(1+) + fixstr
+            // Sideband sends [name] or [name, stamp_cost, ...] as 0x91-0x9F arrays
+            else if (app && appLen >= 3 && (app[0] & 0xF0) == 0x90 && (app[0] & 0x0F) >= 1
+                     && (app[1] & 0xE0) == 0xA0) {
                 uint8_t nameLen = app[1] & 0x1F;
                 if (nameLen > 0 && (2 + nameLen) <= appLen && nameLen < PEER_NAME_MAX) {
                     uint8_t outIdx = 0;
@@ -325,6 +326,26 @@ public:
         }
     }
 
+    // ── Handle PLAIN DATA packets (path requests etc.) ────
+    void handlePlainData(RNSPacket& pkt) {
+#ifndef NATIVE_TEST
+        if (!pathReqHashReady) return;
+        if (memcmp(pkt.destHash, cachedPathReqDestHash, RNS_ADDR_LEN) != 0) return;
+        // Path request: data = requested_dest_hash(16) + random(16)
+        if (pkt.dataLen < RNS_ADDR_LEN) return;
+        if (!announceHashCacheReady) return;
+        if (memcmp(pkt.data, cachedTransportDestHash, RNS_ADDR_LEN) == 0) {
+            // Someone is requesting a path to US — respond with announce
+            // Rate-limit: at most one response per 2 seconds
+            uint32_t now = millis();
+            if (now - lastPathReqAnnounceAt < 2000) return;
+            lastPathReqAnnounceAt = now;
+            Serial.println(F("[RNS] Path request for us — sending announce"));
+            sendLocalAnnounce();
+        }
+#endif
+    }
+
     // ── Routable packet handling ──────────────────────────
     void handleRoutable(RNSPacket& pkt) {
         // Check if packet is addressed to our own destination
@@ -344,14 +365,15 @@ public:
     void handleLocalDelivery(RNSPacket& pkt) {
 #ifndef NATIVE_TEST
         if (pkt.isData() && identity && identity->initialized) {
-            // Attempt X25519/Fernet decryption
-            uint8_t plainBuf[RNS_MTU];
-            uint16_t plainLen = identity->decrypt(pkt.data, pkt.dataLen,
-                                                  plainBuf, sizeof(plainBuf));
+            static uint8_t plainBuf[RNS_MTU];
+            uint16_t plainLen = identity->decrypt(
+                pkt.data, pkt.dataLen, plainBuf, sizeof(plainBuf));
             if (plainLen > 0) {
-                // Parse LXMF: flags(1) + [stamp] + source_hash(16) + sig(64) + msgpack
-                uint8_t srcHash[RNS_ADDR_LEN] = {0};
-                char msgText[200] = {0};
+                // Parse LXMF: dest_hash(16) + source_hash(16) + sig(64) + msgpack payload
+                static uint8_t srcHash[RNS_ADDR_LEN];
+                static char msgText[200];
+                memset(srcHash, 0, RNS_ADDR_LEN);
+                memset(msgText, 0, sizeof(msgText));
                 if (parseLxmfMessage(plainBuf, plainLen, srcHash, msgText, sizeof(msgText))) {
                     Serial.print(F("[PEERMSG] from "));
                     for (int i = 0; i < 8; i++) {
@@ -362,8 +384,23 @@ public:
                     Serial.println(msgText);
                 } else {
                     // Decrypted but couldn't parse LXMF - show raw
+                    if (plainLen >= (2 * RNS_ADDR_LEN)) {
+                        memcpy(srcHash, plainBuf + RNS_ADDR_LEN, RNS_ADDR_LEN);
+                    }
                     Serial.print(F("[PEERMSG] from "));
-                    if (pkt.headerType == HEADER_2) {
+                    bool haveSrcHash = false;
+                    for (int i = 0; i < RNS_ADDR_LEN; i++) {
+                        if (srcHash[i] != 0) {
+                            haveSrcHash = true;
+                            break;
+                        }
+                    }
+                    if (haveSrcHash) {
+                        for (int i = 0; i < 8; i++) {
+                            if (srcHash[i] < 0x10) Serial.print('0');
+                            Serial.print(srcHash[i], HEX);
+                        }
+                    } else if (pkt.headerType == HEADER_2) {
                         for (int i = 0; i < 8; i++) {
                             if (pkt.transportId[i] < 0x10) Serial.print('0');
                             Serial.print(pkt.transportId[i], HEX);
@@ -376,7 +413,7 @@ public:
                     Serial.println(F(" bytes]"));
                 }
             } else {
-                // Decryption failed - show encrypted notification
+                // Decryption failed - show encrypted notification with diagnostics
                 Serial.print(F("[PEERMSG] from "));
                 if (pkt.headerType == HEADER_2) {
                     for (int i = 0; i < 8; i++) {
@@ -389,6 +426,8 @@ public:
                 Serial.print(F("..: [encrypted, "));
                 Serial.print(pkt.dataLen);
                 Serial.println(F(" bytes]"));
+                identity->decryptDiag(pkt.data, pkt.dataLen,
+                    announceHashCacheReady ? cachedTransportDestHash : nullptr);
             }
         } else if (pkt.isData()) {
             Serial.print(F("[PEERMSG] from 0000000000000000..: [encrypted, "));
@@ -527,7 +566,7 @@ public:
     void queueAnnounceRetransmit(RNSPacket& pkt) {
         for (int i = 0; i < ANNOUNCE_QUEUE_MAX; i++) {
             if (!announceQueue[i].pending) {
-                uint8_t newRaw[RNS_MTU];
+                static uint8_t newRaw[RNS_MTU];
                 memcpy(newRaw, pkt.raw, pkt.rawLen);
                 newRaw[1] = pkt.hops + 1;   // increment hop counter
 

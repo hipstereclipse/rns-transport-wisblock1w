@@ -154,33 +154,55 @@ bool RNSTransport::sendEncryptedMessage(const char* text, PathEntry* peer) {
     if (!text || !*text || !peer || !peer->hasPubKey) return false;
     if (!radio || !identity || !identity->initialized) return false;
     if (!radio->hwReady) return false;
+    if (!announceHashCacheReady) {
+        initDestHashCache();
+    }
+    if (!announceHashCacheReady) return false;
 
-    // 1. Pack msgpack content: [timestamp, title, content, fields]
-    uint8_t packedContent[256];
+    // 1. Pack LXMF payload: [timestamp, title, content, fields]
+    // All large buffers are static to avoid stack overflow (crypto calls are deep)
+    static uint8_t packedContent[256];
     uint16_t contentLen = packLxmfContent(text, millis(), packedContent, sizeof(packedContent));
     if (contentLen == 0) return false;
 
-    // 2. Sign: dest_hash + source_hash + packed_content
-    uint8_t signedBuf[RNS_MTU];
-    uint16_t signedLen = 0;
-    memcpy(signedBuf, peer->destHash, RNS_ADDR_LEN); signedLen += RNS_ADDR_LEN;
-    memcpy(signedBuf + signedLen, identity->identityHash, RNS_ADDR_LEN); signedLen += RNS_ADDR_LEN;
-    memcpy(signedBuf + signedLen, packedContent, contentLen); signedLen += contentLen;
-    uint8_t signature[64];
-    identity->sign(signedBuf, signedLen, signature);
+    // 2. Build standard LXMF bytes:
+    //    dest_hash + source_hash + signature + msgpack_payload
+    static uint8_t hashedPart[RNS_MTU];
+    uint16_t hashedLen = 0;
+    memcpy(hashedPart + hashedLen, peer->destHash, RNS_ADDR_LEN);
+    hashedLen += RNS_ADDR_LEN;
+    memcpy(hashedPart + hashedLen, cachedTransportDestHash, RNS_ADDR_LEN);
+    hashedLen += RNS_ADDR_LEN;
+    memcpy(hashedPart + hashedLen, packedContent, contentLen);
+    hashedLen += contentLen;
 
-    // 3. Build LXMF payload: flags(1) + source_hash(16) + signature(64) + packed_content
-    uint8_t lxmfPayload[RNS_MTU];
+    static uint8_t messageHash[32];
+    {
+        SHA256 sha;
+        sha.reset();
+        sha.update(hashedPart, hashedLen);
+        sha.finalize(messageHash, sizeof(messageHash));
+    }
+
+    static uint8_t signedBuf[RNS_MTU];
+    memcpy(signedBuf, hashedPart, hashedLen);
+    memcpy(signedBuf + hashedLen, messageHash, sizeof(messageHash));
+
+    static uint8_t signature[64];
+    identity->sign(signedBuf, hashedLen + sizeof(messageHash), signature);
+
+    static uint8_t lxmfPayload[RNS_MTU];
     uint16_t lxmfLen = 0;
-    lxmfPayload[lxmfLen++] = 0x00; // flags: no stamp
-    memcpy(lxmfPayload + lxmfLen, identity->identityHash, RNS_ADDR_LEN);
+    memcpy(lxmfPayload + lxmfLen, peer->destHash, RNS_ADDR_LEN);
     lxmfLen += RNS_ADDR_LEN;
-    memcpy(lxmfPayload + lxmfLen, signature, 64);
-    lxmfLen += 64;
+    memcpy(lxmfPayload + lxmfLen, cachedTransportDestHash, RNS_ADDR_LEN);
+    lxmfLen += RNS_ADDR_LEN;
+    memcpy(lxmfPayload + lxmfLen, signature, sizeof(signature));
+    lxmfLen += sizeof(signature);
     memcpy(lxmfPayload + lxmfLen, packedContent, contentLen);
     lxmfLen += contentLen;
 
-    // 4. Compute target identity hash from their public key
+    // 3. Compute target identity hash from their public key
     uint8_t targetIdHash[RNS_ADDR_LEN];
     {
         SHA256 sha; sha.reset();
@@ -190,15 +212,15 @@ bool RNSTransport::sendEncryptedMessage(const char* text, PathEntry* peer) {
         memcpy(targetIdHash, full, RNS_ADDR_LEN);
     }
 
-    // 5. Encrypt (X25519 pub is first 32 bytes of peerPubKey)
-    uint8_t encrypted[RNS_MTU];
+    // 4. Encrypt full LXMF bytes (X25519 pub is first 32 bytes of peerPubKey)
+    static uint8_t encrypted[RNS_MTU];
     uint16_t encLen = RNSIdentity::encrypt(
         peer->peerPubKey, targetIdHash,
         lxmfPayload, lxmfLen,
         encrypted, sizeof(encrypted));
     if (encLen == 0) return false;
 
-    // 6. Build DATA packet
+    // 5. Build DATA packet
     RNSPacket pkt;
     pkt.ifacFlag    = false;
     pkt.headerType  = HEADER_1;
@@ -234,6 +256,10 @@ void RNSTransport::initDestHashCache() {
     RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, publicKeyForHash, cachedTransportDestHash);
     computeNameHash10(RNS_TRANSPORT_DEST_NAME, cachedTransportNameHash);
     announceHashCacheReady = true;
+
+    // Compute path request PLAIN destination hash
+    RNSIdentity::computePlainDestHash("rnstransport.path.request", cachedPathReqDestHash);
+    pathReqHashReady = true;
 }
 
 /**
@@ -247,9 +273,9 @@ void RNSTransport::forwardPacket(RNSPacket& pkt, PathEntry* path) {
     if (!radio || !identity) return;
     if (pkt.hops >= RNS_MAX_HOPS) return;
 
-    uint8_t outBuf[RNS_MTU];
+    static uint8_t outBuf[RNS_MTU];
 
-    RNSPacket fwd;
+    static RNSPacket fwd;
     fwd.ifacFlag    = pkt.ifacFlag;
     fwd.headerType  = HEADER_2;
     fwd.contextFlag = pkt.contextFlag;

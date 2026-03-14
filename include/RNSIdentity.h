@@ -115,6 +115,32 @@ public:
         }
     }
 
+    // ── Compute PLAIN destination hash (no identity) ──────
+    /**
+     * PLAIN destination: dest_hash = SHA-256(name_hash)[:16]
+     * where name_hash = SHA-256(full_name)[:10]
+     */
+    static void computePlainDestHash(const char* fullName,
+                                     uint8_t outHash[RNS_ADDR_LEN]) {
+        uint8_t nameHash[RNS_NAME_HASH_LEN];
+        {
+            SHA256 sha;
+            sha.reset();
+            sha.update(fullName, strlen(fullName));
+            uint8_t full[32];
+            sha.finalize(full, 32);
+            memcpy(nameHash, full, RNS_NAME_HASH_LEN);
+        }
+        {
+            SHA256 sha;
+            sha.reset();
+            sha.update(nameHash, RNS_NAME_HASH_LEN);
+            uint8_t full[32];
+            sha.finalize(full, 32);
+            memcpy(outHash, full, RNS_ADDR_LEN);
+        }
+    }
+
     // ── Validate announce packet's Ed25519 signature ──────
     /**
      * Announce data layout:
@@ -142,7 +168,7 @@ public:
         const uint16_t signedLen  = RNS_ADDR_LEN + sigOffset + appDataLen;
         if (signedLen > RNS_MTU) return false;
 
-        uint8_t signedBuf[RNS_MTU];
+        static uint8_t signedBuf[RNS_MTU];
         memcpy(signedBuf, destHash, RNS_ADDR_LEN);
         memcpy(signedBuf + RNS_ADDR_LEN, data, sigOffset);
         if (appDataLen > 0) {
@@ -173,7 +199,7 @@ public:
     static void hmacSha256(const uint8_t* key, uint16_t keyLen,
                            const uint8_t* data, uint16_t dataLen,
                            uint8_t out[32]) {
-        uint8_t kPad[64];
+        static uint8_t kPad[64];
         memset(kPad, 0, 64);
         if (keyLen > 64) {
             SHA256 sha; sha.reset();
@@ -182,14 +208,14 @@ public:
         } else {
             memcpy(kPad, key, keyLen);
         }
-        uint8_t iPad[64];
+        static uint8_t iPad[64];
         for (int i = 0; i < 64; i++) iPad[i] = kPad[i] ^ 0x36;
         SHA256 inner; inner.reset();
         inner.update(iPad, 64);
         inner.update(data, dataLen);
-        uint8_t innerHash[32];
+        static uint8_t innerHash[32];
         inner.finalize(innerHash, 32);
-        uint8_t oPad[64];
+        static uint8_t oPad[64];
         for (int i = 0; i < 64; i++) oPad[i] = kPad[i] ^ 0x5C;
         SHA256 outer; outer.reset();
         outer.update(oPad, 64);
@@ -197,21 +223,32 @@ public:
         outer.finalize(out, 32);
     }
 
-    // ── HKDF-SHA256 (output up to 32 bytes) ───────────────
+    // ── HKDF-SHA256 (output up to 64 bytes, 2 iterations) ──
     static void hkdfSha256(const uint8_t* ikm, uint16_t ikmLen,
                            const uint8_t* salt, uint16_t saltLen,
                            const uint8_t* info, uint16_t infoLen,
                            uint8_t* out, uint16_t outLen) {
-        uint8_t prk[32];
+        static uint8_t prk[32];
         hmacSha256(salt, saltLen, ikm, ikmLen, prk);
-        uint8_t expandBuf[64];
-        if (infoLen > 62) infoLen = 62;
-        memcpy(expandBuf, info, infoLen);
-        expandBuf[infoLen] = 0x01;
-        uint8_t okm[32];
-        hmacSha256(prk, 32, expandBuf, infoLen + 1, okm);
-        if (outLen > 32) outLen = 32;
-        memcpy(out, okm, outLen);
+        if (outLen > 64) outLen = 64;
+        if (infoLen > 32) infoLen = 32;
+        static uint8_t prev[32];
+        uint16_t prevLen = 0;
+        uint16_t generated = 0;
+        uint8_t counter = 1;
+        while (generated < outLen) {
+            static uint8_t expandBuf[32 + 32 + 1];
+            uint16_t expandLen = 0;
+            if (prevLen > 0) { memcpy(expandBuf, prev, prevLen); expandLen += prevLen; }
+            if (info && infoLen > 0) { memcpy(expandBuf + expandLen, info, infoLen); expandLen += infoLen; }
+            expandBuf[expandLen++] = counter;
+            hmacSha256(prk, 32, expandBuf, expandLen, prev);
+            prevLen = 32;
+            uint16_t toCopy = (outLen - generated < 32) ? (outLen - generated) : 32;
+            memcpy(out + generated, prev, toCopy);
+            generated += toCopy;
+            counter++;
+        }
     }
 
     // ── Decrypt SINGLE-destination encrypted token ─────────
@@ -222,23 +259,30 @@ public:
      */
     uint16_t decrypt(const uint8_t* token, uint16_t tokenLen,
                      uint8_t* plaintext, uint16_t maxLen) const {
+        return decryptWithSalt(token, tokenLen, plaintext, maxLen, identityHash);
+    }
+
+    uint16_t decryptWithSalt(const uint8_t* token, uint16_t tokenLen,
+                             uint8_t* plaintext, uint16_t maxLen,
+                             const uint8_t salt[RNS_ADDR_LEN],
+                             const uint8_t* info = nullptr,
+                             uint16_t infoLen = 0) const {
         if (!token || tokenLen < 96 || !plaintext) return 0;
         const uint8_t* ephemeralPub = token;
         const uint8_t* fernetToken = token + 32;
         uint16_t fernetLen = tokenLen - 32;
-        // ECDH shared secret
-        uint8_t shared[32];
+        // ECDH shared secret (static to keep stack shallow)
+        static uint8_t shared[32];
         memcpy(shared, ephemeralPub, 32);
-        uint8_t privCopy[32];
+        static uint8_t privCopy[32];
         memcpy(privCopy, privEncKey, 32);
         if (!Curve25519::dh2(shared, privCopy)) return 0;
-        // HKDF key derivation
-        static const uint8_t ctx[] = "rns_token";
-        uint8_t derivedKey[32];
-        hkdfSha256(shared, 32, identityHash, RNS_ADDR_LEN, ctx, 9, derivedKey, 32);
-        const uint8_t* signingKey = derivedKey;
-        const uint8_t* encKey = derivedKey + 16;
-        // Fernet layout: IV(16) + ciphertext + HMAC(32)
+        // HKDF: derive 64 bytes (AES-256 Token format)
+        static uint8_t derivedKey[64];
+        hkdfSha256(shared, 32, salt, RNS_ADDR_LEN, info, infoLen, derivedKey, 64);
+        const uint8_t* signingKey = derivedKey;       // 32 bytes
+        const uint8_t* encKey = derivedKey + 32;      // 32 bytes
+        // Token layout: IV(16) + ciphertext + HMAC(32)
         if (fernetLen < 64) return 0;
         const uint8_t* iv = fernetToken;
         const uint8_t* hmacRecv = fernetToken + fernetLen - 32;
@@ -246,17 +290,17 @@ public:
         uint16_t cipherLen = fernetLen - 16 - 32;
         if (cipherLen == 0 || (cipherLen % 16) != 0) return 0;
         if (cipherLen > maxLen) return 0;
-        // Verify HMAC
-        uint8_t hmacCalc[32];
-        hmacSha256(signingKey, 16, fernetToken, fernetLen - 32, hmacCalc);
+        // Verify HMAC (32-byte signing key)
+        static uint8_t hmacCalc[32];
+        hmacSha256(signingKey, 32, fernetToken, fernetLen - 32, hmacCalc);
         if (memcmp(hmacCalc, hmacRecv, 32) != 0) return 0;
-        // AES-128-CBC decrypt
-        AES128 aes;
-        aes.setKey(encKey, 16);
-        uint8_t prev[16];
+        // AES-256-CBC decrypt
+        AES256 aes;
+        aes.setKey(encKey, 32);
+        static uint8_t prev[16];
         memcpy(prev, iv, 16);
         for (uint16_t i = 0; i < cipherLen; i += 16) {
-            uint8_t dec[16];
+            static uint8_t dec[16];
             aes.decryptBlock(dec, cipher + i);
             for (int j = 0; j < 16; j++) plaintext[i + j] = dec[j] ^ prev[j];
             memcpy(prev, cipher + i, 16);
@@ -269,6 +313,70 @@ public:
         return cipherLen - pad;
     }
 
+    // ── Diagnostic decrypt: prints [DIAG] showing where decrypt fails ──
+    void decryptDiag(const uint8_t* token, uint16_t tokenLen,
+                     const uint8_t* altSalt = nullptr) const {
+        Serial.print(F("[DIAG] decrypt diag: "));
+        Serial.print(tokenLen);
+        Serial.println(F(" bytes"));
+        if (!token || tokenLen < 96) {
+            Serial.println(F("[DIAG]   FAIL: tokenLen < 96"));
+            return;
+        }
+        const uint8_t* ephemeralPub = token;
+        const uint8_t* fernetToken = token + 32;
+        uint16_t fernetLen = tokenLen - 32;
+
+        if (fernetLen < 64) { Serial.println(F("[DIAG]   FAIL: fernetLen < 64")); return; }
+        uint16_t cipherLen = fernetLen - 16 - 32;
+        if (cipherLen == 0 || (cipherLen % 16) != 0) {
+            Serial.print(F("[DIAG]   FAIL: bad cipherLen=")); Serial.println(cipherLen); return;
+        }
+        const uint8_t* hmacRecv = fernetToken + fernetLen - 32;
+
+        // Compute ECDH once and save
+        static uint8_t ecdhShared[32];
+        {
+            static uint8_t tmpShared[32], tmpPriv[32];
+            memcpy(tmpShared, ephemeralPub, 32);
+            memcpy(tmpPriv, privEncKey, 32);
+            if (!Curve25519::dh2(tmpShared, tmpPriv)) {
+                Serial.println(F("[DIAG]   FAIL: ECDH")); return;
+            }
+            memcpy(ecdhShared, tmpShared, 32);
+        }
+        Serial.print(F("[DIAG]   ECDH shared[0..3]: "));
+        for (int i = 0; i < 4; i++) { if (ecdhShared[i]<0x10) Serial.print('0'); Serial.print(ecdhShared[i],HEX); Serial.print(' '); }
+        Serial.println();
+
+        // Test combos: {identityHash, destHash} with 64-byte key (AES-256 Token)
+        struct { const uint8_t* salt; const char* label; } salts[] = {
+            { identityHash, "idHash" },
+            { altSalt,      "destHash" },
+        };
+        static uint8_t derivedKey[64];
+        static uint8_t hmacCalc[32];
+        bool anyOk = false;
+
+        for (int s = 0; s < 2; s++) {
+            if (!salts[s].salt) continue;
+            hkdfSha256(ecdhShared, 32, salts[s].salt, RNS_ADDR_LEN, nullptr, 0, derivedKey, 64);
+            hmacSha256(derivedKey, 32, fernetToken, fernetLen - 32, hmacCalc);
+            bool ok = (memcmp(hmacCalc, hmacRecv, 32) == 0);
+            Serial.print(F("[DIAG]   "));
+            Serial.print(salts[s].label);
+            Serial.print(F("+AES256: "));
+            Serial.println(ok ? F("OK") : F("MISMATCH"));
+            if (ok) anyOk = true;
+        }
+        if (!anyOk) {
+            Serial.print(F("[DIAG]   recv HMAC: ")); for(int i=0;i<8;i++){if(hmacRecv[i]<0x10)Serial.print('0');Serial.print(hmacRecv[i],HEX);} Serial.println(F("..."));
+        }
+        Serial.print(F("[DIAG]   pubEncKey: "));
+        for (int i = 0; i < 32; i++) { if (pubEncKey[i]<0x10) Serial.print('0'); Serial.print(pubEncKey[i],HEX); }
+        Serial.println();
+    }
+
     // ── Encrypt for a SINGLE destination ──────────────────
     static uint16_t encrypt(const uint8_t targetPubEncKey[32],
                             const uint8_t targetIdHash[RNS_ADDR_LEN],
@@ -278,34 +386,33 @@ public:
         uint16_t paddedLen = ((plainLen / 16) + 1) * 16;
         uint16_t tokenLen = 32 + 16 + paddedLen + 32;
         if (tokenLen > maxTokenLen) return 0;
-        // Ephemeral X25519 keypair
-        uint8_t ephPub[32], ephPriv[32];
+        // All buffers static to keep stack shallow (Curve25519 is deep)
+        static uint8_t ephPub[32], ephPriv[32];
         Curve25519::dh1(ephPub, ephPriv);
-        uint8_t shared[32];
+        static uint8_t shared[32];
         memcpy(shared, targetPubEncKey, 32);
         Curve25519::dh2(shared, ephPriv);
-        // HKDF
-        static const uint8_t ctx[] = "rns_token";
-        uint8_t derivedKey[32];
-        hkdfSha256(shared, 32, targetIdHash, RNS_ADDR_LEN, ctx, 9, derivedKey, 32);
-        const uint8_t* signingKey = derivedKey;
-        const uint8_t* encKey = derivedKey + 16;
+        // HKDF: derive 64 bytes (AES-256 Token format), empty context
+        static uint8_t derivedKey[64];
+        hkdfSha256(shared, 32, targetIdHash, RNS_ADDR_LEN, nullptr, 0, derivedKey, 64);
+        const uint8_t* signingKey = derivedKey;       // 32 bytes
+        const uint8_t* encKey = derivedKey + 32;      // 32 bytes
         // Random IV
-        uint8_t iv[16];
+        static uint8_t iv[16];
         for (int i = 0; i < 16; i++) iv[i] = (uint8_t)random(0, 256);
         // PKCS7 pad
-        uint8_t padded[RNS_MTU];
+        static uint8_t padded[RNS_MTU];
         memcpy(padded, plain, plainLen);
         uint8_t padByte = (uint8_t)(paddedLen - plainLen);
         for (uint16_t i = plainLen; i < paddedLen; i++) padded[i] = padByte;
-        // AES-128-CBC encrypt
-        AES128 aes;
-        aes.setKey(encKey, 16);
+        // AES-256-CBC encrypt
+        AES256 aes;
+        aes.setKey(encKey, 32);
         uint8_t* cipherOut = tokenOut + 32 + 16;
-        uint8_t prev[16];
+        static uint8_t prev[16];
         memcpy(prev, iv, 16);
         for (uint16_t i = 0; i < paddedLen; i += 16) {
-            uint8_t xored[16];
+            static uint8_t xored[16];
             for (int j = 0; j < 16; j++) xored[j] = padded[i + j] ^ prev[j];
             aes.encryptBlock(cipherOut + i, xored);
             memcpy(prev, cipherOut + i, 16);
@@ -313,8 +420,8 @@ public:
         // Assemble: ephPub + IV + ciphertext + HMAC
         memcpy(tokenOut, ephPub, 32);
         memcpy(tokenOut + 32, iv, 16);
-        uint8_t hmac[32];
-        hmacSha256(signingKey, 16, tokenOut + 32, 16 + paddedLen, hmac);
+        static uint8_t hmac[32];
+        hmacSha256(signingKey, 32, tokenOut + 32, 16 + paddedLen, hmac);
         memcpy(tokenOut + 32 + 16 + paddedLen, hmac, 32);
         return tokenLen;
     }
