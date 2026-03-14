@@ -34,6 +34,7 @@ public:
     RNSPersistence* persistence = nullptr;
     Stream*         io          = nullptr;
     bool            pktDumpEnabled = false;
+    void          (*keepAlive)() = nullptr;  // WDT feed callback
 
     char    cmdBuf[128];
     uint8_t cmdPos = 0;
@@ -553,6 +554,7 @@ private:
             ph[2][p] = isSpiPin(p) ? 2 : digitalRead(p);
 
         // Phase 4: Wait for boot to finish (+500ms = BUSY LOW)
+        if (keepAlive) keepAlive();
         delay(500);
         for (uint8_t p = 0; p < 48; p++)
             ph[3][p] = isSpiPin(p) ? 2 : digitalRead(p);
@@ -624,6 +626,7 @@ private:
         digitalWrite(PIN_LORA_RESET, LOW);
         delay(5);
         digitalWrite(PIN_LORA_RESET, HIGH);
+        if (keepAlive) keepAlive();
         delay(500);  // generous settle time
 
         // Re-init SPI
@@ -829,6 +832,7 @@ private:
         uint32_t scanPreambles = 0;
         uint32_t scanRxDone = 0;
         while (millis() < scanEnd) {
+            if (keepAlive) keepAlive();
             uint32_t irq = radio->lora.getIrqFlags();
             if (irq & 0x0004) scanPreambles++;
             if (irq & 0x0002) scanRxDone++;
@@ -888,6 +892,7 @@ private:
 
         while (millis() < end) {
             if (io->available()) break;  // key pressed
+            if (keepAlive) keepAlive();
             uint32_t irq = radio->lora.getIrqFlags();
             if (irq != prevIrq) {
                 uint32_t dt = millis();
@@ -1052,6 +1057,7 @@ private:
         uint32_t t0 = millis();
         bool done = false;
         while (millis() - t0 < 5000) {
+            if (keepAlive) keepAlive();
             uint32_t irq = radio->lora.getIrqFlags();
             if (irq & (1UL << RADIOLIB_IRQ_TX_DONE)) { done = true; break; }
             delay(1);
@@ -1110,6 +1116,7 @@ private:
         uint32_t end = millis() + (uint32_t)seconds * 1000;
 
         while (millis() < end) {
+            if (keepAlive) keepAlive();
             float rssi = radio->lora.getRSSI(false); // instantaneous
             if (rssi < minRssi) minRssi = rssi;
             if (rssi > maxRssi) maxRssi = rssi;

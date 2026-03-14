@@ -696,8 +696,7 @@ void setup() {
     }
 
     // ── Console ───────────────────────────────────────────
-    console.begin(&Serial, &transport, &radio, &nodeIdentity, &persist);
-
+    console.begin(&Serial, &transport, &radio, &nodeIdentity, &persist);    console.keepAlive = wdtFeed;
     // ── Watchdog ──────────────────────────────────────────
     wdtInit();
 
