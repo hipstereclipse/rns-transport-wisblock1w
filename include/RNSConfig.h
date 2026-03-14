@@ -90,9 +90,13 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define ANNOUNCE_INTERVAL_MS       (60UL * 1000UL)
 #define ANNOUNCE_FAST_INTERVAL_MS  (15UL * 1000UL)   // faster announces for first 5 min after boot
 #define ANNOUNCE_FAST_PERIOD_MS    (5UL * 60UL * 1000UL)
+#define ANNOUNCE_INTERVAL_MIN_SEC  15U
+#define ANNOUNCE_INTERVAL_MAX_SEC  3600U
 #define DISCOVERY_STARTUP_DELAY_MS (ANNOUNCE_STARTUP_DELAY_MS + 3000UL)
 #define DISCOVERY_INTERVAL_MS      (2UL * 60UL * 1000UL)
 #define DISCOVERY_FAST_INTERVAL_MS (30UL * 1000UL)
+#define DISCOVERY_INTERVAL_MIN_SEC 30U
+#define DISCOVERY_INTERVAL_MAX_SEC 7200U
 #define DISCOVERY_RESPONSE_COOLDOWN_MS 3000UL
 
 // ── Peer messaging ────────────────────────────────────────
@@ -115,7 +119,7 @@ enum LedAlertMode : uint8_t {
 
 static const uint8_t LED_ALERT_PREFIX_BYTES = 8;
 static const uint8_t LED_ALERT_WATCH_MAX = 6;
-static const uint8_t LED_CONFIG_VERSION = 2;
+static const uint8_t LED_CONFIG_VERSION = 3;
 
 // ── Watchdog timeout (seconds) ───────────────────────────
 #define WDT_TIMEOUT_SEC      8

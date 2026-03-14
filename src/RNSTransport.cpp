@@ -36,6 +36,28 @@ static uint16_t encodeAnnounceNameMsgPack(const char* name, uint8_t* out, uint16
     return (uint16_t)(2 + len);
 }
 
+static bool transmitWithRetry(RNSRadio* radio,
+                              const uint8_t* data,
+                              uint16_t len,
+                              uint8_t attempts = 3) {
+    if (!radio || !data || len == 0) return false;
+
+    for (uint8_t attempt = 0; attempt < attempts; attempt++) {
+        if (radio->transmit(data, len)) return true;
+#ifndef NATIVE_TEST
+        if ((attempt + 1) < attempts) {
+            Serial.print(F("[RNS] TX retry "));
+            Serial.print(attempt + 1);
+            Serial.print(F("/"));
+            Serial.println(attempts - 1);
+            delay((unsigned long)random(160, 420));
+        }
+#endif
+    }
+
+    return false;
+}
+
 bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      const uint8_t* appData,
                                      uint16_t appDataLen) {
@@ -83,21 +105,22 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
         announceData[RNS_KEYSIZE + RNS_NAME_HASH_LEN + i] = (uint8_t)random(0, 256);
     }
 
-    // Reticulum wire format: pubkey|nameHash|randomHash|SIGNATURE|appData
-    // Signed data = destHash + pubkey + nameHash + randomHash + appData
-    // The destHash is prepended per Reticulum spec but NOT in wire payload.
+    // Standard Reticulum layout: pubkey|nameHash|randomHash|appData|SIGNATURE.
+    // The signed bytes are destHash + pubkey + nameHash + randomHash + appData.
     static uint8_t signedBuf[RNS_MTU];
     memcpy(signedBuf, cachedTransportDestHash, RNS_ADDR_LEN);
     memcpy(signedBuf + RNS_ADDR_LEN, announceData, baseLen);
     if (announceAppData && announceAppDataLen > 0) {
         memcpy(signedBuf + RNS_ADDR_LEN + baseLen, announceAppData, announceAppDataLen);
     }
-    identity->sign(signedBuf, RNS_ADDR_LEN + baseLen + announceAppDataLen, announceData + baseLen);
+    static uint8_t signature[RNS_SIGLENGTH];
+    identity->sign(signedBuf, RNS_ADDR_LEN + baseLen + announceAppDataLen, signature);
 
-    // [appData after signature]
+    // [appData before trailing signature]
     if (announceAppData && announceAppDataLen > 0) {
-        memcpy(announceData + baseLen + RNS_SIGLENGTH, announceAppData, announceAppDataLen);
+        memcpy(announceData + baseLen, announceAppData, announceAppDataLen);
     }
+    memcpy(announceData + baseLen + announceAppDataLen, signature, RNS_SIGLENGTH);
 
     RNSPacket pkt;
     pkt.ifacFlag    = false;
@@ -118,7 +141,7 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
 
     // Transmit at configured TX power (no announce power reduction;
     // full power ensures peers reliably discover this node).
-    bool ok = radio->transmit(outBuf, outLen);
+    bool ok = transmitWithRetry(radio, outBuf, outLen, 3);
 
     if (ok) {
         stats.txPackets++;
@@ -172,7 +195,7 @@ bool RNSTransport::sendDiscoverySweep() {
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 
-    bool ok = radio->transmit(outBuf, outLen);
+    bool ok = transmitWithRetry(radio, outBuf, outLen, 3);
     if (ok) stats.txPackets++;
     return ok;
 }
@@ -271,7 +294,7 @@ bool RNSTransport::sendEncryptedMessage(const char* text, PathEntry* peer) {
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 
-    bool ok = radio->transmit(outBuf, outLen);
+    bool ok = transmitWithRetry(radio, outBuf, outLen, 3);
     if (ok) stats.txPackets++;
     return ok;
 }
@@ -326,7 +349,7 @@ void RNSTransport::forwardPacket(RNSPacket& pkt, PathEntry* path) {
 
     uint16_t outLen = fwd.serialize(outBuf, RNS_MTU);
     if (outLen > 0) {
-        if (radio->transmit(outBuf, outLen)) {
+        if (transmitWithRetry(radio, outBuf, outLen, 2)) {
             stats.fwdPackets++;
             stats.txPackets++;
         }
@@ -344,7 +367,7 @@ void RNSTransport::processAnnounceQueue(uint32_t now) {
 
     for (int i = 0; i < ANNOUNCE_QUEUE_MAX; i++) {
         if (announceQueue[i].pending && now >= announceQueue[i].scheduledAt) {
-            if (radio->transmit(announceQueue[i].raw, announceQueue[i].rawLen)) {
+            if (transmitWithRetry(radio, announceQueue[i].raw, announceQueue[i].rawLen, 2)) {
                 stats.txPackets++;
             }
             announceQueue[i].pending = false;

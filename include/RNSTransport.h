@@ -15,6 +15,7 @@ class RNSRadio;  // forward declaration
 
 #ifndef NATIVE_TEST
 void rnsHandleIncomingPeerMessage(const uint8_t* srcHash, bool haveSrcHash, const char* text, bool parsed);
+bool rnsHandleControlPeerMessage(const uint8_t* srcHash, const char* text);
 #endif
 
 // ── Path table entry ──────────────────────────────────────
@@ -112,20 +113,18 @@ private:
         return false;
     }
 
-    void cacheAnnounce(const RNSPacket& pkt) {
+    void cacheAnnounce(const RNSPacket& pkt,
+                       const uint8_t* appData = nullptr,
+                       uint16_t appDataLen = 0) {
         if (!pkt.isAnnounce()) return;
         if (pkt.rawLen == 0 || pkt.rawLen > ANNOUNCE_CACHE_RAW_MAX) return;
         if (announceHashCacheReady && memcmp(pkt.destHash, cachedTransportDestHash, RNS_ADDR_LEN) == 0) return;
 
-        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-        const uint16_t sigLen = RNS_SIGLENGTH;
-        if (pkt.dataLen > (baseLen + sigLen)) {
-            const uint16_t appLen = pkt.dataLen - baseLen - sigLen;
-            const uint8_t* app = pkt.data + baseLen + sigLen;
-            bool looksLikeName = app && appLen >= 3
-                && (app[0] & 0xF0) == 0x90
-                && (app[0] & 0x0F) >= 1
-                && (app[1] & 0xE0) == 0xA0;
+        if (appData && appDataLen > 0) {
+            bool looksLikeName = appDataLen >= 3
+                && (appData[0] & 0xF0) == 0x90
+                && (appData[0] & 0x0F) >= 1
+                && (appData[1] & 0xE0) == 0xA0;
             if (!looksLikeName) return;
         }
 
@@ -358,7 +357,8 @@ public:
             return;
         }
 
-        if (!RNSIdentity::validateAnnounce(pkt.destHash, pkt.data, pkt.dataLen)) {
+        RNSIdentity::AnnounceInfo announceInfo;
+        if (!RNSIdentity::inspectAnnounce(pkt.destHash, pkt.data, pkt.dataLen, &announceInfo)) {
             stats.invalidPackets++;
             return;
         }
@@ -366,12 +366,10 @@ public:
 
         // Extract peer name and messages from announce appData
         char extractedName[PEER_NAME_MAX] = {0};
-        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-        const uint16_t sigLen = RNS_SIGLENGTH;
 #ifndef NATIVE_TEST
-        if (pkt.dataLen > (baseLen + sigLen)) {
-            const uint16_t appLen = pkt.dataLen - baseLen - sigLen;
-            const uint8_t* app = pkt.data + baseLen + sigLen;
+        if (announceInfo.appData && announceInfo.appDataLen > 0) {
+            const uint16_t appLen = announceInfo.appDataLen;
+            const uint8_t* app = announceInfo.appData;
 
             // Check for MSG: prefix (peer message)
             if (app && appLen > 4 && appLen < 96 &&
@@ -393,6 +391,9 @@ public:
                     }
                     Serial.print(F("..: "));
                     Serial.println(msg);
+#ifndef NATIVE_TEST
+                    rnsHandleIncomingPeerMessage(pkt.destHash, true, msg, true);
+#endif
                 }
             }
             // Check for MsgPack-encoded name: fixarray(1+) + fixstr
@@ -421,7 +422,7 @@ public:
         updatePath(pkt.destHash, nullptr, pkt.hops, rxRSSI, rxSNR,
                    extractedName[0] ? extractedName : nullptr,
                    pkt.data);
-        cacheAnnounce(pkt);
+        cacheAnnounce(pkt, announceInfo.appData, announceInfo.appDataLen);
 
         // Queue retransmission if within hop limit
         if (pkt.hops < RNS_MAX_HOPS) {
@@ -498,6 +499,11 @@ public:
                 memset(srcHash, 0, RNS_ADDR_LEN);
                 memset(msgText, 0, sizeof(msgText));
                 if (parseLxmfMessage(plainBuf, plainLen, srcHash, msgText, sizeof(msgText))) {
+#ifndef NATIVE_TEST
+                    if (rnsHandleControlPeerMessage(srcHash, msgText)) {
+                        return;
+                    }
+#endif
                     Serial.print(F("[PEERMSG] from "));
                     for (int i = 0; i < 8; i++) {
                         if (srcHash[i] < 0x10) Serial.print('0');

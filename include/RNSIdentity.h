@@ -18,6 +18,20 @@
 
 class RNSIdentity {
 public:
+    enum AnnounceLayout : uint8_t {
+        ANNOUNCE_LAYOUT_STANDARD = 0,
+        ANNOUNCE_LAYOUT_LEGACY_FIXED_SIG = 1,
+    };
+
+    struct AnnounceInfo {
+        const uint8_t* signature = nullptr;
+        const uint8_t* signingKey = nullptr;
+        const uint8_t* appData = nullptr;
+        uint16_t sigOffset = 0;
+        uint16_t appDataLen = 0;
+        AnnounceLayout layout = ANNOUNCE_LAYOUT_STANDARD;
+    };
+
     uint8_t pubEncKey[32];    ///< X25519 public
     uint8_t privEncKey[32];   ///< X25519 private
     uint8_t pubSigKey[32];    ///< Ed25519 public
@@ -150,32 +164,26 @@ public:
      *
      * @return true if signature is valid.
      */
-    static bool validateAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len) {
+    static bool inspectAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len,
+                                AnnounceInfo* outInfo = nullptr) {
         const uint16_t minLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN
                               + RNS_RANDOM_BLOB_LEN + RNS_SIGLENGTH;
         if (!destHash || !data || len < minLen) return false;
 
-        // Reticulum wire format: pubkey|nameHash|randomHash|SIGNATURE|appData
-        // Signature is at fixed offset, NOT at end of data.
-        const uint16_t sigOffset = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-        const uint8_t* signature  = &data[sigOffset];
-        const uint8_t* signingKey = &data[32];   // Ed25519 pub at bytes 32..63
-
-        // Signed data = destHash + pubkey + nameHash + randomHash + appData (skip signature)
-        // The destHash from the packet header is prepended per Reticulum spec.
-        const uint16_t appDataOffset = sigOffset + RNS_SIGLENGTH;
-        const uint16_t appDataLen = (len > appDataOffset) ? (len - appDataOffset) : 0;
-        const uint16_t signedLen  = RNS_ADDR_LEN + sigOffset + appDataLen;
-        if (signedLen > RNS_MTU) return false;
-
-        static uint8_t signedBuf[RNS_MTU];
-        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
-        memcpy(signedBuf + RNS_ADDR_LEN, data, sigOffset);
-        if (appDataLen > 0) {
-            memcpy(signedBuf + RNS_ADDR_LEN + sigOffset, data + appDataOffset, appDataLen);
+        AnnounceInfo info;
+        if (inspectAnnounceLayout(destHash, data, len, false, info)) {
+            if (outInfo) *outInfo = info;
+            return true;
         }
+        if (inspectAnnounceLayout(destHash, data, len, true, info)) {
+            if (outInfo) *outInfo = info;
+            return true;
+        }
+        return false;
+    }
 
-        return Ed25519::verify(signature, signingKey, signedBuf, signedLen);
+    static bool validateAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len) {
+        return inspectAnnounce(destHash, data, len, nullptr);
     }
 
     // ── Extract 64-byte public key from announce data ─────
@@ -183,6 +191,46 @@ public:
                                          uint8_t outPubKey[RNS_KEYSIZE]) {
         memcpy(outPubKey, data, RNS_KEYSIZE);
     }
+
+private:
+    static bool inspectAnnounceLayout(const uint8_t* destHash, const uint8_t* data, uint16_t len,
+                                      bool legacyFixedSignature, AnnounceInfo& outInfo) {
+        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        const uint16_t minLen = baseLen + RNS_SIGLENGTH;
+        if (!destHash || !data || len < minLen) return false;
+
+        uint16_t sigOffset = legacyFixedSignature ? baseLen : (uint16_t)(len - RNS_SIGLENGTH);
+        if (sigOffset < baseLen || (sigOffset + RNS_SIGLENGTH) > len) return false;
+
+        uint16_t appDataOffset = legacyFixedSignature ? (uint16_t)(baseLen + RNS_SIGLENGTH) : baseLen;
+        uint16_t appDataLen = legacyFixedSignature
+            ? (uint16_t)(len - appDataOffset)
+            : (uint16_t)(sigOffset - baseLen);
+        const uint16_t signedLen = RNS_ADDR_LEN + baseLen + appDataLen;
+        if (signedLen > RNS_MTU) return false;
+
+        static uint8_t signedBuf[RNS_MTU];
+        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
+        memcpy(signedBuf + RNS_ADDR_LEN, data, baseLen);
+        if (appDataLen > 0) {
+            memcpy(signedBuf + RNS_ADDR_LEN + baseLen, data + appDataOffset, appDataLen);
+        }
+
+        const uint8_t* signature = data + sigOffset;
+        const uint8_t* signingKey = data + 32;
+        if (!Ed25519::verify(signature, signingKey, signedBuf, signedLen)) return false;
+
+        outInfo.signature = signature;
+        outInfo.signingKey = signingKey;
+        outInfo.appData = (appDataLen > 0) ? (data + appDataOffset) : nullptr;
+        outInfo.sigOffset = sigOffset;
+        outInfo.appDataLen = appDataLen;
+        outInfo.layout = legacyFixedSignature ? ANNOUNCE_LAYOUT_LEGACY_FIXED_SIG
+                                              : ANNOUNCE_LAYOUT_STANDARD;
+        return true;
+    }
+
+public:
 
     // ── Sign arbitrary message ────────────────────────────
     void sign(const uint8_t* msg, uint16_t len, uint8_t sig[64]) const {

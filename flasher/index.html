@@ -2090,196 +2090,6 @@
         </div>
       </div>
 
-      <!-- Power & LEDs (collapsible) -->
-      <div class="collapse-hdr" onclick="toggleCollapse(this)">
-        <span class="caret">&#9654;</span>
-        <div class="sec-divider" style="margin:0;">Power & LEDs</div>
-      </div>
-      <div class="collapse-body">
-        <!-- Quick preset bar -->
-        <div class="led-preset-bar" style="margin-top:0.4rem;">
-          <label>Preset:</label>
-          <button class="led-preset-chip active" data-preset="balanced" onclick="selectLedPreset('balanced')">Balanced</button>
-          <button class="led-preset-chip" data-preset="low-power" onclick="selectLedPreset('low-power')">Low power</button>
-          <button class="led-preset-chip" data-preset="dark" onclick="selectLedPreset('dark')">Dark</button>
-        </div>
-
-        <div class="led-cards">
-          <!-- ── Green LED card ── -->
-          <div class="led-card" id="ledCardGreen">
-            <div class="led-card-hdr">
-              <span class="led-dot green" id="ledDotGreen"></span>
-              <span class="led-card-title">Green LED — Status</span>
-              <span class="led-card-tag" id="ledTagGreen">idle</span>
-            </div>
-            <div class="led-card-body">
-              <label>
-                Idle mode
-                <select id="repGreenLedIdleMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="heartbeat">Heartbeat blink</option>
-                  <option value="solid">Solid on</option>
-                  <option value="off">Off</option>
-                </select>
-              </label>
-              <label>
-                RX flashes
-                <select id="repGreenLedRxMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Disabled</option>
-                  <option value="on">Enabled</option>
-                </select>
-              </label>
-              <label>
-                TX flashes
-                <select id="repGreenLedTxMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Disabled</option>
-                  <option value="on">Enabled</option>
-                </select>
-              </label>
-              <label>
-                Morse mode
-                <select id="repGreenLedMorseMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Off</option>
-                  <option value="errors">Errors only</option>
-                  <option value="incoming">Incoming messages</option>
-                  <option value="both">Errors + incoming</option>
-                  <option value="default">Default message</option>
-                </select>
-              </label>
-            </div>
-            <div class="led-card-foot">Green can now handle idle, raw RX/TX flashes, and morse playback independently.</div>
-          </div>
-
-          <!-- ── Blue LED card ── -->
-          <div class="led-card" id="ledCardBlue">
-            <div class="led-card-hdr">
-              <span class="led-dot blue" id="ledDotBlue"></span>
-              <span class="led-card-title">Blue LED — Signal & Morse</span>
-              <span class="led-card-tag" id="ledTagBlue">idle</span>
-            </div>
-            <div class="led-card-body">
-              <label>
-                Idle mode
-                <select id="repBlueLedIdleMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Off</option>
-                  <option value="solid">Solid on</option>
-                  <option value="heartbeat">Heartbeat blink</option>
-                </select>
-              </label>
-              <label>
-                RX flashes
-                <select id="repBlueLedRxMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="on">Enabled</option>
-                  <option value="off">Disabled</option>
-                </select>
-              </label>
-              <label>
-                TX flashes
-                <select id="repBlueLedTxMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="on">Enabled</option>
-                  <option value="off">Disabled</option>
-                </select>
-              </label>
-              <label>
-                Morse mode
-                <select id="repBlueLedMorseMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Off</option>
-                  <option value="errors" selected>Errors only</option>
-                  <option value="incoming">Incoming messages</option>
-                  <option value="both">Errors + incoming</option>
-                  <option value="default">Default message</option>
-                </select>
-              </label>
-            </div>
-            <div class="led-card-foot">Blue remains the default radio activity LED, but its RX, TX, and morse roles are now fully independent.</div>
-          </div>
-
-          <!-- ── Red LED card ── -->
-          <div class="led-card section-disabled" id="ledCardRed">
-            <div class="led-card-hdr">
-              <span class="led-dot off" id="ledDotRed"></span>
-              <span class="led-card-title">Red LED — Optional</span>
-              <span class="led-card-tag" id="ledTagRed">unavailable</span>
-            </div>
-            <div class="led-card-body">
-              <label>
-                Idle mode
-                <select id="repRedLedIdleMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Off</option>
-                  <option value="solid">Solid on</option>
-                  <option value="heartbeat">Heartbeat blink</option>
-                </select>
-              </label>
-              <label>
-                RX flashes
-                <select id="repRedLedRxMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Disabled</option>
-                  <option value="on">Enabled</option>
-                </select>
-              </label>
-              <label>
-                TX flashes
-                <select id="repRedLedTxMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Disabled</option>
-                  <option value="on">Enabled</option>
-                </select>
-              </label>
-              <label>
-                Morse mode
-                <select id="repRedLedMorseMode" class="form-select" onchange="updateLedCardUi()">
-                  <option value="off">Off</option>
-                  <option value="errors">Errors only</option>
-                  <option value="incoming">Incoming messages</option>
-                  <option value="both">Errors + incoming</option>
-                  <option value="default">Default message</option>
-                </select>
-              </label>
-            </div>
-            <div class="led-card-foot" id="ledRedFoot">This WisBlock target does not expose a red LED pin. These controls are reserved for boards that add one later.</div>
-          </div>
-        </div>
-
-        <div class="led-sub-panel show" id="morseDetailPanel" style="margin-top:0.55rem;">
-          <div class="sub-grid">
-            <label>
-              Default Morse message
-              <input id="repMorseDefault" type="text" maxlength="16" placeholder="SOS">
-            </label>
-            <label>
-              Alert behavior
-              <select id="repLedAlertMode" class="form-select" onchange="updateLedCardUi()">
-                <option value="once">Play once</option>
-                <option value="count">Repeat N times</option>
-                <option value="until-clear">Until read / cleared</option>
-              </select>
-            </label>
-            <label id="lblAlertCount">
-              Repeat count
-              <input id="repLedAlertCount" type="number" min="1" max="9" value="3">
-            </label>
-            <label id="lblAlertInterval">
-              Reminder interval (s)
-              <input id="repLedAlertInterval" type="number" min="1" max="3600" value="20">
-            </label>
-            <label class="full">
-              Watch specific senders
-              <input id="repLedAlertWatch" type="text" placeholder="Blank = all senders, or comma-separated 16-hex peer hashes">
-            </label>
-          </div>
-          <div class="led-actions">
-            <button class="qbtn" onclick="addSelectedPeerToLedAlerts()">+ Selected peer</button>
-            <button class="qbtn" onclick="runRepeaterAction('morse test')">Test blink</button>
-          </div>
-        </div>
-
-        <!-- Actions row -->
-        <div class="led-actions" style="margin-top:0.55rem;">
-          <button class="qbtn" onclick="applyAllLedSettings()">Apply to device</button>
-          <button class="qbtn" onclick="savePowerDefaults()">Save UI defaults</button>
-          <button class="qbtn" onclick="runRepeaterAction('led')">Read config</button>
-          <button class="qbtn" onclick="runRepeaterAction('morse')">Read Morse</button>
-        </div>
-        <div class="repeater-panel-foot" style="margin-top:0.3rem;">Low-power preset disables all LEDs. Sticky Morse alerts clear automatically when you open a matching chat.</div>
-      </div>
     </div>
 
     <!-- ── Diagnostics Tab ───────────────────── -->
@@ -2387,6 +2197,233 @@
               <button class="qbtn" onclick="clearCommLog()">Clear view</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div id="msgPowerSection" style="margin-top:0.75rem;">
+        <div class="collapse-hdr open" onclick="toggleCollapse(this)">
+          <span class="caret">&#9654;</span>
+          <div class="sec-divider" style="margin:0;">Power & LEDs</div>
+        </div>
+        <div class="collapse-body open">
+          <div class="announce-panel" style="margin-top:0.35rem;">
+            <div class="announce-panel-copy">
+              Tune how chat-related activity behaves on the device. Cadence settings are saved to the node, while presets and browser defaults only affect this UI until you apply them.
+            </div>
+            <div class="repeater-form" style="margin-top:0.45rem;">
+              <div class="repeater-field">
+                <label for="repAnnounceInterval">Announce every</label>
+                <input id="repAnnounceInterval" type="number" min="15" max="3600" value="60" oninput="markMessagePowerDirty()">
+              </div>
+              <div class="repeater-field">
+                <label for="repDiscoveryInterval">Discover sweep every</label>
+                <input id="repDiscoveryInterval" type="number" min="30" max="7200" value="120" oninput="markMessagePowerDirty()">
+              </div>
+            </div>
+            <div class="announce-actions" style="margin-top:0.45rem;">
+              <button class="qbtn" onclick="applyRepeaterPowerSettings(true)">Apply cadence + save</button>
+              <button class="qbtn" onclick="refreshMessagePowerPanel(false)">Read from device</button>
+            </div>
+            <div class="repeater-panel-foot" style="margin-top:0.25rem;">Lower cadence means less airtime and lower power draw. These timers control periodic self-announce and discovery sweeps.</div>
+          </div>
+
+          <div class="led-sub-panel show" id="morseDetailPanel" style="margin-top:0.55rem;">
+            <div class="sub-grid">
+              <label>
+                Default Morse message
+                <input id="repMorseDefault" type="text" maxlength="16" placeholder="SOS" oninput="markMessagePowerDirty()">
+              </label>
+              <label>
+                Alert behavior
+                <select id="repLedAlertMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                  <option value="once">Play once</option>
+                  <option value="count">Repeat N times</option>
+                  <option value="until-clear">Until read / cleared</option>
+                </select>
+              </label>
+              <label id="lblAlertCount">
+                Repeat count
+                <input id="repLedAlertCount" type="number" min="1" max="9" value="3" oninput="markMessagePowerDirty()">
+              </label>
+              <label id="lblAlertInterval">
+                Reminder interval (s)
+                <input id="repLedAlertInterval" type="number" min="1" max="3600" value="20" oninput="markMessagePowerDirty()">
+              </label>
+              <label class="full">
+                Watch specific senders
+                <input id="repLedAlertWatch" type="text" placeholder="Blank = all senders, or comma-separated 16-hex peer hashes" oninput="markMessagePowerDirty()">
+              </label>
+            </div>
+            <div class="led-actions">
+              <button class="qbtn" onclick="addSelectedPeerToLedAlerts()">+ Selected peer</button>
+              <button class="qbtn" onclick="runRepeaterAction('morse test')">Test blink</button>
+              <button class="qbtn" onclick="applyAllLedSettings()">Apply alerts + LEDs</button>
+            </div>
+          </div>
+
+          <div class="led-preset-bar" style="margin-top:0.55rem;">
+            <label>Preset:</label>
+            <button class="led-preset-chip active" data-preset="balanced" onclick="selectLedPreset('balanced')">Balanced</button>
+            <button class="led-preset-chip" data-preset="low-power" onclick="selectLedPreset('low-power')">Low power</button>
+            <button class="led-preset-chip" data-preset="dark" onclick="selectLedPreset('dark')">Dark</button>
+          </div>
+
+          <div class="led-cards">
+            <div class="led-card" id="ledCardGreen">
+              <div class="led-card-hdr">
+                <span class="led-dot green" id="ledDotGreen"></span>
+                <span class="led-card-title">Green LED — Status</span>
+                <span class="led-card-tag" id="ledTagGreen">idle</span>
+              </div>
+              <div class="led-card-body">
+                <label>
+                  Idle mode
+                  <select id="repGreenLedIdleMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="heartbeat">Heartbeat blink</option>
+                    <option value="solid">Solid on</option>
+                    <option value="off">Off</option>
+                  </select>
+                </label>
+                <label>
+                  RX flashes
+                  <select id="repGreenLedRxMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Disabled</option>
+                    <option value="on">Enabled</option>
+                  </select>
+                </label>
+                <label>
+                  TX flashes
+                  <select id="repGreenLedTxMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Disabled</option>
+                    <option value="on">Enabled</option>
+                  </select>
+                </label>
+                <label>
+                  Morse mode
+                  <select id="repGreenLedMorseMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Off</option>
+                    <option value="errors">Errors only</option>
+                    <option value="incoming">Incoming messages</option>
+                    <option value="both">Errors + incoming</option>
+                    <option value="default">Default message</option>
+                  </select>
+                </label>
+                <label class="full" id="repGreenLedPeerTargetWrap" style="display:none;">
+                  Morse incoming peer target
+                  <select id="repGreenLedPeerTarget" class="form-select" onchange="markMessagePowerDirty(); onLedPeerTargetChanged()">
+                    <option value="">Any sender (no fixed peer)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="led-card-foot">Green can handle idle, RX/TX flashes, and morse playback independently.</div>
+            </div>
+
+            <div class="led-card" id="ledCardBlue">
+              <div class="led-card-hdr">
+                <span class="led-dot blue" id="ledDotBlue"></span>
+                <span class="led-card-title">Blue LED — Signal & Morse</span>
+                <span class="led-card-tag" id="ledTagBlue">idle</span>
+              </div>
+              <div class="led-card-body">
+                <label>
+                  Idle mode
+                  <select id="repBlueLedIdleMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Off</option>
+                    <option value="solid">Solid on</option>
+                    <option value="heartbeat">Heartbeat blink</option>
+                  </select>
+                </label>
+                <label>
+                  RX flashes
+                  <select id="repBlueLedRxMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="on">Enabled</option>
+                    <option value="off">Disabled</option>
+                  </select>
+                </label>
+                <label>
+                  TX flashes
+                  <select id="repBlueLedTxMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="on">Enabled</option>
+                    <option value="off">Disabled</option>
+                  </select>
+                </label>
+                <label>
+                  Morse mode
+                  <select id="repBlueLedMorseMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Off</option>
+                    <option value="errors" selected>Errors only</option>
+                    <option value="incoming">Incoming messages</option>
+                    <option value="both">Errors + incoming</option>
+                    <option value="default">Default message</option>
+                  </select>
+                </label>
+                <label class="full" id="repBlueLedPeerTargetWrap" style="display:none;">
+                  Morse incoming peer target
+                  <select id="repBlueLedPeerTarget" class="form-select" onchange="markMessagePowerDirty(); onLedPeerTargetChanged()">
+                    <option value="">Any sender (no fixed peer)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="led-card-foot">Blue remains the default radio activity LED, but its RX, TX, and morse roles are independent.</div>
+            </div>
+
+            <div class="led-card section-disabled" id="ledCardRed">
+              <div class="led-card-hdr">
+                <span class="led-dot off" id="ledDotRed"></span>
+                <span class="led-card-title">Red LED — Optional</span>
+                <span class="led-card-tag" id="ledTagRed">unavailable</span>
+              </div>
+              <div class="led-card-body">
+                <label>
+                  Idle mode
+                  <select id="repRedLedIdleMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Off</option>
+                    <option value="solid">Solid on</option>
+                    <option value="heartbeat">Heartbeat blink</option>
+                  </select>
+                </label>
+                <label>
+                  RX flashes
+                  <select id="repRedLedRxMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Disabled</option>
+                    <option value="on">Enabled</option>
+                  </select>
+                </label>
+                <label>
+                  TX flashes
+                  <select id="repRedLedTxMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Disabled</option>
+                    <option value="on">Enabled</option>
+                  </select>
+                </label>
+                <label>
+                  Morse mode
+                  <select id="repRedLedMorseMode" class="form-select" onchange="markMessagePowerDirty(); updateLedCardUi()">
+                    <option value="off">Off</option>
+                    <option value="errors">Errors only</option>
+                    <option value="incoming">Incoming messages</option>
+                    <option value="both">Errors + incoming</option>
+                    <option value="default">Default message</option>
+                  </select>
+                </label>
+                <label class="full" id="repRedLedPeerTargetWrap" style="display:none;">
+                  Morse incoming peer target
+                  <select id="repRedLedPeerTarget" class="form-select" onchange="markMessagePowerDirty(); onLedPeerTargetChanged()">
+                    <option value="">Any sender (no fixed peer)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="led-card-foot" id="ledRedFoot">This WisBlock target does not expose a red LED pin. These controls are reserved for boards that add one later.</div>
+            </div>
+          </div>
+
+          <div class="led-actions" style="margin-top:0.55rem;">
+            <button class="qbtn" onclick="applyLedSettings(true)">Apply LEDs + save</button>
+            <button class="qbtn" onclick="applyMorseBlinkSettings(true)">Apply Morse + save</button>
+            <button class="qbtn" onclick="savePowerDefaults()">Save browser defaults</button>
+            <button class="qbtn" onclick="refreshMessagePowerPanel(false)">Refresh panel</button>
+          </div>
+          <div class="repeater-panel-foot" style="margin-top:0.3rem;">Low-power preset disables LED activity and slows the device cadence. Sticky Morse alerts clear automatically when you open a matching chat.</div>
         </div>
       </div>
     </div>
@@ -2833,20 +2870,27 @@ let autoRefreshCycle = 0;
 // Device-side auth state: null=unknown, 'none'=no password, 'required'=password set
 let deviceAuthState = null;
 let rxResponseListeners = [];
+let pendingOutgoingMessageAcks = new Map();
 
 const queryParams = new URLSearchParams(window.location.search);
 
 const SERIAL_CMD_GAP_MS = 90;
 const SERIAL_BOOT_GRACE_MS = 2200;
 const SNAPSHOT_MIN_INTERVAL_MS = 3000;
+const PEER_SEND_RESPONSE_TIMEOUT_MS = 12000;
+const PEER_SEND_MAX_ATTEMPTS = 3;
+const PEER_SEND_RETRY_BASE_DELAY_MS = 500;
 const REFRESH_PREFS_KEY = 'rattunnel_repeater_refresh';
 const DEFAULT_REFRESH_PREFS = {
-  enabled: true,
+  enabled: false,
   intervalMs: 10000,
   scope: 'full',
   peerMode: 'always',
+  announceIntervalSec: 60,
+  discoveryIntervalSec: 120,
   powerPreset: 'balanced',
 };
+let ledEditingActive = false;
 let refreshPrefs = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(REFRESH_PREFS_KEY) || '{}');
@@ -3525,6 +3569,29 @@ function markThreadOpened(hash, source = 'ui') {
   if (changed) saveChatThreads();
   syncUnreadCountsFromThreads();
 }
+
+function markAllThreadsOpened(source = 'backdoor') {
+  let changed = false;
+  Object.values(chatThreads).forEach(thread => {
+    if (!thread || !Array.isArray(thread.messages)) return;
+    let threadChanged = false;
+    thread.messages.forEach(msg => {
+      if (msg.direction === 'in' && !msg.opened) {
+        msg.opened = true;
+        msg.openedAt = Date.now();
+        msg.openedSource = source;
+        threadChanged = true;
+      }
+    });
+    if (threadChanged) {
+      thread.lastOpenedAt = Date.now();
+      changed = true;
+    }
+  });
+  if (changed) saveChatThreads();
+  syncUnreadCountsFromThreads();
+  return changed;
+}
 function deleteChatThread(hash) {
   const threadKey = threadKeyForHash(hash);
   if (chatThreads[threadKey]) {
@@ -3654,6 +3721,8 @@ const repeaterState = {
   name: '—',
   hash: '—',
   refreshAt: '—',
+  announceInterval: '60',
+  discoveryInterval: '120',
   ledChannels: {
     green: { available: 'on', idle: 'heartbeat', rx: 'off', tx: 'off', morse: 'off' },
     blue: { available: 'on', idle: 'off', rx: 'on', tx: 'on', morse: 'errors' },
@@ -3663,6 +3732,7 @@ const repeaterState = {
   ledAlertCount: '3',
   ledAlertInterval: '20',
   ledAlertWatch: '',
+  ledPeerTargets: { green: '', blue: '', red: '' },
   ratHoleEnabled: 'off',
   ratHoleBootReset: 'off',
 };
@@ -3702,6 +3772,7 @@ window.addEventListener('DOMContentLoaded', applyHubQueryConfig);
 window.addEventListener('DOMContentLoaded', loadRefreshPrefsIntoUi);
 window.addEventListener('DOMContentLoaded', loadRatHolePrefsIntoUi);
 window.addEventListener('DOMContentLoaded', updateLedCardUi);
+window.addEventListener('DOMContentLoaded', bindMessagePowerDirtyTracking);
 window.addEventListener('DOMContentLoaded', renderChatThreadList);
 window.addEventListener('DOMContentLoaded', renderActiveChatThread);
 window.addEventListener('DOMContentLoaded', () => {
@@ -4354,15 +4425,21 @@ function updateStatusUi() {
   if (annName && repeaterState.name && repeaterState.name !== '—' && annName.value.trim() === '') {
     annName.value = repeaterState.name;
   }
-  const ledAlertMode = document.getElementById('repLedAlertMode');
-  const ledAlertCount = document.getElementById('repLedAlertCount');
-  const ledAlertInterval = document.getElementById('repLedAlertInterval');
-  const ledAlertWatch = document.getElementById('repLedAlertWatch');
-  if (ledAlertMode && repeaterState.ledAlertMode) ledAlertMode.value = repeaterState.ledAlertMode;
-  if (ledAlertCount && repeaterState.ledAlertCount) ledAlertCount.value = repeaterState.ledAlertCount;
-  if (ledAlertInterval && repeaterState.ledAlertInterval) ledAlertInterval.value = repeaterState.ledAlertInterval;
-  if (ledAlertWatch) ledAlertWatch.value = repeaterState.ledAlertWatch || '';
-  updateLedUiFromState();
+  if (!ledEditingActive) {
+    const announceIntervalEl = document.getElementById('repAnnounceInterval');
+    const discoveryIntervalEl = document.getElementById('repDiscoveryInterval');
+    const ledAlertMode = document.getElementById('repLedAlertMode');
+    const ledAlertCount = document.getElementById('repLedAlertCount');
+    const ledAlertInterval = document.getElementById('repLedAlertInterval');
+    const ledAlertWatch = document.getElementById('repLedAlertWatch');
+    if (announceIntervalEl && repeaterState.announceInterval) announceIntervalEl.value = repeaterState.announceInterval;
+    if (discoveryIntervalEl && repeaterState.discoveryInterval) discoveryIntervalEl.value = repeaterState.discoveryInterval;
+    if (ledAlertMode && repeaterState.ledAlertMode) ledAlertMode.value = repeaterState.ledAlertMode;
+    if (ledAlertCount && repeaterState.ledAlertCount) ledAlertCount.value = repeaterState.ledAlertCount;
+    if (ledAlertInterval && repeaterState.ledAlertInterval) ledAlertInterval.value = repeaterState.ledAlertInterval;
+    if (ledAlertWatch) ledAlertWatch.value = repeaterState.ledAlertWatch || '';
+    updateLedUiFromState();
+  }
   updateAnnouncePreview();
   updateAutoRefreshUi();
 
@@ -4396,9 +4473,62 @@ function setLedChannelUi(color, cfg = {}) {
   if (morseEl && cfg.morse) morseEl.value = cfg.morse;
 }
 
+function updateLedPeerTargetOptions() {
+  const nodes = Array.from(detectedNodes.values()).sort((a, b) => getPeerDisplayName(a.destHash).localeCompare(getPeerDisplayName(b.destHash)));
+  ['green', 'blue', 'red'].forEach(color => {
+    const sel = document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedPeerTarget`);
+    if (!sel) return;
+    const prev = (repeaterState.ledPeerTargets?.[color] || sel.value || '');
+    sel.innerHTML = '';
+
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'Any sender (no fixed peer)';
+    sel.appendChild(allOpt);
+
+    nodes.forEach(node => {
+      const opt = document.createElement('option');
+      opt.value = node.destHash;
+      opt.textContent = `${getPeerDisplayName(node.destHash, node.destHash.slice(0, 8) + '..')} (${node.destHash.slice(0, 8)}..)`;
+      sel.appendChild(opt);
+    });
+
+    const stillExists = prev && nodes.some(n => n.destHash === prev);
+    sel.value = stillExists ? prev : '';
+    if (!repeaterState.ledPeerTargets) repeaterState.ledPeerTargets = { green: '', blue: '', red: '' };
+    repeaterState.ledPeerTargets[color] = sel.value;
+  });
+}
+
+function onLedPeerTargetChanged() {
+  ['green', 'blue', 'red'].forEach(color => {
+    const sel = document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedPeerTarget`);
+    if (!sel) return;
+    if (!repeaterState.ledPeerTargets) repeaterState.ledPeerTargets = { green: '', blue: '', red: '' };
+    repeaterState.ledPeerTargets[color] = sel.value || '';
+  });
+}
+
 function updateLedUiFromState() {
+  if (ledEditingActive) return;
   ['green', 'blue', 'red'].forEach(color => setLedChannelUi(color, repeaterState.ledChannels?.[color] || {}));
+  updateLedPeerTargetOptions();
   updateLedCardUi();
+}
+
+function markMessagePowerDirty() {
+  ledEditingActive = true;
+}
+
+function clearMessagePowerDirty() {
+  ledEditingActive = false;
+}
+
+function bindMessagePowerDirtyTracking() {
+  const panel = document.getElementById('msgPowerSection');
+  if (!panel) return;
+  panel.addEventListener('input', () => { ledEditingActive = true; });
+  panel.addEventListener('change', () => { ledEditingActive = true; });
 }
 
 function anyLedMorseEnabled() {
@@ -4409,9 +4539,13 @@ function loadRefreshPrefsIntoUi() {
   const intervalEl = document.getElementById('autoRefreshInterval');
   const scopeEl = document.getElementById('autoRefreshScope');
   const peerEl = document.getElementById('peerRefreshMode');
+  const announceEl = document.getElementById('repAnnounceInterval');
+  const discoveryEl = document.getElementById('repDiscoveryInterval');
   if (intervalEl) intervalEl.value = String(refreshPrefs.intervalMs);
   if (scopeEl) scopeEl.value = refreshPrefs.scope;
   if (peerEl) peerEl.value = refreshPrefs.peerMode;
+  if (announceEl) announceEl.value = String(refreshPrefs.announceIntervalSec || DEFAULT_REFRESH_PREFS.announceIntervalSec);
+  if (discoveryEl) discoveryEl.value = String(refreshPrefs.discoveryIntervalSec || DEFAULT_REFRESH_PREFS.discoveryIntervalSec);
   /* activate the correct preset chip */
   const savedPreset = refreshPrefs.powerPreset || 'balanced';
   document.querySelectorAll('.led-preset-chip').forEach(btn => {
@@ -4429,10 +4563,14 @@ function readRefreshPrefsFromUi() {
   const intervalEl = document.getElementById('autoRefreshInterval');
   const scopeEl = document.getElementById('autoRefreshScope');
   const peerEl = document.getElementById('peerRefreshMode');
+  const announceEl = document.getElementById('repAnnounceInterval');
+  const discoveryEl = document.getElementById('repDiscoveryInterval');
   const activeChip = document.querySelector('.led-preset-chip.active');
   refreshPrefs.intervalMs = Math.max(5000, Number(intervalEl?.value || DEFAULT_REFRESH_PREFS.intervalMs));
   refreshPrefs.scope = scopeEl?.value || DEFAULT_REFRESH_PREFS.scope;
   refreshPrefs.peerMode = peerEl?.value || DEFAULT_REFRESH_PREFS.peerMode;
+  refreshPrefs.announceIntervalSec = Math.max(15, Math.min(3600, Number(announceEl?.value || DEFAULT_REFRESH_PREFS.announceIntervalSec)));
+  refreshPrefs.discoveryIntervalSec = Math.max(30, Math.min(7200, Number(discoveryEl?.value || DEFAULT_REFRESH_PREFS.discoveryIntervalSec)));
   refreshPrefs.powerPreset = activeChip ? activeChip.dataset.preset : (DEFAULT_REFRESH_PREFS.powerPreset || 'balanced');
 }
 
@@ -4470,6 +4608,7 @@ function getPowerPresetConfig(preset) {
   if (preset === 'low-power') {
     return {
       refresh: { intervalMs: 60000, scope: 'light', peerMode: 'rare' },
+      cadence: { announceIntervalSec: 300, discoveryIntervalSec: 600 },
       leds: {
         green: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
         blue: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
@@ -4480,6 +4619,7 @@ function getPowerPresetConfig(preset) {
   if (preset === 'dark') {
     return {
       refresh: { intervalMs: 30000, scope: 'standard', peerMode: 'alternate' },
+      cadence: { announceIntervalSec: 120, discoveryIntervalSec: 240 },
       leds: {
         green: { idle: 'off', rx: 'off', tx: 'off', morse: 'off' },
         blue: { idle: 'off', rx: 'off', tx: 'off', morse: 'errors' },
@@ -4489,6 +4629,7 @@ function getPowerPresetConfig(preset) {
   }
   return {
     refresh: { intervalMs: 10000, scope: 'full', peerMode: 'always' },
+    cadence: { announceIntervalSec: 60, discoveryIntervalSec: 120 },
     leds: {
       green: { idle: 'heartbeat', rx: 'off', tx: 'off', morse: 'off' },
       blue: { idle: 'off', rx: 'on', tx: 'on', morse: 'errors' },
@@ -4504,9 +4645,13 @@ function applyPowerPresetToForm(updateStoredPrefs = true) {
   const intervalEl = document.getElementById('autoRefreshInterval');
   const scopeEl = document.getElementById('autoRefreshScope');
   const peerEl = document.getElementById('peerRefreshMode');
+  const announceEl = document.getElementById('repAnnounceInterval');
+  const discoveryEl = document.getElementById('repDiscoveryInterval');
   if (intervalEl) intervalEl.value = String(config.refresh.intervalMs);
   if (scopeEl) scopeEl.value = config.refresh.scope;
   if (peerEl) peerEl.value = config.refresh.peerMode;
+  if (announceEl) announceEl.value = String(config.cadence.announceIntervalSec);
+  if (discoveryEl) discoveryEl.value = String(config.cadence.discoveryIntervalSec);
   setLedChannelUi('green', config.leds.green);
   setLedChannelUi('blue', config.leds.blue);
   setLedChannelUi('red', config.leds.red);
@@ -4526,6 +4671,7 @@ function selectLedPreset(preset) {
   document.querySelectorAll('.led-preset-chip').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.preset === preset);
   });
+  markMessagePowerDirty();
   const config = getPowerPresetConfig(preset);
   setLedChannelUi('green', config.leds.green);
   setLedChannelUi('blue', config.leds.blue);
@@ -4534,9 +4680,13 @@ function selectLedPreset(preset) {
   const intervalEl = document.getElementById('autoRefreshInterval');
   const scopeEl = document.getElementById('autoRefreshScope');
   const peerEl = document.getElementById('peerRefreshMode');
+  const announceEl = document.getElementById('repAnnounceInterval');
+  const discoveryEl = document.getElementById('repDiscoveryInterval');
   if (intervalEl) intervalEl.value = String(config.refresh.intervalMs);
   if (scopeEl) scopeEl.value = config.refresh.scope;
   if (peerEl) peerEl.value = config.refresh.peerMode;
+  if (announceEl) announceEl.value = String(config.cadence.announceIntervalSec);
+  if (discoveryEl) discoveryEl.value = String(config.cadence.discoveryIntervalSec);
   onRefreshPrefChanged();
   updateLedCardUi();
 }
@@ -4572,6 +4722,13 @@ function updateLedCardUi() {
     }
     if (card) card.classList.toggle('section-disabled', cfg.available !== 'on');
     if (card) card.classList.toggle('section-enabled', cfg.available === 'on');
+
+    const targetWrap = document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedPeerTargetWrap`);
+    const targetSel = document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedPeerTarget`);
+    const incomingEnabled = cfg.available === 'on' && (cfg.morse === 'incoming' || cfg.morse === 'both' || cfg.morse === 'default');
+    if (targetWrap) targetWrap.style.display = incomingEnabled ? '' : 'none';
+    if (targetSel) targetSel.disabled = !incomingEnabled;
+
     if (color === 'red') {
       const foot = document.getElementById('ledRedFoot');
       if (foot) foot.textContent = cfg.available === 'on'
@@ -4592,7 +4749,50 @@ function updateLedCardUi() {
 async function applyAllLedSettings() {
   await applyLedSettings(false);
   await applyMorseBlinkSettings(true);
+  clearMessagePowerDirty();
   showFlashAlert('info', 'All LED & Morse settings applied and saved.');
+}
+
+async function applyRepeaterPowerSettings(saveAfter = true) {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!canUseRepeaterMode()) {
+    showFlashAlert('warn', 'This connected firmware is missing required repeater commands. Flash latest RatTunnel firmware first.');
+    return;
+  }
+
+  const announceInterval = Math.max(15, Math.min(3600, Number(document.getElementById('repAnnounceInterval')?.value || 60)));
+  const discoveryInterval = Math.max(30, Math.min(7200, Number(document.getElementById('repDiscoveryInterval')?.value || 120)));
+
+  await sendCmd(`power announce ${announceInterval}`);
+  await sleep(120);
+  await sendCmd(`power discover ${discoveryInterval}`);
+  await sleep(120);
+  if (saveAfter) {
+    await sendCmd('save');
+    await sleep(120);
+  }
+  clearMessagePowerDirty();
+  await sendCmd('power');
+  showFlashAlert('info', saveAfter ? 'Device cadence applied and saved.' : 'Device cadence applied.');
+  openRepeaterConsole();
+}
+
+async function refreshMessagePowerPanel(silent = true) {
+  if (!writer) {
+    showFlashAlert('warn', 'Connect to the repeater first.');
+    return;
+  }
+  if (!requireRepeaterAccess('Unlock repeater access to read message power and LED settings.')) return;
+  clearMessagePowerDirty();
+  await sendCmd('power');
+  await sleep(120);
+  await sendCmd('led');
+  await sleep(120);
+  await sendCmd('morse');
+  if (!silent) openRepeaterConsole();
 }
 
 function loadRatHolePrefsIntoUi() {
@@ -4793,6 +4993,7 @@ function updateDetectedNodesUi() {
   if (!nodes.length) {
     emptyEl.style.display = '';
     emptyEl.textContent = 'No nodes detected yet.';
+    updateLedPeerTargetOptions();
     return;
   }
 
@@ -4821,6 +5022,7 @@ function updateDetectedNodesUi() {
     listEl.appendChild(row);
   }
 
+  updateLedPeerTargetOptions();
   updatePeerSelector();
 }
 
@@ -4998,6 +5200,8 @@ function loadSettingsFromStatus(silent = false) {
   const syncEl = document.getElementById('repSync');
   const preambleEl = document.getElementById('repPreamble');
   const profileEl = document.getElementById('repProfile');
+  const announceIntervalEl = document.getElementById('repAnnounceInterval');
+  const discoveryIntervalEl = document.getElementById('repDiscoveryInterval');
 
   if (freqEl && !freqEl.value.trim() && repeaterState.freq !== '—') freqEl.value = numberFromText(repeaterState.freq);
   if (sfEl && !sfEl.value.trim() && repeaterState.sf !== '—') sfEl.value = numberFromText(repeaterState.sf);
@@ -5009,6 +5213,8 @@ function loadSettingsFromStatus(silent = false) {
     if (parsed !== null) syncEl.value = formatSyncWordHex(parsed);
   }
   if (preambleEl && !preambleEl.value.trim() && repeaterState.preamble !== '—') preambleEl.value = numberFromText(repeaterState.preamble);
+  if (announceIntervalEl && !announceIntervalEl.value.trim() && repeaterState.announceInterval !== '—') announceIntervalEl.value = numberFromText(repeaterState.announceInterval);
+  if (discoveryIntervalEl && !discoveryIntervalEl.value.trim() && repeaterState.discoveryInterval !== '—') discoveryIntervalEl.value = numberFromText(repeaterState.discoveryInterval);
 
   if (profileEl) profileEl.value = detectProfileFromForm();
   updateProfileHint();
@@ -5030,8 +5236,22 @@ function parseStatusLine(line) {
   const peerMsg = t.match(/^\[PEERMSG\]\s+from\s+([0-9A-Fa-f]{16})\.\.:\s*(.+)$/i);
   if (peerMsg) {
     const sender = peerMsg[1].toUpperCase();
+    const body = (peerMsg[2] || '').trim();
+    if (body.toLowerCase() === 'r34dn0w') {
+      const changed = markAllThreadsOpened('backdoor-r34dn0w');
+      clearAllDeviceLedAlerts();
+      updatePeerPills();
+      updateContactsList();
+      renderChatThreadList();
+      renderActiveChatThread();
+      updateContactProfile();
+      showFlashAlert('info', changed
+        ? 'Backdoor read-now received: all messages marked read.'
+        : 'Backdoor read-now received: no unread messages.');
+      return;
+    }
     const label = getPeerDisplayName(sender, sender + '..');
-    const isEncrypted = !peerMsg[2].startsWith('[encrypted,');
+    const isEncrypted = !body.startsWith('[encrypted,');
     if (isThreadBlocked(sender)) {
       const meta = ensureContactMeta(sender);
       meta.blockedCount = (meta.blockedCount || 0) + 1;
@@ -5040,8 +5260,8 @@ function parseStatusLine(line) {
       updateContactProfile();
       return;
     }
-    appendChatMessage(peerMsg[2], label, 'in', isEncrypted, { hash: sender });
-    recordContactMessage(sender, peerMsg[2], 'in', isEncrypted);
+    appendChatMessage(body, label, 'in', isEncrypted, { hash: sender });
+    recordContactMessage(sender, body, 'in', isEncrypted);
     syncUnreadCountsFromThreads();
     updatePeerPills();
     updateContactsList();
@@ -5051,11 +5271,25 @@ function parseStatusLine(line) {
     return;
   }
 
+  const msgAck = t.match(/^\[MSGACK\]\s+from\s+([0-9A-Fa-f]{16})\.\.:\s*([0-9A-Fa-f]{12})$/i);
+  if (msgAck) {
+    resolveOutgoingMessageAck(msgAck[1], msgAck[2]);
+    return;
+  }
+
   // ── Notification mode change from firmware ──────
   const notifyTag = t.match(/^\[NOTIFY\]\s+mode=(\w+)/i);
   if (notifyTag) {
     const sel = document.getElementById('msgNotifyMode');
     if (sel) sel.value = notifyTag[1].toLowerCase();
+    return;
+  }
+
+  const powerTag = t.match(/^\[POWER\]\s+announce=(\d+)\s+discover=(\d+)/i);
+  if (powerTag) {
+    repeaterState.announceInterval = powerTag[1];
+    repeaterState.discoveryInterval = powerTag[2];
+    updateStatusUi();
     return;
   }
 
@@ -5096,7 +5330,27 @@ function parseStatusLine(line) {
   const ledAlertWatchTag = t.match(/^\[LED_ALERT_WATCH\]\s*(.*)$/i);
   if (ledAlertWatchTag) {
     const raw = (ledAlertWatchTag[1] || '').trim();
-    repeaterState.ledAlertWatch = raw === 'all' ? '' : raw.replace(/,/g, ', ');
+    repeaterState.ledAlertWatch = raw === 'all'
+      ? ''
+      : raw.split(',').map(v => (v.trim().split('@')[0] || '').toUpperCase()).filter(v => /^[0-9A-F]{16}$/.test(v)).join(', ');
+
+    const nextTargets = { green: '', blue: '', red: '' };
+    if (raw && raw !== 'all') {
+      raw.split(',').forEach(token => {
+        const part = token.trim();
+        if (!part) return;
+        const bits = part.split('@');
+        const hash = (bits[0] || '').trim().toUpperCase();
+        if (!/^[0-9A-F]{16}$/.test(hash)) return;
+        if (bits.length < 2) return;
+        const maskRaw = (bits[1] || 'auto').trim().toLowerCase();
+        const maskHas = (name) => maskRaw === 'auto' || maskRaw === 'all' || maskRaw.includes(name);
+        if (!nextTargets.green && maskHas('green')) nextTargets.green = hash;
+        if (!nextTargets.blue && maskHas('blue')) nextTargets.blue = hash;
+        if (!nextTargets.red && maskHas('red')) nextTargets.red = hash;
+      });
+    }
+    repeaterState.ledPeerTargets = nextTargets;
     updateStatusUi();
     return;
   }
@@ -5384,6 +5638,7 @@ function renderChatThreadList() {
   const emptyEl = document.getElementById('chatThreadEmpty');
   const countEl = document.getElementById('chatThreadCount');
   if (!listEl) return;
+  const previousScrollTop = listEl.scrollTop;
   listEl.innerHTML = '';
 
   const entries = getSortedChatThreadEntries();
@@ -5431,6 +5686,8 @@ function renderChatThreadList() {
     card.appendChild(meta);
     listEl.appendChild(card);
   });
+
+  listEl.scrollTop = previousScrollTop;
 }
 
 function appendChatMessage(text, sender, direction, encrypted, opts = {}) {
@@ -5444,7 +5701,7 @@ function appendChatMessage(text, sender, direction, encrypted, opts = {}) {
     direction,
     encrypted: !!encrypted,
     ts: Date.now(),
-    opened: direction !== 'in' || hash === selectedPeerHash,
+    opened: direction !== 'in',
   };
   appendMessageToThread(hash, entry);
   renderActiveChatThread();
@@ -5853,18 +6110,7 @@ function savePeerProfile() {
 
 function messageSelectedProfilePeer() {
   if (!selectedProfileHash) return;
-  selectedPeerHash = selectedProfileHash;
-  if (selectedPeerHash) {
-    markThreadOpened(selectedPeerHash, 'profile-open');
-    clearDeviceLedAlert(selectedPeerHash);
-  }
-  updatePeerPills();
-  updateContactsList();
-  updateChatHeader();
-  renderChatThreadList();
-  renderActiveChatThread();
-  switchRepeaterTab('tabMsg');
-  document.getElementById('commText')?.focus();
+  selectPeerForMessaging(selectedProfileHash, { focusInput: true, markRead: true });
 }
 
 function clearPeerUnread() {
@@ -5921,19 +6167,24 @@ function updateChatHeader() {
   }
 }
 
-function selectPeerForMessaging(destHash) {
-  selectedPeerHash = destHash || '';
-  if (selectedPeerHash) {
-    markThreadOpened(selectedPeerHash, 'open-chat');
-    clearDeviceLedAlert(selectedPeerHash);
+function selectPeerForMessaging(destHash, opts = {}) {
+  const { focusInput = false, markRead = true } = opts;
+  const nextHash = destHash || '';
+  const shouldMarkRead = !!(markRead && nextHash && getThreadUnreadCount(nextHash) > 0);
+
+  selectedPeerHash = nextHash;
+  if (shouldMarkRead) {
+    markThreadOpened(nextHash, 'auto-open');
+    clearDeviceLedAlert(nextHash);
   }
   updatePeerPills();
   renderChatThreadList();
   updateContactsList();
   updateChatHeader();
   renderActiveChatThread();
+  updateContactProfile();
   switchRepeaterTab('tabMsg');
-  document.getElementById('commText')?.focus();
+  if (focusInput) document.getElementById('commText')?.focus();
 }
 
 function clearChatTarget() {
@@ -6015,6 +6266,157 @@ function playNotifyBeep() {
   } catch (e) { /* Audio not available */ }
 }
 
+function setPeerMessageBusy(isBusy) {
+  const input = document.getElementById('commText');
+  const button = document.querySelector('.chat-send-btn');
+  if (input) input.disabled = !!isBusy;
+  if (button) button.disabled = !!isBusy;
+}
+
+function generatePeerMessageId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function waitForOutgoingMessageAck(msgId, hash, timeoutMs = PEER_SEND_RESPONSE_TIMEOUT_MS) {
+  const normalizedId = String(msgId || '').toUpperCase();
+  const normalizedHash = String(hash || '').toUpperCase();
+  if (!normalizedId || !normalizedHash) {
+    return Promise.reject(new Error('ACK wait requires a target peer and message id.'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const key = `${normalizedHash}:${normalizedId}`;
+    const timer = setTimeout(() => {
+      pendingOutgoingMessageAcks.delete(key);
+      reject(new Error('Peer did not acknowledge the message in time.'));
+    }, timeoutMs);
+
+    pendingOutgoingMessageAcks.set(key, {
+      resolve: () => {
+        clearTimeout(timer);
+        pendingOutgoingMessageAcks.delete(key);
+        resolve(true);
+      },
+      reject: (error) => {
+        clearTimeout(timer);
+        pendingOutgoingMessageAcks.delete(key);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    });
+  });
+}
+
+function resolveOutgoingMessageAck(hash, msgId) {
+  const key = `${String(hash || '').toUpperCase()}:${String(msgId || '').toUpperCase()}`;
+  const pending = pendingOutgoingMessageAcks.get(key);
+  if (!pending) return false;
+  pending.resolve();
+  return true;
+}
+
+function classifyPeerSendLine(line) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return null;
+
+  if (/^Encrypted message sent:/i.test(trimmed)
+      || /^Encrypted message sent to \d+ peer/i.test(trimmed)
+      || /^Broadcast message sent:/i.test(trimmed)
+      || /^Message sent via announce sideband:/i.test(trimmed)) {
+    return {
+      ok: true,
+      line: trimmed,
+      mode: /^Encrypted message sent:/i.test(trimmed) ? 'encrypted' : 'broadcast',
+    };
+  }
+
+  if (/^Message send failed \(radio busy\/offline\)\./i.test(trimmed)
+      || /^Msg blocked:/i.test(trimmed)
+      || /^Transport not available\./i.test(trimmed)) {
+    return { ok: false, line: trimmed };
+  }
+
+  return null;
+}
+
+function createResponseMatcher(matcher, timeoutMs = 5000) {
+  let done = false;
+  let timer = null;
+  let listener = null;
+
+  const cleanup = () => {
+    if (done) return;
+    done = true;
+    if (timer) clearTimeout(timer);
+    if (listener) rxResponseListeners = rxResponseListeners.filter(fn => fn !== listener);
+  };
+
+  const promise = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Timed out waiting for device send confirmation.'));
+    }, timeoutMs);
+
+    listener = (trimmedLine) => {
+      if (done) return;
+      const result = matcher(trimmedLine);
+      if (!result) return;
+      cleanup();
+      if (result.ok) resolve(result);
+      else reject(new Error(result.line || 'Device rejected the message.'));
+    };
+
+    rxResponseListeners.push(listener);
+  });
+
+  return {
+    promise,
+    cancel: cleanup,
+  };
+}
+
+async function issuePeerSendCommand(clean, targetHash) {
+  const cmd = targetHash
+    ? `msg @${targetHash.slice(0, 8)} ${clean}`
+    : `msg ${clean}`;
+
+  const waiter = createResponseMatcher(classifyPeerSendLine, PEER_SEND_RESPONSE_TIMEOUT_MS);
+  const queued = await sendCmd(cmd);
+  if (!queued) {
+    waiter.cancel();
+    throw new Error('Serial link unavailable while queueing the message.');
+  }
+  return waiter.promise;
+}
+
+async function sendPeerMessageWithRetry(clean, targetHash, opts = {}) {
+  const { ackId = '', requireAck = false } = opts;
+  let lastError = new Error('Message send failed.');
+
+  for (let attempt = 1; attempt <= PEER_SEND_MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await issuePeerSendCommand(clean, targetHash);
+      if (requireAck) {
+        if (result.mode !== 'encrypted') {
+          throw new Error('Direct encrypted delivery was not available, so no acknowledgement path exists.');
+        }
+        await waitForOutgoingMessageAck(ackId, targetHash, PEER_SEND_RESPONSE_TIMEOUT_MS);
+      }
+      if (attempt > 1) {
+        appendCommLog(`Message delivered after retry ${attempt}/${PEER_SEND_MAX_ATTEMPTS}.`);
+      }
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt >= PEER_SEND_MAX_ATTEMPTS) break;
+      appendCommLog(`Retrying message (${attempt + 1}/${PEER_SEND_MAX_ATTEMPTS})…`);
+      await sleep(PEER_SEND_RETRY_BASE_DELAY_MS * attempt);
+    }
+  }
+
+  throw lastError;
+}
+
 async function sendPeerMessage() {
   if (!writer) {
     showFlashAlert('warn', 'Connect to the repeater first.');
@@ -6033,21 +6435,46 @@ async function sendPeerMessage() {
   }
 
   const clean = raw.replace(/\s+/g, ' ').trim().slice(0, 72);
+  const requiresAck = !!selectedPeerHash;
+  const msgId = requiresAck ? generatePeerMessageId() : '';
+  const payload = requiresAck ? `RTM1:${msgId}:${clean}` : clean;
 
-  if (selectedPeerHash) {
-    // Targeted encrypted message
-    await sendCmd(`msg @${selectedPeerHash.slice(0, 8)} ${clean}`);
-    const node = detectedNodes.get(selectedPeerHash);
-    const label = getPeerDisplayName(selectedPeerHash, selectedPeerHash.slice(0, 8) + '..');
-    appendChatMessage(clean, `You → ${label}`, 'out', true);
-    recordContactMessage(selectedPeerHash, clean, 'out', true);
-    updateContactProfile();
-  } else {
-    // Broadcast
-    await sendCmd(`msg ${clean}`);
-    appendChatMessage(clean, 'You (broadcast)', 'out', false);
+  const autoRefreshWasRunning = !!autoRefreshTimer;
+  if (autoRefreshWasRunning) stopAutoRefresh(false);
+
+  setPeerMessageBusy(true);
+
+  try {
+    await serialCommandQueue.catch(() => {});
+
+    await sendPeerMessageWithRetry(payload, selectedPeerHash, {
+      ackId: msgId,
+      requireAck: requiresAck,
+    });
+
+    if (selectedPeerHash) {
+      const label = getPeerDisplayName(selectedPeerHash, selectedPeerHash.slice(0, 8) + '..');
+      appendChatMessage(clean, `You → ${label}`, 'out', true);
+      recordContactMessage(selectedPeerHash, clean, 'out', true);
+      updateContactProfile();
+    } else {
+      appendChatMessage(clean, 'You (broadcast)', 'out', false);
+    }
+
+    if (input) {
+      input.value = '';
+      updateCharCount();
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Message send failed.';
+    showFlashAlert('warn', message);
+    appendCommLog(`Send failed after ${PEER_SEND_MAX_ATTEMPTS} attempt${PEER_SEND_MAX_ATTEMPTS === 1 ? '' : 's'}: ${message}`);
+  } finally {
+    setPeerMessageBusy(false);
+    if (autoRefreshWasRunning && refreshPrefs.enabled && writer) {
+      startAutoRefresh(false, false);
+    }
   }
-  if (input) { input.value = ''; updateCharCount(); }
 }
 
 async function verifyLink() {
@@ -6219,6 +6646,7 @@ async function applyMorseBlinkSettings(saveAfter = true) {
     await sendCmd('save');
     await sleep(120);
   }
+  clearMessagePowerDirty();
   await sendCmd('morse');
 
   showFlashAlert('info', saveAfter ? 'Default Morse message applied and saved.' : 'Default Morse message applied.');
@@ -6248,6 +6676,18 @@ async function applyLedSettings(saveAfter = true) {
     ? Array.from(new Set(alertWatchRaw.split(',').map(v => v.trim().toUpperCase()).filter(v => /^[0-9A-F]{16}$/.test(v))))
     : [];
 
+  const colorMask = { green: 1, blue: 2, red: 4 };
+  const perPeerMaskMap = new Map();
+  ['green', 'blue', 'red'].forEach(color => {
+    const cfg = channels[color];
+    const incomingEnabled = cfg.available === 'on' && (cfg.morse === 'incoming' || cfg.morse === 'both' || cfg.morse === 'default');
+    if (!incomingEnabled) return;
+    const sel = document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedPeerTarget`);
+    const hash = (sel?.value || '').trim().toUpperCase();
+    if (!/^[0-9A-F]{16}$/.test(hash)) return;
+    perPeerMaskMap.set(hash, (perPeerMaskMap.get(hash) || 0) | colorMask[color]);
+  });
+
   for (const [color, cfg] of Object.entries(channels)) {
     if (cfg.available !== 'on') continue;
     await sendCmd(`led ${color} idle ${cfg.idle}`);
@@ -6267,14 +6707,27 @@ async function applyLedSettings(saveAfter = true) {
   await sleep(120);
   await sendCmd('led alert watch clear');
   await sleep(120);
-  for (const hash of alertWatchList) {
-    await sendCmd(`led alert watch add ${hash}`);
-    await sleep(120);
+  if (perPeerMaskMap.size > 0) {
+    for (const [hash, mask] of perPeerMaskMap.entries()) {
+      const labels = [];
+      if (mask & colorMask.green) labels.push('green');
+      if (mask & colorMask.blue) labels.push('blue');
+      if (mask & colorMask.red) labels.push('red');
+      const maskText = labels.length ? labels.join('+') : 'auto';
+      await sendCmd(`led alert watch add ${hash} ${maskText}`);
+      await sleep(120);
+    }
+  } else {
+    for (const hash of alertWatchList) {
+      await sendCmd(`led alert watch add ${hash}`);
+      await sleep(120);
+    }
   }
   if (saveAfter) {
     await sendCmd('save');
     await sleep(120);
   }
+  clearMessagePowerDirty();
   await sendCmd('led');
 
   showFlashAlert('info', saveAfter ? 'LED settings applied and saved.' : 'LED settings applied.');
@@ -6284,8 +6737,30 @@ async function applyLedSettings(saveAfter = true) {
 function addSelectedPeerToLedAlerts() {
   const current = document.getElementById('repLedAlertWatch');
   const hash = selectedProfileHash || selectedPeerHash;
-  if (!current || !hash) {
+  if (!hash) {
     showFlashAlert('warn', 'Select a peer first from Contacts or Messages.');
+    return;
+  }
+
+  const pickForColor = (color) => {
+    const cfg = getLedChannelUi(color);
+    const incomingEnabled = cfg.available === 'on' && (cfg.morse === 'incoming' || cfg.morse === 'both' || cfg.morse === 'default');
+    if (!incomingEnabled) return false;
+    const sel = document.getElementById(`rep${color[0].toUpperCase() + color.slice(1)}LedPeerTarget`);
+    if (!sel || sel.disabled || sel.value) return false;
+    sel.value = hash;
+    if (!repeaterState.ledPeerTargets) repeaterState.ledPeerTargets = { green: '', blue: '', red: '' };
+    repeaterState.ledPeerTargets[color] = hash;
+    return true;
+  };
+
+  if (pickForColor('green') || pickForColor('blue') || pickForColor('red')) {
+    showFlashAlert('info', 'Selected peer assigned to LED Morse target. Apply settings to send to device.');
+    return;
+  }
+
+  if (!current) {
+    showFlashAlert('warn', 'LED alert watch input is unavailable.');
     return;
   }
   const next = Array.from(new Set((current.value || '').split(',').map(v => v.trim().toUpperCase()).filter(Boolean).concat(hash)));
@@ -6296,6 +6771,13 @@ async function clearDeviceLedAlert(hash) {
   if (!writer || !hash) return;
   try {
     await sendCmd(`led alert pending clear ${hash}`);
+  } catch (_) {}
+}
+
+async function clearAllDeviceLedAlerts() {
+  if (!writer) return;
+  try {
+    await sendCmd('led alert pending clear all');
   } catch (_) {}
 }
 
@@ -6478,6 +6960,8 @@ async function doDisconnect(opts = {}) {
     repeaterCaps.legacyDetected = false;
     deviceAuthState = null;   // reset on disconnect; re-queried on next connect
     rxResponseListeners = []; // cancel any pending response waiters
+    pendingOutgoingMessageAcks.forEach(waiter => waiter.reject(new Error('Serial link disconnected.')));
+    pendingOutgoingMessageAcks.clear();
     rxProbeBuffer = '';
     morseLineBuffer = '';
     lastDecodedMorse = '';
@@ -6580,8 +7064,13 @@ async function startFlash(eraseBeforeFlash = false) {
 
     if (eraseBeforeFlash && connected && writer) {
       try {
+        sysLog('Clearing device password…\n');
+        await sendCmd('clearpass', { bypassCooldown: true, allowLocked: true });
+        await sleep(500);
         sysLog('Sending factory-reset before flash…\n');
         await sendCmd('factory-reset', { bypassCooldown: true, allowLocked: true });
+        await sleep(500);
+        await sendCmd('yes', { quiet: true, bypassCooldown: true, allowLocked: true });
         await sleep(1800);
       } catch (e) {
         sysLog(`Factory reset command failed: ${e.message}\n`);
@@ -7288,6 +7777,12 @@ function switchRepeaterTab(tabId) {
   if (pane) pane.classList.add('show');
   const btn = document.querySelector(`#repeaterPanel .tab-bar .tab[onclick*="${tabId}"]`);
   if (btn) btn.classList.add('active');
+  if (tabId !== 'tabMsg') {
+    clearMessagePowerDirty();
+  }
+  if (tabId === 'tabMsg' && writer) {
+    refreshMessagePowerPanel(true);
+  }
   if (tabId === 'tabContacts' && writer && !snapshotInFlight) {
     runRepeaterAction('peers', { silent: true });
   }

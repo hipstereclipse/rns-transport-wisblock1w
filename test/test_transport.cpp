@@ -21,7 +21,11 @@ public:
     void finalize(uint8_t*o,size_t ol){memset(o,0,ol);for(size_t i=0;i<len;i++)o[i%ol]^=buf[i];}
 };
 namespace Ed25519 {
-    inline bool verify(const uint8_t*,const uint8_t*,const uint8_t*,size_t){return true;}
+    inline bool verify(const uint8_t* sig,const uint8_t*,const uint8_t*,size_t){
+        if (!sig) return false;
+        for(int i=0;i<64;i++) if(sig[i]!=0x33) return false;
+        return true;
+    }
     inline void generatePrivateKey(uint8_t s[32]){memset(s,0x22,32);}
     inline void derivePublicKey(uint8_t p[32],const uint8_t s[32]){for(int i=0;i<32;i++)p[i]=s[i]^0x11;}
     inline void sign(uint8_t sig[64],const uint8_t*,const uint8_t*,const uint8_t*,size_t){memset(sig,0x33,64);}
@@ -38,7 +42,15 @@ namespace Curve25519 {
 
 class RNSRadio {
 public:
-    bool transmit(const uint8_t*,uint16_t){return true;}
+    bool hwReady = true;
+    uint8_t lastTx[RNS_MTU] = {0};
+    uint16_t lastTxLen = 0;
+    bool transmit(const uint8_t* data,uint16_t len){
+        if(!data || len > sizeof(lastTx)) return false;
+        memcpy(lastTx, data, len);
+        lastTxLen = len;
+        return true;
+    }
 };
 
 void RNSTransport::forwardPacket(RNSPacket&,PathEntry*){stats.fwdPackets++;stats.txPackets++;}
@@ -129,6 +141,53 @@ int main(){
         chk(okParse, "parse standard lxmf bytes");
         chk(memcmp(src, lxmf+16, 16) == 0, "extract source hash");
         chk(strcmp(msg, "test") == 0, "extract lxmf content");
+    }
+
+    // Loop back a standard announce and learn peer metadata
+    {
+        RNSIdentity localId; localId.generate();
+        RNSIdentity remoteId; remoteId.generate();
+        RNSRadio txRadio, rxRadio;
+        RNSTransport sender; sender.begin(&remoteId, (RNSRadio*)&txRadio); sender.initDestHashCache(); sender.setAnnounceName("Remote");
+        RNSTransport receiver; receiver.begin(&localId, (RNSRadio*)&rxRadio); receiver.initDestHashCache();
+
+        chk(sender.sendLocalAnnounce(), "send standard announce");
+        chk(txRadio.lastTxLen > 0, "capture standard announce");
+        receiver.ingestPacket(txRadio.lastTx, txRadio.lastTxLen);
+        chk(receiver.getStats().announces == 1, "count standard announce");
+        chk(receiver.countActivePaths() == 1, "learn path from standard announce");
+        chk(receiver.lookupPeerByName("Remote") != nullptr, "learn peer name from standard announce");
+    }
+
+    // Accept legacy fixed-signature announce layout for backwards compatibility
+    {
+        RNSIdentity localId; localId.generate();
+        RNSIdentity remoteId; remoteId.generate();
+        RNSRadio rxRadio;
+        RNSTransport receiver; receiver.begin(&localId, (RNSRadio*)&rxRadio); receiver.initDestHashCache();
+
+        uint8_t pub[RNS_KEYSIZE] = {0};
+        remoteId.getPublicKey(pub);
+        uint8_t destHash[RNS_ADDR_LEN] = {0};
+        RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, pub, destHash);
+        const uint8_t appData[] = {0x91, 0xA6, 'L', 'e', 'g', 'a', 'c', 'y'};
+        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        uint8_t raw[256] = {0};
+        raw[0] = 0x01;
+        raw[1] = 2;
+        memcpy(raw + 2, destHash, RNS_ADDR_LEN);
+        raw[18] = 0x00;
+        uint8_t* data = raw + 19;
+        memcpy(data, pub, RNS_KEYSIZE);
+        memset(data + RNS_KEYSIZE, 0x55, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
+        memset(data + baseLen, 0x33, RNS_SIGLENGTH);
+        memcpy(data + baseLen + RNS_SIGLENGTH, appData, sizeof(appData));
+        uint16_t rawLen = (uint16_t)(19 + baseLen + RNS_SIGLENGTH + sizeof(appData));
+
+        receiver.ingestPacket(raw, rawLen);
+        chk(receiver.getStats().announces == 1, "count legacy announce");
+        chk(receiver.countActivePaths() == 1, "learn path from legacy announce");
+        chk(receiver.lookupPeerByName("Legacy") != nullptr, "learn peer name from legacy announce");
     }
 
     printf("\n%d passed, %d failed\n",ok,bad);

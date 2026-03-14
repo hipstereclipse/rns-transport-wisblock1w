@@ -18,7 +18,11 @@ public:
     void finalize(uint8_t*o,size_t ol){memset(o,0,ol);for(size_t i=0;i<len;i++)o[i%ol]^=buf[i];}
 };
 namespace Ed25519 {
-    inline bool verify(const uint8_t*,const uint8_t*,const uint8_t*,size_t){return true;}
+    inline bool verify(const uint8_t* sig,const uint8_t*,const uint8_t*,size_t){
+        if (!sig) return false;
+        for(int i=0;i<64;i++) if(sig[i]!=0x33) return false;
+        return true;
+    }
     inline void generatePrivateKey(uint8_t s[32]){
         for(int i=0;i<32;i++)s[i]=0xB0+(i&0xF);
     }
@@ -80,6 +84,41 @@ int main(){
         uint8_t dummy_hash[RNS_ADDR_LEN]={};
         chk(!RNSIdentity::validateAnnounce(dummy_hash, short_data,10), "reject short ann");
         chk(!RNSIdentity::validateAnnounce(dummy_hash, nullptr,200), "reject null ann");
+    }
+
+    // Validate both standard and legacy announce layouts
+    {
+        RNSIdentity id; id.generate();
+        uint8_t pub[RNS_KEYSIZE];
+        id.getPublicKey(pub);
+        uint8_t destHash[RNS_ADDR_LEN];
+        RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, pub, destHash);
+
+        const uint8_t appData[] = {0x91, 0xA3, 'f', 'o', 'o'};
+        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        const uint16_t totalLen = baseLen + (uint16_t)sizeof(appData) + RNS_SIGLENGTH;
+        uint8_t standard[256] = {0};
+        memcpy(standard, pub, RNS_KEYSIZE);
+        memset(standard + RNS_KEYSIZE, 0x11, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
+        memcpy(standard + baseLen, appData, sizeof(appData));
+        memset(standard + baseLen + sizeof(appData), 0x33, RNS_SIGLENGTH);
+
+        RNSIdentity::AnnounceInfo info;
+        chk(RNSIdentity::inspectAnnounce(destHash, standard, totalLen, &info), "accept standard announce layout");
+        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_STANDARD, "detect standard layout");
+        chk(info.appDataLen == sizeof(appData), "standard appdata len");
+        chk(info.appData && memcmp(info.appData, appData, sizeof(appData)) == 0, "standard appdata ptr");
+
+        uint8_t legacy[256] = {0};
+        memcpy(legacy, pub, RNS_KEYSIZE);
+        memset(legacy + RNS_KEYSIZE, 0x22, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
+        memset(legacy + baseLen, 0x33, RNS_SIGLENGTH);
+        memcpy(legacy + baseLen + RNS_SIGLENGTH, appData, sizeof(appData));
+
+        chk(RNSIdentity::inspectAnnounce(destHash, legacy, totalLen, &info), "accept legacy announce layout");
+        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_LEGACY_FIXED_SIG, "detect legacy layout");
+        chk(info.appDataLen == sizeof(appData), "legacy appdata len");
+        chk(info.appData && memcmp(info.appData, appData, sizeof(appData)) == 0, "legacy appdata ptr");
     }
 
     printf("\n%d passed, %d failed\n",ok,bad);

@@ -71,6 +71,13 @@ public:
     }
 
 private:
+    static bool isPeerControlText(const char* text) {
+        return text && (
+            strncmp(text, "RTM1:", 5) == 0 ||
+            strncmp(text, "RTA1:", 5) == 0
+        );
+    }
+
     void printBanner() {
         io->println(F("\r\n╔════════════════════════════════════════════╗"));
         io->println(F("║  RatTunnel Node — WisBlock 1W             ║"));
@@ -109,6 +116,7 @@ private:
         else if (strcmp(command, "name")      == 0) cmdName(args);
         else if (strcmp(command, "msg")       == 0) cmdMsg(args);
         else if (strcmp(command, "notify")    == 0) cmdNotify(args);
+        else if (strcmp(command, "power")     == 0) cmdPower(args);
         else if (strcmp(command, "led")       == 0) cmdLed(args);
         else if (strcmp(command, "rathole")   == 0) cmdRathole(args);
         else if (strcmp(command, "save")      == 0) cmdSave();
@@ -490,6 +498,10 @@ private:
                     if (transport->sendEncryptedMessage(text, peer)) {
                         io->print(F("Encrypted message sent: ")); io->println(text);
                     } else {
+                        if (isPeerControlText(text)) {
+                            io->println(F("Message send failed (radio busy/offline)."));
+                            return;
+                        }
                         io->println(F("Encrypted send failed, falling back to broadcast."));
                         if (transport->sendMessageAnnounce(text)) {
                             io->print(F("Broadcast message sent: ")); io->println(text);
@@ -566,6 +578,9 @@ private:
         io->println(F("Notification mode updated."));
         io->println(F("Tip: run 'save' to persist."));
     }
+
+    // ── power — configure periodic announce/discovery cadence ─
+    void cmdPower(const char* args);  // implemented in main.cpp
 
     // ── led — configure board LED behavior ───────────────
     void cmdLed(const char* args);  // implemented in main.cpp
@@ -1947,6 +1962,7 @@ private:
         io->println(F("  name <text>    Set/display broadcast announce name"));
         io->println(F("  msg [text]     Send peer message via announce (broadcast)"));
         io->println(F("  notify <mode>  Set notification mode (sound/morse/both/silent)"));
+        io->println(F("  power          Set announce/discovery cadence"));
         io->println(F("  led            Configure green/blue board LED behavior"));
         io->println(F("  rathole        Configure secure boot-scrub mode"));
         io->println(F("  save           Persist config to flash"));

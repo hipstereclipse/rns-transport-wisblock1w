@@ -23,7 +23,7 @@ using namespace Adafruit_LittleFS_Namespace;
 // ── Persisted radio configuration ─────────────────────────
 // Bump CONFIG_VERSION when compile-time defaults change so stale
 // flash configs are automatically discarded on first boot.
-#define RADIO_CONFIG_VERSION  2   // V2: ratspeak-us defaults (SF9/pre18)
+#define RADIO_CONFIG_VERSION  3   // V3: persisted announce/discovery cadence
 
 struct RadioConfig {
     uint16_t version;    ///< Must match RADIO_CONFIG_VERSION or load is rejected
@@ -34,6 +34,8 @@ struct RadioConfig {
     int8_t  txDbm;
     uint8_t syncWord;
     uint16_t preamble;
+    uint16_t announceIntervalSec;
+    uint16_t discoveryIntervalSec;
     uint32_t checksum;   ///< Simple XOR checksum for integrity
 };
 
@@ -55,6 +57,7 @@ struct LedConfigBlob {
     uint8_t alertWatchCount;
     uint16_t alertIntervalSec;
     uint8_t alertWatchPrefixes[LED_ALERT_WATCH_MAX][LED_ALERT_PREFIX_BYTES];
+    uint8_t alertWatchMasks[LED_ALERT_WATCH_MAX];
     uint32_t checksum;
 };
 
@@ -153,7 +156,9 @@ public:
 
     // ── Radio config persistence ──────────────────────────
 
-    bool loadConfig(RNSRadio& radio) {
+    bool loadConfig(RNSRadio& radio,
+                    uint16_t* announceIntervalSec = nullptr,
+                    uint16_t* discoveryIntervalSec = nullptr) {
 #ifndef NATIVE_TEST
         if (!fsReady) return false;
 
@@ -181,13 +186,21 @@ public:
         radio.setTxPower(cfg.txDbm);
         radio.setSyncWord(cfg.syncWord);
         radio.setPreamble(cfg.preamble);
+        if (announceIntervalSec) {
+            *announceIntervalSec = cfg.announceIntervalSec ? cfg.announceIntervalSec : (uint16_t)(ANNOUNCE_INTERVAL_MS / 1000UL);
+        }
+        if (discoveryIntervalSec) {
+            *discoveryIntervalSec = cfg.discoveryIntervalSec ? cfg.discoveryIntervalSec : (uint16_t)(DISCOVERY_INTERVAL_MS / 1000UL);
+        }
         return true;
 #else
         return false;
 #endif
     }
 
-    bool saveConfig(const RNSRadio& radio) {
+    bool saveConfig(const RNSRadio& radio,
+                    uint16_t announceIntervalSec = (uint16_t)(ANNOUNCE_INTERVAL_MS / 1000UL),
+                    uint16_t discoveryIntervalSec = (uint16_t)(DISCOVERY_INTERVAL_MS / 1000UL)) {
 #ifndef NATIVE_TEST
         if (!fsReady) return false;
 
@@ -200,6 +213,8 @@ public:
         cfg.txDbm   = radio.curTxDbm;
         cfg.syncWord = radio.curSyncWord;
         cfg.preamble = radio.curPreamble;
+        cfg.announceIntervalSec = announceIntervalSec;
+        cfg.discoveryIntervalSec = discoveryIntervalSec;
         cfg.checksum = computeConfigChecksum(cfg);
 
         InternalFS.remove(CONFIG_FILE);

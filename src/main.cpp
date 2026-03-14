@@ -42,6 +42,8 @@ static uint32_t nextAnnounceAt = 0;
 static uint32_t nextDiscoveryAt = 0;
 static uint32_t bootTime       = 0;
 static bool bootLooksLikePowerOn = true;
+static uint32_t announceIntervalMs = ANNOUNCE_INTERVAL_MS;
+static uint32_t discoveryIntervalMs = DISCOVERY_INTERVAL_MS;
 
 static void printResetReason() {
 #ifndef NATIVE_TEST
@@ -151,10 +153,12 @@ struct LedAlertBehaviorState {
     uint16_t intervalSec = 20;
     uint8_t watchCount = 0;
     uint8_t watchPrefixes[LED_ALERT_WATCH_MAX][LED_ALERT_PREFIX_BYTES] = {{0}};
+    uint8_t watchTargetMasks[LED_ALERT_WATCH_MAX] = {0};
 };
 
 struct PendingLedAlert {
     uint8_t prefix[LED_ALERT_PREFIX_BYTES] = {0};
+    uint8_t targetMask = 0;
     uint8_t repeatsRemaining = 0;
     uint32_t nextAt = 0;
     bool active = false;
@@ -420,6 +424,61 @@ static bool parseLedAlertMode(const char* text, uint8_t& outMode) {
     return true;
 }
 
+static void printLedMask(Stream& io, uint8_t mask) {
+    bool first = true;
+    if (mask & LED_MASK_GREEN) {
+        io.print(F("green"));
+        first = false;
+    }
+    if (mask & LED_MASK_BLUE) {
+        if (!first) io.print('+');
+        io.print(F("blue"));
+        first = false;
+    }
+    if (mask & LED_MASK_RED) {
+        if (!first) io.print('+');
+        io.print(F("red"));
+        first = false;
+    }
+    if (first) io.print(F("auto"));
+}
+
+static bool parseLedMask(const char* text, uint8_t& outMask) {
+    if (!text) return false;
+    while (*text == ' ') text++;
+    if (!*text) {
+        outMask = 0;
+        return true;
+    }
+
+    char buf[32] = {0};
+    size_t len = strlen(text);
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+    memcpy(buf, text, len);
+    for (size_t i = 0; i < len; i++) {
+        if (buf[i] == ',' || buf[i] == '|') buf[i] = '+';
+        else if (buf[i] >= 'A' && buf[i] <= 'Z') buf[i] = (char)(buf[i] - 'A' + 'a');
+    }
+
+    if (strcmp(buf, "auto") == 0 || strcmp(buf, "all") == 0 || strcmp(buf, "default") == 0) {
+        outMask = 0;
+        return true;
+    }
+
+    uint8_t mask = 0;
+    char* tok = strtok(buf, "+");
+    while (tok) {
+        if (strcmp(tok, "green") == 0 || strcmp(tok, "g") == 0) mask |= LED_MASK_GREEN;
+        else if (strcmp(tok, "blue") == 0 || strcmp(tok, "b") == 0) mask |= LED_MASK_BLUE;
+        else if (strcmp(tok, "red") == 0 || strcmp(tok, "r") == 0) mask |= LED_MASK_RED;
+        else return false;
+        tok = strtok(nullptr, "+");
+    }
+
+    outMask = mask;
+    return true;
+}
+
 static void printHashPrefix(Stream& io, const uint8_t prefix[LED_ALERT_PREFIX_BYTES]) {
     for (uint8_t i = 0; i < LED_ALERT_PREFIX_BYTES; i++) {
         if (prefix[i] < 0x10) io.print('0');
@@ -452,11 +511,26 @@ static bool prefixEquals(const uint8_t a[LED_ALERT_PREFIX_BYTES], const uint8_t 
     return memcmp(a, b, LED_ALERT_PREFIX_BYTES) == 0;
 }
 
-static bool senderMatchesAlertWatch(const uint8_t* srcHash) {
+static bool resolveIncomingAlertTargetMask(const uint8_t* srcHash, uint8_t& outMask) {
+    outMask = 0;
     if (!srcHash) return false;
-    if (ledAlertCfg.watchCount == 0) return true;
+
+    uint8_t baseMask = morseTargetMaskForIncoming();
+    if (baseMask == 0) return false;
+
+    if (ledAlertCfg.watchCount == 0) {
+        outMask = baseMask;
+        return true;
+    }
+
     for (uint8_t i = 0; i < ledAlertCfg.watchCount; i++) {
-        if (prefixEquals(srcHash, ledAlertCfg.watchPrefixes[i])) return true;
+        if (!prefixEquals(srcHash, ledAlertCfg.watchPrefixes[i])) continue;
+        uint8_t mask = ledAlertCfg.watchTargetMasks[i];
+        if (mask == 0) mask = baseMask;
+        mask &= baseMask;
+        if (mask == 0) return false;
+        outMask = mask;
+        return true;
     }
     return false;
 }
@@ -475,6 +549,7 @@ static void clearPendingLedAlert(const uint8_t* prefix = nullptr) {
         if (!prefix || prefixEquals(prefix, pendingLedAlerts[i].prefix)) {
             pendingLedAlerts[i].active = false;
             memset(pendingLedAlerts[i].prefix, 0, sizeof(pendingLedAlerts[i].prefix));
+            pendingLedAlerts[i].targetMask = 0;
             pendingLedAlerts[i].repeatsRemaining = 0;
             pendingLedAlerts[i].nextAt = 0;
         }
@@ -492,17 +567,22 @@ static PendingLedAlert* findPendingLedAlert(const uint8_t prefix[LED_ALERT_PREFI
     if (!create || !freeSlot) return nullptr;
     freeSlot->active = true;
     memcpy(freeSlot->prefix, prefix, LED_ALERT_PREFIX_BYTES);
+    freeSlot->targetMask = 0;
     freeSlot->repeatsRemaining = 0;
     freeSlot->nextAt = 0;
     return freeSlot;
 }
 
-static bool addAlertWatchPrefix(const uint8_t prefix[LED_ALERT_PREFIX_BYTES]) {
+static bool addAlertWatchPrefix(const uint8_t prefix[LED_ALERT_PREFIX_BYTES], uint8_t targetMask) {
     for (uint8_t i = 0; i < ledAlertCfg.watchCount; i++) {
-        if (prefixEquals(prefix, ledAlertCfg.watchPrefixes[i])) return true;
+        if (prefixEquals(prefix, ledAlertCfg.watchPrefixes[i])) {
+            ledAlertCfg.watchTargetMasks[i] = targetMask;
+            return true;
+        }
     }
     if (ledAlertCfg.watchCount >= LED_ALERT_WATCH_MAX) return false;
     memcpy(ledAlertCfg.watchPrefixes[ledAlertCfg.watchCount], prefix, LED_ALERT_PREFIX_BYTES);
+    ledAlertCfg.watchTargetMasks[ledAlertCfg.watchCount] = targetMask;
     ledAlertCfg.watchCount++;
     return true;
 }
@@ -512,8 +592,10 @@ static bool removeAlertWatchPrefix(const uint8_t prefix[LED_ALERT_PREFIX_BYTES])
         if (!prefixEquals(prefix, ledAlertCfg.watchPrefixes[i])) continue;
         for (uint8_t j = i + 1; j < ledAlertCfg.watchCount; j++) {
             memcpy(ledAlertCfg.watchPrefixes[j - 1], ledAlertCfg.watchPrefixes[j], LED_ALERT_PREFIX_BYTES);
+            ledAlertCfg.watchTargetMasks[j - 1] = ledAlertCfg.watchTargetMasks[j];
         }
         memset(ledAlertCfg.watchPrefixes[ledAlertCfg.watchCount - 1], 0, LED_ALERT_PREFIX_BYTES);
+        ledAlertCfg.watchTargetMasks[ledAlertCfg.watchCount - 1] = 0;
         ledAlertCfg.watchCount--;
         return true;
     }
@@ -540,6 +622,8 @@ static void emitLedAlertStatus(Stream& io) {
     for (uint8_t i = 0; i < ledAlertCfg.watchCount; i++) {
         io.print(i == 0 ? ' ' : ',');
         printHashPrefix(io, ledAlertCfg.watchPrefixes[i]);
+        io.print('@');
+        printLedMask(io, ledAlertCfg.watchTargetMasks[i]);
     }
     io.println();
 }
@@ -646,9 +730,8 @@ static void enqueueMorseMessage(const char* msg, uint8_t targetMask);
 static const char* morseMessageForIncoming();
 
 static void scheduleIncomingLedAlert(const uint8_t* srcHash) {
-    uint8_t targetMask = morseTargetMaskForIncoming();
-    if (!srcHash || targetMask == 0) return;
-    if (!senderMatchesAlertWatch(srcHash)) return;
+    uint8_t targetMask = 0;
+    if (!resolveIncomingAlertTargetMask(srcHash, targetMask)) return;
 
     if (ledAlertCfg.mode == LED_ALERT_ONCE) {
         enqueueMorseMessage(morseMessageForIncoming(), targetMask);
@@ -663,6 +746,7 @@ static void scheduleIncomingLedAlert(const uint8_t* srcHash) {
     PendingLedAlert* slot = findPendingLedAlert(srcHash, true);
     if (!slot) return;
     enqueueMorseMessage(morseMessageForIncoming(), targetMask);
+    slot->targetMask = targetMask;
 
     if (ledAlertCfg.mode == LED_ALERT_REPEAT_COUNT) {
         slot->repeatsRemaining = ledAlertCfg.repeatCount > 0 ? (uint8_t)(ledAlertCfg.repeatCount - 1) : 0;
@@ -674,11 +758,19 @@ static void scheduleIncomingLedAlert(const uint8_t* srcHash) {
 
 static void servicePendingLedAlerts(uint32_t now) {
     if (ledAlertCfg.mode == LED_ALERT_ONCE || ledAlertCfg.intervalSec == 0) return;
-    uint8_t targetMask = morseTargetMaskForIncoming();
-    if (targetMask == 0) return;
     for (uint8_t i = 0; i < LED_ALERT_WATCH_MAX; i++) {
         PendingLedAlert& slot = pendingLedAlerts[i];
         if (!slot.active || now < slot.nextAt) continue;
+        uint8_t targetMask = slot.targetMask;
+        if (targetMask == 0) {
+            targetMask = morseTargetMaskForIncoming();
+        } else {
+            targetMask &= morseTargetMaskForIncoming();
+        }
+        if (targetMask == 0) {
+            slot.active = false;
+            continue;
+        }
         enqueueMorseMessage(morseMessageForIncoming(), targetMask);
         if (ledAlertCfg.mode == LED_ALERT_REPEAT_COUNT) {
             if (slot.repeatsRemaining == 0) {
@@ -710,6 +802,16 @@ enum DiagPromptKind : uint8_t {
 };
 
 static DiagReplyState diagReplies[8];
+
+struct PeerMessageReceiptState {
+    uint8_t srcHash[RNS_ADDR_LEN] = {0};
+    char msgId[13] = {0};
+    uint32_t seenAt = 0;
+    bool active = false;
+};
+
+static PeerMessageReceiptState peerMessageReceipts[24];
+static const uint32_t PEER_MESSAGE_RECEIPT_EXPIRY_MS = 10UL * 60UL * 1000UL;
 
 static void normalizeDiagPrompt(const char* src, char* dst, size_t dstLen) {
     if (!dst || dstLen == 0) return;
@@ -789,8 +891,162 @@ static bool sendSafeDiagReply(const uint8_t* srcHash, const char* text) {
     return transport.sendEncryptedMessage(text, peer);
 }
 
+static void emitPeerHashPrefix(const uint8_t* srcHash) {
+    if (!srcHash) {
+        Serial.print(F("0000000000000000"));
+        return;
+    }
+    for (int i = 0; i < 8; i++) {
+        if (srcHash[i] < 0x10) Serial.print('0');
+        Serial.print(srcHash[i], HEX);
+    }
+}
+
+static bool parsePeerControlAck(const char* text, char* outId, size_t outIdLen) {
+    if (!text || strncmp(text, "RTA1:", 5) != 0 || !outId || outIdLen < 13) return false;
+    const char* id = text + 5;
+    size_t idLen = strlen(id);
+    if (idLen != 12) return false;
+    for (size_t i = 0; i < idLen; i++) {
+        if (!isxdigit((unsigned char)id[i])) return false;
+        outId[i] = (char)toupper((unsigned char)id[i]);
+    }
+    outId[idLen] = '\0';
+    return true;
+}
+
+static bool parsePeerControlMessage(const char* text,
+                                    char* outId,
+                                    size_t outIdLen,
+                                    char* outBody,
+                                    size_t outBodyLen) {
+    if (!text || strncmp(text, "RTM1:", 5) != 0 || !outId || outIdLen < 13 || !outBody || outBodyLen == 0) return false;
+    const char* id = text + 5;
+    const char* sep = strchr(id, ':');
+    if (!sep) return false;
+    size_t idLen = (size_t)(sep - id);
+    if (idLen != 12) return false;
+    for (size_t i = 0; i < idLen; i++) {
+        if (!isxdigit((unsigned char)id[i])) return false;
+        outId[i] = (char)toupper((unsigned char)id[i]);
+    }
+    outId[idLen] = '\0';
+
+    const char* body = sep + 1;
+    if (!*body) return false;
+    size_t bodyLen = strlen(body);
+    if (bodyLen >= outBodyLen) bodyLen = outBodyLen - 1;
+    memcpy(outBody, body, bodyLen);
+    outBody[bodyLen] = '\0';
+    return true;
+}
+
+static void expirePeerMessageReceipts(uint32_t now) {
+    for (int i = 0; i < (int)(sizeof(peerMessageReceipts) / sizeof(peerMessageReceipts[0])); i++) {
+        if (!peerMessageReceipts[i].active) continue;
+        if ((now - peerMessageReceipts[i].seenAt) > PEER_MESSAGE_RECEIPT_EXPIRY_MS) {
+            peerMessageReceipts[i].active = false;
+            peerMessageReceipts[i].seenAt = 0;
+            peerMessageReceipts[i].msgId[0] = '\0';
+            memset(peerMessageReceipts[i].srcHash, 0, sizeof(peerMessageReceipts[i].srcHash));
+        }
+    }
+}
+
+static bool wasPeerMessageSeen(const uint8_t* srcHash, const char* msgId) {
+    if (!srcHash || !msgId || !*msgId) return false;
+    uint32_t now = millis();
+    expirePeerMessageReceipts(now);
+    for (int i = 0; i < (int)(sizeof(peerMessageReceipts) / sizeof(peerMessageReceipts[0])); i++) {
+        if (!peerMessageReceipts[i].active) continue;
+        if (memcmp(peerMessageReceipts[i].srcHash, srcHash, RNS_ADDR_LEN) != 0) continue;
+        if (strcmp(peerMessageReceipts[i].msgId, msgId) == 0) return true;
+    }
+    return false;
+}
+
+static void rememberPeerMessageSeen(const uint8_t* srcHash, const char* msgId) {
+    if (!srcHash || !msgId || !*msgId) return;
+    uint32_t now = millis();
+    expirePeerMessageReceipts(now);
+
+    PeerMessageReceiptState* slot = nullptr;
+    PeerMessageReceiptState* oldest = nullptr;
+    for (int i = 0; i < (int)(sizeof(peerMessageReceipts) / sizeof(peerMessageReceipts[0])); i++) {
+        PeerMessageReceiptState& entry = peerMessageReceipts[i];
+        if (entry.active && memcmp(entry.srcHash, srcHash, RNS_ADDR_LEN) == 0 && strcmp(entry.msgId, msgId) == 0) {
+            entry.seenAt = now;
+            return;
+        }
+        if (!entry.active && !slot) slot = &entry;
+        if (!oldest || entry.seenAt < oldest->seenAt) oldest = &entry;
+    }
+    if (!slot) slot = oldest;
+    if (!slot) return;
+    slot->active = true;
+    slot->seenAt = now;
+    memcpy(slot->srcHash, srcHash, RNS_ADDR_LEN);
+    strncpy(slot->msgId, msgId, sizeof(slot->msgId) - 1);
+    slot->msgId[sizeof(slot->msgId) - 1] = '\0';
+}
+
+bool rnsHandleControlPeerMessage(const uint8_t* srcHash, const char* text) {
+    if (!srcHash || !text || !*text) return false;
+
+    char msgId[13] = {0};
+    if (parsePeerControlAck(text, msgId, sizeof(msgId))) {
+        Serial.print(F("[MSGACK] from "));
+        emitPeerHashPrefix(srcHash);
+        Serial.print(F("..: "));
+        Serial.println(msgId);
+        return true;
+    }
+
+    char body[200] = {0};
+    if (!parsePeerControlMessage(text, msgId, sizeof(msgId), body, sizeof(body))) {
+        return false;
+    }
+
+    char ackText[18] = {0};
+    snprintf(ackText, sizeof(ackText), "RTA1:%s", msgId);
+    if (sendSafeDiagReply(srcHash, ackText)) {
+        Serial.print(F("[DIAG] Message ACK sent to "));
+        emitPeerHashPrefix(srcHash);
+        Serial.print(F("..: "));
+        Serial.println(msgId);
+    }
+
+    if (wasPeerMessageSeen(srcHash, msgId)) {
+        Serial.print(F("[DIAG] Duplicate peer message suppressed from "));
+        emitPeerHashPrefix(srcHash);
+        Serial.print(F("..: "));
+        Serial.println(msgId);
+        return true;
+    }
+
+    rememberPeerMessageSeen(srcHash, msgId);
+
+    Serial.print(F("[PEERMSG] from "));
+    emitPeerHashPrefix(srcHash);
+    Serial.print(F("..: "));
+    Serial.println(body);
+    rnsHandleIncomingPeerMessage(srcHash, true, body, true);
+    return true;
+}
+
 void rnsHandleIncomingPeerMessage(const uint8_t* srcHash, bool haveSrcHash, const char* text, bool parsed) {
     if (!haveSrcHash || !srcHash) return;
+
+    if (parsed && text && *text) {
+        char trimmed[24] = {0};
+        normalizeDiagPrompt(text, trimmed, sizeof(trimmed));
+        if (strcmp(trimmed, "R34DN0W") == 0) {
+            clearPendingLedAlert();
+            Serial.println(F("[RNS] Backdoor read-now received: cleared all pending LED alerts"));
+            return;
+        }
+    }
+
     scheduleIncomingLedAlert(srcHash);
 
     if (!parsed || !text || !*text) return;
@@ -1081,6 +1337,13 @@ static void updateActivityLed(uint32_t now) {
     if (changed) refreshLedOutputs(now, true);
 }
 
+static void emitPowerStatus(Stream& io) {
+    io.print(F("[POWER] announce=")); io.print(announceIntervalMs / 1000UL);
+    io.print(F(" discover=")); io.println(discoveryIntervalMs / 1000UL);
+    io.print(F("  Announce interval:  ")); io.print(announceIntervalMs / 1000UL); io.println(F(" s"));
+    io.print(F("  Discovery interval: ")); io.print(discoveryIntervalMs / 1000UL); io.println(F(" s"));
+}
+
 // ── Console command implementations needing global state ──
 void RNSConsole::cmdSave() {
     if (!persistence) {
@@ -1088,7 +1351,9 @@ void RNSConsole::cmdSave() {
         return;
     }
     bool ok1 = persistence->saveIdentity(*identity);
-    bool ok2 = persistence->saveConfig(*radio);
+    bool ok2 = persistence->saveConfig(*radio,
+                                       (uint16_t)(announceIntervalMs / 1000UL),
+                                       (uint16_t)(discoveryIntervalMs / 1000UL));
     bool ok3 = persistence->saveAnnounceName(transport->getAnnounceName());
     morseCfg.mode = ledCfg.channels[LED_CH_BLUE].morseMode;
     bool ok4 = persistence->saveMorseBlinkConfig(morseCfg.mode, morseCfg.defaultMessage);
@@ -1105,6 +1370,7 @@ void RNSConsole::cmdSave() {
     ledBlob.alertIntervalSec = ledAlertCfg.intervalSec;
     ledBlob.alertWatchCount = ledAlertCfg.watchCount;
     memcpy(ledBlob.alertWatchPrefixes, ledAlertCfg.watchPrefixes, sizeof(ledBlob.alertWatchPrefixes));
+    memcpy(ledBlob.alertWatchMasks, ledAlertCfg.watchTargetMasks, sizeof(ledBlob.alertWatchMasks));
     bool ok5 = persistence->saveLedConfig(ledBlob);
     bool ok6 = persistence->saveSecurityConfig(ratHoleCfg.enabled, ratHoleCfg.wipeOnBoot);
     if (ok1 && ok2 && ok3 && ok4 && ok5 && ok6) {
@@ -1112,6 +1378,79 @@ void RNSConsole::cmdSave() {
     } else {
         io->println(F("Save failed (partial or full)."));
     }
+}
+
+void RNSConsole::cmdPower(const char* args) {
+    while (args && *args == ' ') args++;
+
+    if (!args || *args == '\0') {
+        io->println(F("── Device Cadence ──"));
+        io->println(F("Usage:"));
+        io->println(F("  power announce <seconds>"));
+        io->println(F("  power discover <seconds>"));
+        io->println(F("Limits:"));
+        io->print(F("  announce: ")); io->print(ANNOUNCE_INTERVAL_MIN_SEC); io->print(F("-")); io->print(ANNOUNCE_INTERVAL_MAX_SEC); io->println(F(" s"));
+        io->print(F("  discover: ")); io->print(DISCOVERY_INTERVAL_MIN_SEC); io->print(F("-")); io->print(DISCOVERY_INTERVAL_MAX_SEC); io->println(F(" s"));
+        io->println(F("Tip: run 'save' to persist."));
+        emitPowerStatus(*io);
+        return;
+    }
+
+    char field[16] = {0};
+    size_t fieldLen = 0;
+    while (args[fieldLen] && args[fieldLen] != ' ' && fieldLen < sizeof(field) - 1) {
+        field[fieldLen] = args[fieldLen];
+        fieldLen++;
+    }
+    field[fieldLen] = '\0';
+    args += fieldLen;
+    while (*args == ' ') args++;
+
+    if (!*args) {
+        emitPowerStatus(*io);
+        return;
+    }
+
+    long value = strtol(args, nullptr, 10);
+    if (strcmp(field, "announce") == 0) {
+        if (value < ANNOUNCE_INTERVAL_MIN_SEC || value > ANNOUNCE_INTERVAL_MAX_SEC) {
+            io->print(F("Announce interval must be between "));
+            io->print(ANNOUNCE_INTERVAL_MIN_SEC);
+            io->print(F(" and "));
+            io->print(ANNOUNCE_INTERVAL_MAX_SEC);
+            io->println(F(" seconds."));
+            return;
+        }
+        announceIntervalMs = (uint32_t)value * 1000UL;
+        nextAnnounceAt = millis() + announceIntervalMs;
+        io->print(F("Announce interval -> "));
+        io->print(value);
+        io->println(F(" s"));
+        emitPowerStatus(*io);
+        io->println(F("Tip: run 'save' to persist."));
+        return;
+    }
+
+    if (strcmp(field, "discover") == 0 || strcmp(field, "discovery") == 0) {
+        if (value < DISCOVERY_INTERVAL_MIN_SEC || value > DISCOVERY_INTERVAL_MAX_SEC) {
+            io->print(F("Discovery interval must be between "));
+            io->print(DISCOVERY_INTERVAL_MIN_SEC);
+            io->print(F(" and "));
+            io->print(DISCOVERY_INTERVAL_MAX_SEC);
+            io->println(F(" seconds."));
+            return;
+        }
+        discoveryIntervalMs = (uint32_t)value * 1000UL;
+        nextDiscoveryAt = millis() + discoveryIntervalMs;
+        io->print(F("Discovery interval -> "));
+        io->print(value);
+        io->println(F(" s"));
+        emitPowerStatus(*io);
+        io->println(F("Tip: run 'save' to persist."));
+        return;
+    }
+
+    io->println(F("Unknown power subcommand. Use: announce, discover"));
 }
 
 void RNSConsole::cmdMorse(const char* args) {
@@ -1228,7 +1567,7 @@ void RNSConsole::cmdLed(const char* args) {
         io->println(F("  led alert mode <once|count|until-clear>"));
         io->println(F("  led alert count <1-9>"));
         io->println(F("  led alert interval <seconds>"));
-        io->println(F("  led alert watch <add|del|clear> [hash16]"));
+        io->println(F("  led alert watch <add|del|clear> [hash16] [green+blue+red|auto]"));
         io->println(F("  led alert pending clear [hash16|all]"));
         io->println(F("Tip: run 'save' to persist."));
         emitLedStatus(*io);
@@ -1398,6 +1737,7 @@ void RNSConsole::cmdLed(const char* args) {
             if (strncmp(args, "clear", 5) == 0) {
                 ledAlertCfg.watchCount = 0;
                 memset(ledAlertCfg.watchPrefixes, 0, sizeof(ledAlertCfg.watchPrefixes));
+                memset(ledAlertCfg.watchTargetMasks, 0, sizeof(ledAlertCfg.watchTargetMasks));
                 emitLedStatus(*io);
                 io->println(F("Tip: run 'save' to persist."));
                 return;
@@ -1414,10 +1754,21 @@ void RNSConsole::cmdLed(const char* args) {
             while (*args == ' ') args++;
             uint8_t prefix[LED_ALERT_PREFIX_BYTES] = {0};
             if ((!adding && !removing) || !parseHashPrefix(args, prefix)) {
-                io->println(F("Usage: led alert watch <add|del> <16-hex hash prefix>"));
+                io->println(F("Usage: led alert watch <add|del> <16-hex hash prefix> [green+blue+red|auto]"));
                 return;
             }
-            bool ok = adding ? addAlertWatchPrefix(prefix) : removeAlertWatchPrefix(prefix);
+            while (*args && *args != ' ') args++;
+            while (*args == ' ') args++;
+
+            uint8_t targetMask = 0;
+            if (adding && *args) {
+                if (!parseLedMask(args, targetMask)) {
+                    io->println(F("Invalid watch target mask. Use green, blue, red, combos, or auto."));
+                    return;
+                }
+            }
+
+            bool ok = adding ? addAlertWatchPrefix(prefix, targetMask) : removeAlertWatchPrefix(prefix);
             io->println(ok ? (adding ? F("Watch added." ) : F("Watch removed."))
                            : (adding ? F("Watch list full or unchanged." ) : F("Watch not found.")));
             emitLedStatus(*io);
@@ -1637,6 +1988,7 @@ void setup() {
         ledAlertCfg.intervalSec = loadedLedCfg.alertIntervalSec;
         ledAlertCfg.watchCount = loadedLedCfg.alertWatchCount > LED_ALERT_WATCH_MAX ? LED_ALERT_WATCH_MAX : loadedLedCfg.alertWatchCount;
         memcpy(ledAlertCfg.watchPrefixes, loadedLedCfg.alertWatchPrefixes, sizeof(loadedLedCfg.alertWatchPrefixes));
+        memcpy(ledAlertCfg.watchTargetMasks, loadedLedCfg.alertWatchMasks, sizeof(loadedLedCfg.alertWatchMasks));
         Serial.println(F("[RNS] Loaded per-channel LED config"));
         emitLedAlertStatus(Serial);
     }
@@ -1649,8 +2001,13 @@ void setup() {
         refreshLedOutputs(millis(), true);
 
         // Apply saved config if available
-        if (persist.loadConfig(radio)) {
+        uint16_t loadedAnnounceIntervalSec = (uint16_t)(ANNOUNCE_INTERVAL_MS / 1000UL);
+        uint16_t loadedDiscoveryIntervalSec = (uint16_t)(DISCOVERY_INTERVAL_MS / 1000UL);
+        if (persist.loadConfig(radio, &loadedAnnounceIntervalSec, &loadedDiscoveryIntervalSec)) {
             Serial.println(F("[RNS] Loaded saved radio config"));
+            announceIntervalMs = (uint32_t)loadedAnnounceIntervalSec * 1000UL;
+            discoveryIntervalMs = (uint32_t)loadedDiscoveryIntervalSec * 1000UL;
+            emitPowerStatus(Serial);
         }
     } else {
         Serial.println(F("FAILED — check RAK13302 connection"));
@@ -1704,16 +2061,12 @@ void setup() {
 static uint32_t lastTransportLoop = 0;
 
 static inline void scheduleNextAnnounce(uint32_t now) {
-    uint32_t interval = ((now - bootTime) < ANNOUNCE_FAST_PERIOD_MS)
-                        ? ANNOUNCE_FAST_INTERVAL_MS
-                        : ANNOUNCE_INTERVAL_MS;
+    uint32_t interval = announceIntervalMs;
     nextAnnounceAt = now + interval;
 }
 
 static inline void scheduleNextDiscovery(uint32_t now) {
-    uint32_t interval = ((now - bootTime) < ANNOUNCE_FAST_PERIOD_MS)
-                        ? DISCOVERY_FAST_INTERVAL_MS
-                        : DISCOVERY_INTERVAL_MS;
+    uint32_t interval = discoveryIntervalMs;
     nextDiscoveryAt = now + interval;
 }
 

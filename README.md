@@ -25,10 +25,11 @@ It is designed for safe field updates with:
 - Packet forwarding/relay for mesh/backbone transport with duplicate suppression
 - Announce relay queue with jitter and hop-count-aware flooding (32-slot queue)
 - Active peer discovery via periodic discovery sweeps; nearby nodes replay cached signed announces
-- Fast announce schedule for the first 5 minutes after boot (15 s), then every 60 s
+- Configurable periodic announce and discovery cadence, adjustable at runtime and persisted to flash
 - **Encrypted peer-to-peer messaging** using X25519 + Ed25519 (per-peer public keys extracted from announces)
 - Broadcast announce-sideband messaging for peers without known keys
 - Per-peer addressing by hash prefix or name (`msg @<hash>`, `msg @<name>`)
+- Direct encrypted chat retries transient send failures, and the browser flasher waits for peer ACK before marking delivery complete
 - Auto-reply to safe diagnostic prompts (`RT?PING7`, `RT?UP7`, `RT?MESH7`) — encrypted, rate-limited
 - RSSI and SNR tracked per peer in the routing table
 - USB serial command console with rich command set (see table below)
@@ -73,7 +74,7 @@ The `led alert` system can:
 - Blink a Morse alert immediately on every incoming message (`once`)
 - Repeat the alert a configurable number of times at a configurable interval (`count`)
 - Continue blinking until the conversation is opened (`until-clear`)
-- Filter alerts to specific sender hash prefixes (`led alert watch <hash16>`)
+- Filter alerts to specific sender hash prefixes, optionally per LED channel (`led alert watch <hash16> [green+blue+red|auto]`)
 
 ## Peer Messaging
 
@@ -83,6 +84,7 @@ RatTunnel supports text messaging over the Reticulum radio link:
 - `msg @<hash> <text>` or `msg @<name> <text>` — address a specific peer; sends encrypted if key is available, falls back to broadcast sideband
 - Encrypted messages use X25519 (key exchange) + Ed25519 (identity) keys extracted from announce packets
 - Peer public keys are stored in the path table and survive path refreshes
+- The browser flasher wraps direct encrypted chat with delivery ACKs and bounded retries; both peers must run current firmware for end-to-end delivery confirmation
 
 ### Auto-reply diagnostic prompts
 
@@ -234,6 +236,7 @@ Once a release exists with valid assets, the web flasher will list it automatica
 |---|---|
 | `set freq\|sf\|bw\|cr\|txpower\|syncword\|preamble <value>` | Live radio tuning |
 | `profile rnode-eu\|rnode-us\|ratspeak-us` | One-shot Reticulum LoRa preset |
+| `power [announce\|discover <seconds>]` | Show or set periodic announce/discovery cadence |
 
 ### Naming and messaging
 
@@ -258,7 +261,7 @@ Once a release exists with valid assets, the web flasher will list it automatica
 | `led alert mode <once\|count\|until-clear>` | Alert repeat strategy |
 | `led alert count <n>` | Repeat count for `count` mode |
 | `led alert interval <s>` | Seconds between alert repeats |
-| `led alert watch <hash16>` | Add a sender prefix to watch list |
+| `led alert watch <add\|del\|clear> [hash16] [green+blue+red\|auto]` | Manage sender watch list and optional LED target mask |
 | `led alert clear` | Clear pending alerts |
 | `morse mode <off\|errors\|incoming\|both\|default>` | Set Morse mode for all available LEDs |
 | `morse default <message\|clear>` | Set or clear the default Morse message |
