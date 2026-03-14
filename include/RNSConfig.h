@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    32
-#define FW_VERSION_STRING   "1.0.32"
+#define FW_VERSION_PATCH    33
+#define FW_VERSION_STRING   "1.0.33"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.32"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.33"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -128,6 +128,7 @@ static const uint8_t LED_CONFIG_VERSION = 2;
 #define LED_CONFIG_FILE      "/leds.bin"
 #define SECURITY_CONFIG_FILE "/security.bin"
 #define PATH_TABLE_FILE      "/paths.bin"
+#define AUTH_FILE            "/auth.bin"
 
 // ── Safe-boot: hold this pin LOW during reset to skip main app
 //    and enter a minimal serial console for recovery ──────

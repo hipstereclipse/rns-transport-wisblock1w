@@ -2830,6 +2830,9 @@ let serialCooldownUntil = 0;
 let serialSessionId = 0;
 let lastSnapshotAt = 0;
 let autoRefreshCycle = 0;
+// Device-side auth state: null=unknown, 'none'=no password, 'required'=password set
+let deviceAuthState = null;
+let rxResponseListeners = [];
 
 const queryParams = new URLSearchParams(window.location.search);
 
@@ -2923,7 +2926,7 @@ async function authVerifyPassword(password, stored) {
   return diff === 0;
 }
 
-function authHasPassword() { return !!getAuthData(); }
+function authHasPassword() { return deviceAuthState === 'required'; }
 
 function authSessionToken() {
   try { return sessionStorage.getItem(AUTH_SESSION_KEY); } catch (_) { return null; }
@@ -3006,21 +3009,26 @@ async function authUnlock() {
   const errEl = document.getElementById('authError');
   const pw = inp?.value || '';
   if (!pw) { errEl.textContent = 'Enter your password.'; inp?.classList.add('error'); return; }
-  const stored = getAuthData();
-  if (!stored) { authHideOverlay(); return; }
-  const valid = await authVerifyPassword(pw, stored);
-  if (!valid) {
-    errEl.textContent = 'Incorrect password.';
-    inp?.classList.add('error');
-    inp?.select();
-    return;
+  if (!writer) { errEl.textContent = 'Not connected to device.'; return; }
+  try {
+    const p = waitForResponseLine(/^AUTH_(OK|FAIL)/, 5000);
+    await sendCmd(`auth ${pw}`, { quiet: true, bypassCooldown: true, allowLocked: true });
+    const line = await p;
+    if (/AUTH_OK/.test(line)) {
+      authUnlocked = true;
+      authCreateSession();
+      authHideOverlay();
+      updateLockBtnUi();
+      updateConsoleAccessUi();
+      resetAuthIdleTimer();
+    } else {
+      errEl.textContent = 'Incorrect password.';
+      inp?.classList.add('error');
+      inp?.select();
+    }
+  } catch (_) {
+    errEl.textContent = 'Device did not respond. Check connection.';
   }
-  authUnlocked = true;
-  authCreateSession();
-  authHideOverlay();
-  updateLockBtnUi();
-  updateConsoleAccessUi();
-  resetAuthIdleTimer();
 }
 
 async function authSetPassword() {
@@ -3031,15 +3039,26 @@ async function authSetPassword() {
   const conf = confEl?.value || '';
   if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
   if (pw !== conf) { errEl.textContent = 'Passwords do not match.'; return; }
-  const data = await authHashPassword(pw);
-  localStorage.setItem(AUTH_KEY, JSON.stringify(data));
-  authUnlocked = true;
-  authCreateSession();
-  authHideOverlay();
-  updateLockBtnUi();
-  updateConsoleAccessUi();
-  updateSecurityTabUi();
-  resetAuthIdleTimer();
+  if (!writer) { errEl.textContent = 'Not connected to device.'; return; }
+  try {
+    const p = waitForResponseLine(/^SETPASS_(OK|ERR)/, 5000);
+    await sendCmd(`setpass ${pw}`, { quiet: true, bypassCooldown: true, allowLocked: true });
+    const line = await p;
+    if (/SETPASS_OK/.test(line)) {
+      deviceAuthState = 'required';
+      authUnlocked = true;
+      authCreateSession();
+      authHideOverlay();
+      updateLockBtnUi();
+      updateConsoleAccessUi();
+      updateSecurityTabUi();
+      resetAuthIdleTimer();
+    } else {
+      errEl.textContent = 'Failed to save password on device.';
+    }
+  } catch (_) {
+    errEl.textContent = 'Device did not respond.';
+  }
 }
 
 function authSkipSetup() {
@@ -3104,17 +3123,28 @@ async function secSetPassword() {
   const errEl = document.getElementById('secPwError');
   if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
   if (pw !== conf) { errEl.textContent = 'Passwords do not match.'; return; }
-  const data = await authHashPassword(pw);
-  localStorage.setItem(AUTH_KEY, JSON.stringify(data));
-  authUnlocked = true;
-  authCreateSession();
-  updateLockBtnUi();
-  updateConsoleAccessUi();
-  updateSecurityTabUi();
-  resetAuthIdleTimer();
-  showFlashAlert('info', 'Password set. Repeater access is now protected.');
-  document.getElementById('secNewPw').value = '';
-  document.getElementById('secConfirmPw').value = '';
+  if (!writer) { errEl.textContent = 'Not connected to device.'; return; }
+  try {
+    const p = waitForResponseLine(/^SETPASS_(OK|ERR)/, 5000);
+    await sendCmd(`setpass ${pw}`, { quiet: true, bypassCooldown: true, allowLocked: true });
+    const line = await p;
+    if (/SETPASS_OK/.test(line)) {
+      deviceAuthState = 'required';
+      authUnlocked = true;
+      authCreateSession();
+      updateLockBtnUi();
+      updateConsoleAccessUi();
+      updateSecurityTabUi();
+      resetAuthIdleTimer();
+      showFlashAlert('info', 'Password set. Repeater access is now protected.');
+      document.getElementById('secNewPw').value = '';
+      document.getElementById('secConfirmPw').value = '';
+    } else {
+      errEl.textContent = 'Failed to save password on device.';
+    }
+  } catch (_) {
+    errEl.textContent = 'Device did not respond.';
+  }
 }
 
 function secPromptChangePassword() {
@@ -3132,38 +3162,57 @@ async function secDoChangePassword() {
   const oldPw = document.getElementById('secOldPw')?.value || '';
   const newPw = document.getElementById('secChgNewPw')?.value || '';
   const confPw = document.getElementById('secChgConfirmPw')?.value || '';
-  const stored = getAuthData();
-  if (!stored) { errEl.textContent = 'No current password found.'; return; }
-  const valid = await authVerifyPassword(oldPw, stored);
-  if (!valid) { errEl.textContent = 'Current password is incorrect.'; return; }
   if (newPw.length < 6) { errEl.textContent = 'New password must be at least 6 characters.'; return; }
   if (newPw !== confPw) { errEl.textContent = 'New passwords do not match.'; return; }
-  const data = await authHashPassword(newPw);
-  localStorage.setItem(AUTH_KEY, JSON.stringify(data));
-  authUnlocked = true;
-  authCreateSession();
-  updateLockBtnUi();
-  updateConsoleAccessUi();
-  updateSecurityTabUi();
-  resetAuthIdleTimer();
-  showFlashAlert('info', 'Password changed successfully.');
+  if (!writer) { errEl.textContent = 'Not connected to device.'; return; }
+  try {
+    // Verify current password first
+    const vp = waitForResponseLine(/^AUTH_(OK|FAIL)/, 5000);
+    await sendCmd(`auth ${oldPw}`, { quiet: true, bypassCooldown: true, allowLocked: true });
+    const vline = await vp;
+    if (!/AUTH_OK/.test(vline)) { errEl.textContent = 'Current password is incorrect.'; return; }
+    // Set new password
+    const sp = waitForResponseLine(/^SETPASS_(OK|ERR)/, 5000);
+    await sendCmd(`setpass ${newPw}`, { quiet: true, bypassCooldown: true, allowLocked: true });
+    const sline = await sp;
+    if (!/SETPASS_OK/.test(sline)) { errEl.textContent = 'Failed to save new password on device.'; return; }
+    updateLockBtnUi();
+    updateConsoleAccessUi();
+    updateSecurityTabUi();
+    resetAuthIdleTimer();
+    showFlashAlert('info', 'Password changed successfully.');
+    secCancelChange();
+  } catch (_) {
+    errEl.textContent = 'Device operation failed. Check connection.';
+  }
 }
 
 async function secRemovePassword() {
   if (!authHasPassword()) return;
+  if (!writer) { document.getElementById('secPwError').textContent = 'Not connected to device.'; return; }
   const pw = prompt('Enter your current password to remove it:');
   if (!pw) return;
-  const stored = getAuthData();
-  const valid = await authVerifyPassword(pw, stored);
-  if (!valid) { document.getElementById('secPwError').textContent = 'Incorrect password.'; return; }
-  localStorage.removeItem(AUTH_KEY);
-  authUnlocked = true;
-  authClearSession();
-  clearAuthIdleTimer();
-  updateLockBtnUi();
-  updateConsoleAccessUi();
-  updateSecurityTabUi();
-  showFlashAlert('info', 'Password removed. Repeater access is no longer protected.');
+  const errEl = document.getElementById('secPwError');
+  try {
+    // Verify then clear
+    const vp = waitForResponseLine(/^AUTH_(OK|FAIL)/, 5000);
+    await sendCmd(`auth ${pw}`, { quiet: true, bypassCooldown: true, allowLocked: true });
+    const vline = await vp;
+    if (!/AUTH_OK/.test(vline)) { errEl.textContent = 'Incorrect password.'; return; }
+    const cp = waitForResponseLine(/^CLEARPASS_(OK|ERR)/, 5000);
+    await sendCmd('clearpass', { bypassCooldown: true, allowLocked: true });
+    await cp;
+    deviceAuthState = 'none';
+    authUnlocked = true;
+    authClearSession();
+    clearAuthIdleTimer();
+    updateLockBtnUi();
+    updateConsoleAccessUi();
+    updateSecurityTabUi();
+    showFlashAlert('info', 'Password removed. Repeater access is no longer protected.');
+  } catch (_) {
+    errEl.textContent = 'Device operation failed. Check connection.';
+  }
 }
 
 function resetAuthIdleTimer() {
@@ -3185,6 +3234,63 @@ function clearAuthIdleTimer() {
 
 function authBumpActivity() {
   authLastActivity = Date.now();
+}
+
+/**
+ * Register a one-shot listener that resolves when the device sends a line
+ * matching `pattern`.  Rejects after `timeoutMs` if no match arrives.
+ * Pattern may be a RegExp or a plain-string substring.
+ */
+function waitForResponseLine(pattern, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      rxResponseListeners = rxResponseListeners.filter(l => l !== listener);
+      reject(new Error('timeout'));
+    }, timeoutMs);
+    const listener = (trimmedLine) => {
+      if (done) return;
+      const matches = (pattern instanceof RegExp)
+        ? pattern.test(trimmedLine)
+        : trimmedLine.includes(pattern);
+      if (matches) {
+        done = true;
+        clearTimeout(timer);
+        rxResponseListeners = rxResponseListeners.filter(l => l !== listener);
+        resolve(trimmedLine);
+      }
+    };
+    rxResponseListeners.push(listener);
+  });
+}
+
+/**
+ * Query the device for auth state immediately after it is detected as a
+ * compatible RatTunnel node.  Sets deviceAuthState and shows the auth
+ * overlay when a password is required.
+ */
+async function queryDeviceAuth() {
+  if (!writer) return;
+  // Clean up any legacy localStorage password entry — auth lives on-device now.
+  try { localStorage.removeItem(AUTH_KEY); } catch (_) {}
+  try {
+    const p = waitForResponseLine(/^AUTH_(NONE|REQUIRED)/, 4000);
+    await sendCmd('auth ?', { quiet: true, bypassCooldown: true, allowLocked: true });
+    const line = await p;
+    deviceAuthState = /AUTH_REQUIRED/.test(line) ? 'required' : 'none';
+  } catch (_) {
+    // Device doesn't support auth command (old firmware) or timed out → treat as no auth.
+    deviceAuthState = 'none';
+  }
+  updateLockBtnUi();
+  updateConsoleAccessUi();
+  updateSecurityTabUi();
+  // If auth is required and the user has no valid session, prompt immediately.
+  if (deviceAuthState === 'required' && isRepeaterAccessLocked()) {
+    authShowOverlay();
+  }
 }
 
 /* ════════════════════════════════════════════
@@ -4163,6 +4269,8 @@ function markCompatibleRepeater(reason = '') {
     repeaterCaps.legacyDetected = false;
     if (reason) sysLog(`Repeater compatibility confirmed (${reason}).\n`);
     updateRepeaterUi();
+    // Query device for auth state (password stored on-device, not browser)
+    queryDeviceAuth();
   }
 }
 
@@ -5119,7 +5227,14 @@ function feedStatusParser(text) {
   rxLineBuffer += chunk;
   const lines = rxLineBuffer.split(/\r?\n/);
   rxLineBuffer = lines.pop() || '';
-  for (const line of lines) parseStatusLine(line);
+  for (const line of lines) {
+    parseStatusLine(line);
+    // Dispatch trimmed line to any pending response listeners (for auth/setpass/etc.)
+    if (rxResponseListeners.length > 0) {
+      const t = line.trim();
+      if (t) for (const fn of [...rxResponseListeners]) fn(t);
+    }
+  }
 }
 
 async function refreshRepeaterSnapshot(force = false) {
@@ -6361,6 +6476,8 @@ async function doDisconnect(opts = {}) {
     repeaterCaps.supportsAnnounce = false;
     repeaterCaps.supportsName = false;
     repeaterCaps.legacyDetected = false;
+    deviceAuthState = null;   // reset on disconnect; re-queried on next connect
+    rxResponseListeners = []; // cancel any pending response waiters
     rxProbeBuffer = '';
     morseLineBuffer = '';
     lastDecodedMorse = '';

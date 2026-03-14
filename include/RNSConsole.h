@@ -13,18 +13,17 @@
 #include "RNSTransport.h"
 #include "RNSRadio.h"
 #include "RNSIdentity.h"
+#include "RNSPersistence.h"
 
 #ifndef NATIVE_TEST
 #include <nrf_gpio.h>
+#include <SHA256.h>
 extern "C" char* sbrk(int incr);
 #endif
 
 // Stringify helper for pin numbers in F() strings
 #define PIN_STR_INNER(x) #x
 #define PIN_STR(x) PIN_STR_INNER(x)
-
-// Forward declaration for persistence (optional)
-class RNSPersistence;
 
 class RNSConsole {
 public:
@@ -132,6 +131,9 @@ private:
         else if (strcmp(command, "nfloor")    == 0) cmdNoiseFloor(args);
         else if (strcmp(command, "regdump")   == 0) cmdRegDump();
         else if (strcmp(command, "lorascan")  == 0) cmdLoraScan();
+        else if (strcmp(command, "auth")      == 0) cmdAuth(args);
+        else if (strcmp(command, "setpass")   == 0) cmdSetpass(args);
+        else if (strcmp(command, "clearpass") == 0) cmdClearpass();
         else if (strcmp(command, "help")      == 0) cmdHelp();
         else {
             io->print(F("Unknown: "));
@@ -1854,6 +1856,84 @@ private:
 #endif
     }
 
+    // ── auth: query/verify device password ───────────────
+    /**
+     * @brief Handles the `auth` serial command.
+     *        `auth ?`       → AUTH_NONE  or AUTH_REQUIRED
+     *        `auth <pw>`    → AUTH_OK    or AUTH_FAIL
+     *
+     * The password is stored as a raw SHA-256 hash in AUTH_FILE.
+     * Sending the plaintext password over serial is intentional —
+     * access requires physical USB connection to the device.
+     */
+    void cmdAuth(const char* args) {
+        if (!persistence) { io->println(F("AUTH_NONE")); return; }
+        if (!args || args[0] == '\0') {
+            io->println(F("AUTH_NONE"));
+            return;
+        }
+        if (args[0] == '?' && (args[1] == '\0' || args[1] == ' ')) {
+            io->println(persistence->hasAuthPassword() ? F("AUTH_REQUIRED") : F("AUTH_NONE"));
+            return;
+        }
+        // Verify supplied password
+        uint8_t stored[32];
+        if (!persistence->loadAuthHash(stored)) {
+            // No password configured — accept all
+            io->println(F("AUTH_OK"));
+            return;
+        }
+#ifndef NATIVE_TEST
+        uint8_t computed[32];
+        {
+            SHA256 sha;
+            sha.reset();
+            sha.update((const uint8_t*)args, strlen(args));
+            sha.finalize(computed, 32);
+        }
+        bool match = (memcmp(computed, stored, 32) == 0);
+#else
+        bool match = false;
+#endif
+        io->println(match ? F("AUTH_OK") : F("AUTH_FAIL"));
+    }
+
+    // ── setpass: store a new password hash ───────────────
+    void cmdSetpass(const char* args) {
+        if (!persistence) { io->println(F("SETPASS_ERR: no filesystem")); return; }
+        if (!args || args[0] == '\0') {
+            io->println(F("SETPASS_ERR: empty password"));
+            return;
+        }
+        if (strlen(args) < 6) {
+            io->println(F("SETPASS_ERR: min 6 characters"));
+            return;
+        }
+#ifndef NATIVE_TEST
+        uint8_t hash[32];
+        {
+            SHA256 sha;
+            sha.reset();
+            sha.update((const uint8_t*)args, strlen(args));
+            sha.finalize(hash, 32);
+        }
+        if (persistence->saveAuthHash(hash)) {
+            io->println(F("SETPASS_OK"));
+        } else {
+            io->println(F("SETPASS_ERR: write failed"));
+        }
+#else
+        io->println(F("SETPASS_ERR: native build"));
+#endif
+    }
+
+    // ── clearpass: remove stored password ────────────────
+    void cmdClearpass() {
+        if (!persistence) { io->println(F("CLEARPASS_ERR: no filesystem")); return; }
+        persistence->clearAuthPassword();
+        io->println(F("CLEARPASS_OK"));
+    }
+
     // ── help ──────────────────────────────────────────────
     void cmdHelp() {
         io->println(F("── Available Commands ──"));
@@ -1880,6 +1960,11 @@ private:
         io->println(F("  reinit         Retry radio initialization"));
         io->println(F("  pintest        Scan IO pins to find SX1262 BUSY/DIO1/RST"));
         io->println(F("  version        Firmware version"));
+        io->println(F("── Security ──"));
+        io->println(F("  auth ?         Query if a password is set (AUTH_NONE / AUTH_REQUIRED)"));
+        io->println(F("  auth <pw>      Verify password (AUTH_OK / AUTH_FAIL)"));
+        io->println(F("  setpass <pw>   Set or replace the UI access password (min 6 chars)"));
+        io->println(F("  clearpass      Remove stored password"));
         io->println(F("── Diagnostics ──"));
         io->println(F("  rxdiag         SX1262 RX state dump (chipMode, IRQ, BUSY, params)"));
         io->println(F("  irqmon [sec]   Monitor IRQ flags for N seconds (default 10)"));

@@ -421,6 +421,72 @@ public:
         if (!fsReady) return;
         wipeRuntimeStatePreserveSecurity();
         InternalFS.remove(SECURITY_CONFIG_FILE);
+        InternalFS.remove(AUTH_FILE);
+#endif
+    }
+
+    // ── Auth password persistence (32-byte SHA-256 hash) ──
+
+    /** @brief Returns true if a password hash is stored on-device. */
+    bool hasAuthPassword() {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        File f = InternalFS.open(AUTH_FILE, FILE_O_READ);
+        if (!f) return false;
+        int sz = (int)f.size();
+        f.close();
+        return sz == 32;
+#else
+        return false;
+#endif
+    }
+
+    /**
+     * @brief Load the stored 32-byte SHA-256 password hash.
+     * @param hash Output buffer, must be 32 bytes.
+     * @return true on success.
+     */
+    bool loadAuthHash(uint8_t hash[32]) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        File f = InternalFS.open(AUTH_FILE, FILE_O_READ);
+        if (!f) return false;
+        int n = f.read(hash, 32);
+        f.close();
+        return n == 32;
+#else
+        (void)hash;
+        return false;
+#endif
+    }
+
+    /**
+     * @brief Persist a 32-byte SHA-256 password hash to flash.
+     * @param hash 32-byte SHA-256 hash of the desired password.
+     * @return true on success.
+     */
+    bool saveAuthHash(const uint8_t hash[32]) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        InternalFS.remove(AUTH_FILE);
+        File f = InternalFS.open(AUTH_FILE, FILE_O_WRITE);
+        if (!f) return false;
+        size_t n = f.write(hash, 32);
+        f.close();
+        return (n == 32);
+#else
+        (void)hash;
+        return false;
+#endif
+    }
+
+    /** @brief Delete the stored password hash (clears auth requirement). */
+    bool clearAuthPassword() {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        return InternalFS.remove(AUTH_FILE);
+#else
+        return false;
 #endif
     }
 

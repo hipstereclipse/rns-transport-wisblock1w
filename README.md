@@ -1,4 +1,4 @@
-# RatTunnel V. 1.0.32 — WisBlock 1W
+# RatTunnel V. 1.0.33 — WisBlock 1W
 
 `RatTunnel` is a standalone Reticulum transport/repeater firmware for the RAKwireless WisBlock 1W stack (`RAK3401 + RAK13302`).
 The name **RatTunnel** is a nod to [Ratspeak](https://github.com/ratspeak/), a messaging app/platform built on [Reticulum](https://github.com/markqvist/Reticulum/).
@@ -13,7 +13,7 @@ It is designed for safe field updates with:
 
 ## Current Status
 
-- Firmware brand/version: `RatTunnel V. 1.0.32`
+- Firmware brand/version: `RatTunnel V. 1.0.33`
 - Hardware target: WisBlock 1W (`nRF52840 + SX1262`)
 - Primary flashing path: Web flasher (`flasher/index.html`) served over HTTP
 - Secondary flashing path: UF2 drag-and-drop bootloader drive
