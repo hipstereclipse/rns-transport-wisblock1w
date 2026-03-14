@@ -935,29 +935,42 @@ public:
     }
 
     // ── Runtime reconfiguration ───────────────────────────
+    // After any parameter change, the radio must be put back into RX.
+    // RadioLib's setters internally call standby(), leaving the chip
+    // in STBY_RC — no packets will be received until startReceive().
+    void restartRx() {
+#ifndef NATIVE_TEST
+        if (hwReady) lora.startReceive();
+#endif
+    }
+
     void setFrequency(float mhz)  {
 #ifndef NATIVE_TEST
         lora.setFrequency(mhz);
 #endif
         curFreqMHz = mhz;
+        restartRx();
     }
     void setBandwidth(float khz)  {
 #ifndef NATIVE_TEST
         lora.setBandwidth(khz);
 #endif
         curBwKHz = khz;
+        restartRx();
     }
     void setSF(uint8_t sf) {
 #ifndef NATIVE_TEST
         lora.setSpreadingFactor(sf);
 #endif
         curSF = sf;
+        restartRx();
     }
     void setCR(uint8_t cr) {
 #ifndef NATIVE_TEST
         lora.setCodingRate(cr);
 #endif
         curCR = cr;
+        restartRx();
     }
     void setTxPower(int8_t dbm) {
         if (dbm > LORA_TX_DBM_MAX_SAFE) dbm = LORA_TX_DBM_MAX_SAFE;
@@ -966,18 +979,21 @@ public:
         lora.setOutputPower(dbm);
 #endif
         curTxDbm = dbm;
+        // No restartRx needed — TX power doesn't affect RX state
     }
     void setSyncWord(uint8_t syncWord) {
 #ifndef NATIVE_TEST
         lora.setSyncWord(syncWord);
 #endif
         curSyncWord = syncWord;
+        restartRx();
     }
     void setPreamble(uint16_t preambleSymbols) {
 #ifndef NATIVE_TEST
         lora.setPreambleLength(preambleSymbols);
 #endif
         curPreamble = preambleSymbols;
+        restartRx();
     }
 };
 
