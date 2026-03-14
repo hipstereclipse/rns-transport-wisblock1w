@@ -1,40 +1,76 @@
 from __future__ import annotations
 
 import argparse
-import functools
 import http.server
+import mimetypes
 import pathlib
 import socketserver
+import sys
 import threading
 import time
 import webbrowser
 
-                                                                                                                                                                                                                                                                                                                                                                                
+
+# Ensure .uf2 firmware files are served with a binary MIME type
+mimetypes.add_type("application/octet-stream", ".uf2")
+
+
+class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
+    """SimpleHTTPRequestHandler with no-cache headers for development."""
+
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
+    def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
+        # Colour 200/304 green, 4xx/5xx red in terminals that support ANSI
+        code = args[1] if len(args) > 1 else ""
+        colour = ""
+        reset = "\033[0m"
+        if str(code).startswith(("4", "5")):
+            colour = "\033[91m"
+        elif str(code).startswith(("2", "3")):
+            colour = "\033[92m"
+        sys.stderr.write(f"{colour}{self.address_string()} - {fmt % args}{reset}\n")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve the flasher over HTTP for Chrome/Edge Web Serial and File System Access support.")
+    parser = argparse.ArgumentParser(
+        description="Serve the flasher UI over HTTP for Chrome/Edge Web Serial support.",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--no-open", action="store_true", help="Do not open a browser automatically")
     args = parser.parse_args()
 
     workspace_root = pathlib.Path(__file__).resolve().parent.parent
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(workspace_root))
 
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
-    with ReusableTCPServer((args.host, args.port), handler) as httpd:
-        url = f"http://{args.host}:{args.port}/flasher/"
-        print(f"Serving {workspace_root} at {url}")
-        print("Open the flasher in Chrome or Edge, not an embedded preview pane.")
+    handler = lambda *a, **kw: NoCacheHandler(*a, directory=str(workspace_root), **kw)
 
-        if not args.no_open:
-            threading.Thread(target=lambda: (time.sleep(0.5), webbrowser.open(url)), daemon=True).start()
+    try:
+        with ReusableTCPServer((args.host, args.port), handler) as httpd:
+            url = f"http://{args.host}:{args.port}/flasher/"
+            print(f"\n  Serving  {workspace_root}")
+            print(f"  Flasher  {url}")
+            print(f"  Press Ctrl+C to stop.\n")
 
-        try:
+            if not args.no_open:
+                threading.Thread(target=lambda: (time.sleep(0.5), webbrowser.open(url)), daemon=True).start()
+
             httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nStopping server...")
+    except KeyboardInterrupt:
+        print("\nStopping server...")
+    except OSError as exc:
+        if "address already in use" in str(exc).lower() or getattr(exc, "winerror", None) == 10048:
+            print(f"\n  ERROR: Port {args.port} is already in use.")
+            print(f"  Try:  python {pathlib.Path(__file__).name} --port {args.port + 1}\n")
+            sys.exit(1)
+        raise
 
 
 if __name__ == "__main__":
