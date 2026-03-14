@@ -21,7 +21,12 @@ using namespace Adafruit_LittleFS_Namespace;
 #endif
 
 // ── Persisted radio configuration ─────────────────────────
+// Bump CONFIG_VERSION when compile-time defaults change so stale
+// flash configs are automatically discarded on first boot.
+#define RADIO_CONFIG_VERSION  2   // V2: ratspeak-us defaults (SF9/pre18)
+
 struct RadioConfig {
+    uint16_t version;    ///< Must match RADIO_CONFIG_VERSION or load is rejected
     float   freqMHz;
     float   bwKHz;
     uint8_t sf;
@@ -141,6 +146,11 @@ public:
         f.close();
 
         if (computeConfigChecksum(cfg) != cfg.checksum) return false;
+        if (cfg.version != RADIO_CONFIG_VERSION) {
+            Serial.println(F("[RNS] Saved radio config version mismatch — using defaults"));
+            InternalFS.remove(CONFIG_FILE);
+            return false;
+        }
 
         radio.setFrequency(cfg.freqMHz);
         radio.setBandwidth(cfg.bwKHz);
@@ -160,6 +170,7 @@ public:
         if (!fsReady) return false;
 
         RadioConfig cfg;
+        cfg.version  = RADIO_CONFIG_VERSION;
         cfg.freqMHz = radio.curFreqMHz;
         cfg.bwKHz   = radio.curBwKHz;
         cfg.sf      = radio.curSF;
