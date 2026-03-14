@@ -1201,6 +1201,7 @@
       <button class="tab" onclick="switchRepeaterTab('tabRadio')">Radio</button>
       <button class="tab" onclick="switchRepeaterTab('tabDiag')">Diagnostics</button>
       <button class="tab" onclick="switchRepeaterTab('tabMsg')">Messages</button>
+      <button class="tab" onclick="switchRepeaterTab('tabContacts')">Contacts</button>
     </div>
 
     <!-- ── Overview Tab ──────────────────────── -->
@@ -1371,37 +1372,69 @@
     <!-- ── Messages Tab ──────────────────────── -->
     <div class="tab-pane" id="tabMsg">
       <div class="msg-panel">
-        <!-- Peer selector -->
-        <div class="peer-select-row">
-          <select id="msgPeerSelect" onchange="onPeerSelectChange()">
-            <option value="">Broadcast (all peers)</option>
-          </select>
-          <button class="qbtn" onclick="runRepeaterAction('peers')" title="Refresh peer list" style="white-space:nowrap;">↻</button>
+        <!-- Chat header: shows target -->
+        <div class="chat-header" id="chatHeader">
+          <div class="chat-header-info">
+            <div class="chat-header-dot" id="chatHeaderDot"></div>
+            <span class="chat-header-name" id="chatTargetName">Broadcast</span>
+            <span class="chat-header-detail" id="chatTargetDetail">all peers</span>
+          </div>
+          <span class="chat-encrypted-badge" id="chatEncBadge" style="display:none;">🔒 encrypted</span>
+          <button class="chat-header-close" id="chatClearTarget" onclick="clearChatTarget()" style="display:none;" title="Back to broadcast">✕</button>
         </div>
-        <!-- Peer chips (clickable) -->
-        <div id="peerChips" style="display:flex;flex-wrap:wrap;gap:0.3rem;"></div>
 
+        <!-- Peer pills (quick target selection) -->
+        <div class="peer-pills" id="peerPills">
+          <button class="peer-pill active" onclick="selectPeerForMessaging('')">All</button>
+        </div>
+
+        <!-- Chat log -->
         <div id="commLog" class="chat-log"></div>
+
+        <!-- Input row -->
         <div class="chat-input-row">
-          <input id="commText" type="text" maxlength="72" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendPeerMessage()">
+          <input id="commText" type="text" maxlength="72" placeholder="Type a message…" onkeydown="if(event.key==='Enter')sendPeerMessage()" oninput="updateCharCount()">
           <button class="chat-send-btn" onclick="sendPeerMessage()" title="Send">&#9654;</button>
         </div>
-        <div class="repeater-actions" style="justify-content:space-between;align-items:center;">
-          <div style="display:flex;gap:0.3rem;">
-            <button class="qbtn" onclick="runRepeaterAction('announce')">Announce</button>
-            <button class="qbtn" onclick="runRepeaterAction('peers')">Peers</button>
+
+        <!-- Footer -->
+        <div class="chat-footer">
+          <span class="chat-char-count" id="chatCharCount">0/72</span>
+          <div style="display:flex;gap:0.3rem;align-items:center;">
+            <div class="notify-row">
+              <span>Notify:</span>
+              <select id="msgNotifyMode" onchange="onNotifyModeChange()">
+                <option value="sound">Sound</option>
+                <option value="silent">Silent</option>
+                <option value="morse">Morse</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
             <button class="qbtn" onclick="clearCommLog()">Clear</button>
           </div>
-          <div class="notify-row">
-            <span>Notify:</span>
-            <select id="msgNotifyMode" onchange="onNotifyModeChange()">
-              <option value="sound">Sound</option>
-              <option value="silent">Silent</option>
-              <option value="morse">Morse</option>
-              <option value="both">Both</option>
-            </select>
-          </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── Contacts Tab ──────────────────────── -->
+    <div class="tab-pane" id="tabContacts">
+      <div class="contacts-header">
+        <div>
+          <span class="contacts-header-title">Known Peers</span>
+          <span class="contacts-count" id="contactsCount">0</span>
+        </div>
+        <div style="display:flex;gap:0.3rem;">
+          <button class="qbtn" onclick="runRepeaterAction('peers')">↻ Refresh</button>
+          <button class="qbtn" onclick="runRepeaterAction('announce')">Announce</button>
+        </div>
+      </div>
+      <div class="contacts-list" id="contactsList"></div>
+      <div class="contacts-empty" id="contactsEmpty">
+        No peers discovered yet.<br>Run <strong>Announce</strong> to broadcast your identity and wait for peers to respond.
+      </div>
+      <div class="contacts-actions">
+        <button class="qbtn" onclick="runRepeaterAction('peers')">Refresh peers</button>
+        <button class="qbtn" onclick="switchRepeaterTab('tabMsg')">Open chat</button>
       </div>
     </div>
   </div>
@@ -2489,7 +2522,15 @@ function parseStatusLine(line) {
     const sender = peerMsg[1].toUpperCase();
     const senderNode = findNodeByHashPrefix(sender);
     const label = senderNode && senderNode.name ? senderNode.name : sender + '..';
-    appendChatMessage(peerMsg[2], label, 'in');
+    const isEncrypted = !peerMsg[2].startsWith('[encrypted');
+    appendChatMessage(peerMsg[2], label, 'in', isEncrypted);
+    // Track unread per sender
+    if (selectedPeerHash !== sender) {
+      if (!unreadCounts[sender]) unreadCounts[sender] = 0;
+      unreadCounts[sender]++;
+      updatePeerPills();
+      updateContactsList();
+    }
     playNotifyBeep();
     return;
   }
@@ -2684,7 +2725,7 @@ async function runRepeaterAction(cmd) {
   openRepeaterConsole();
 }
 
-function appendChatMessage(text, sender, direction) {
+function appendChatMessage(text, sender, direction, encrypted) {
   // direction: 'in' | 'out' | 'system'
   const box = document.getElementById('commLog');
   if (!box) return;
@@ -2702,7 +2743,15 @@ function appendChatMessage(text, sender, direction) {
 
     const senderEl = document.createElement('div');
     senderEl.className = 'chat-sender';
-    senderEl.textContent = sender || (direction === 'out' ? 'You' : 'Unknown');
+    const senderText = sender || (direction === 'out' ? 'You' : 'Unknown');
+    senderEl.textContent = senderText;
+    if (encrypted) {
+      const lock = document.createElement('span');
+      lock.textContent = ' \uD83D\uDD12';
+      lock.title = 'End-to-end encrypted';
+      lock.style.fontSize = '0.58rem';
+      senderEl.appendChild(lock);
+    }
     bubble.appendChild(senderEl);
 
     const textEl = document.createElement('div');
