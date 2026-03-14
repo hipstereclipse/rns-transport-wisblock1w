@@ -110,13 +110,25 @@ public:
                               + RNS_RANDOM_BLOB_LEN + RNS_SIGLENGTH;
         if (!data || len < minLen) return false;
 
-        uint16_t sigOffset      = len - RNS_SIGLENGTH;
-        const uint8_t* signature = &data[sigOffset];
+        // Reticulum wire format: pubkey|nameHash|randomHash|SIGNATURE|appData
+        // Signature is at fixed offset, NOT at end of data.
+        const uint16_t sigOffset = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        const uint8_t* signature  = &data[sigOffset];
         const uint8_t* signingKey = &data[32];   // Ed25519 pub at bytes 32..63
-        const uint8_t* signedData = data;
-        uint16_t signedLen       = sigOffset;
 
-        return Ed25519::verify(signature, signingKey, signedData, signedLen);
+        // Signed data = pubkey + nameHash + randomHash + appData (skip signature)
+        const uint16_t appDataOffset = sigOffset + RNS_SIGLENGTH;
+        const uint16_t appDataLen = (len > appDataOffset) ? (len - appDataOffset) : 0;
+        const uint16_t signedLen  = sigOffset + appDataLen;
+        if (signedLen > RNS_MTU) return false;
+
+        uint8_t signedBuf[RNS_MTU];
+        memcpy(signedBuf, data, sigOffset);
+        if (appDataLen > 0) {
+            memcpy(signedBuf + sigOffset, data + appDataOffset, appDataLen);
+        }
+
+        return Ed25519::verify(signature, signingKey, signedBuf, signedLen);
     }
 
     // ── Extract 64-byte public key from announce data ─────

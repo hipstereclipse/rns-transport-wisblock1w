@@ -158,7 +158,7 @@ public:
         const uint16_t sigLen = RNS_SIGLENGTH;
         if (pkt.dataLen > (baseLen + sigLen)) {
             const uint16_t appLen = pkt.dataLen - baseLen - sigLen;
-            const uint8_t* app = pkt.data + baseLen;
+            const uint8_t* app = pkt.data + baseLen + sigLen;
             if (app && appLen > 4 && appLen < 96 &&
                 app[0] == 'M' && app[1] == 'S' && app[2] == 'G' && app[3] == ':') {
                 char msg[97] = {0};

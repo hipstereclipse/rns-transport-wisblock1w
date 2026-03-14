@@ -62,8 +62,7 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     }
 
     const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-    const uint16_t sigOffset = baseLen + announceAppDataLen;
-    const uint16_t totalDataLen = sigOffset + RNS_SIGLENGTH;
+    const uint16_t totalDataLen = baseLen + RNS_SIGLENGTH + announceAppDataLen;
     if (totalDataLen > RNS_MTU) return false;
 
     static uint8_t announceData[RNS_MTU];
@@ -84,13 +83,19 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
         announceData[RNS_KEYSIZE + RNS_NAME_HASH_LEN + i] = (uint8_t)random(0, 256);
     }
 
-    // [optional appData]
+    // Reticulum wire format: pubkey|nameHash|randomHash|SIGNATURE|appData
+    // Signed data = pubkey + nameHash + randomHash + appData
+    static uint8_t signedBuf[RNS_MTU];
+    memcpy(signedBuf, announceData, baseLen);
     if (announceAppData && announceAppDataLen > 0) {
-        memcpy(announceData + baseLen, announceAppData, announceAppDataLen);
+        memcpy(signedBuf + baseLen, announceAppData, announceAppDataLen);
     }
+    identity->sign(signedBuf, baseLen + announceAppDataLen, announceData + baseLen);
 
-    // [signature 64B]
-    identity->sign(announceData, sigOffset, announceData + sigOffset);
+    // [appData after signature]
+    if (announceAppData && announceAppDataLen > 0) {
+        memcpy(announceData + baseLen + RNS_SIGLENGTH, announceAppData, announceAppDataLen);
+    }
 
     RNSPacket pkt;
     pkt.ifacFlag    = false;

@@ -23,9 +23,9 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
 #define FW_VERSION_PATCH    26
-#define FW_VERSION_STRING   "1.0.26"
+#define FW_VERSION_STRING   "1.0.27"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.26"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.27"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
