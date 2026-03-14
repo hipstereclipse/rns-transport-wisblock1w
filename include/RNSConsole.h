@@ -1443,57 +1443,213 @@ private:
             }
         }
 
-        // ── Phase 3: Sync word 0x34 (LoRaWAN) on original params ──
-        io->println(F("\n── Phase 3: LoRaWAN Sync Word (0x34) ──"));
-        io->print(F("  Freq: ")); io->print(savedFreq, 1);
-        io->print(F(" MHz  SF")); io->println(savedSF);
+        // ── Phase 3: Sync Word Sweep on best-hit SF ──
+        // Find which SF had the most preambles (from Phase 1 results)
+        // We re-scan with that SF and try common sync words
+        io->println(F("\n── Phase 3: Sync Word Sweep ──"));
 
-        radio->lora.standby();
-        int rc = radio->lora.begin(savedFreq, savedBW, savedSF, savedCR,
-                                    0x34, savedTx, savedPre, 1.8f);
-        if (rc == RADIOLIB_ERR_NONE) {
+        // Re-run a quick SF scan to find best SF (Phase 1 didn't store per-SF results)
+        uint8_t bestSF = 9;  // default to SF9 based on Phase 1 patterns
+        uint32_t bestCount = 0;
+        for (uint8_t sf = 7; sf <= 12; sf++) {
+            if (keepAlive) keepAlive();
+            radio->lora.standby();
+            // Use a neutral sync word (0x12) just for preamble counting
+            int qrc = radio->lora.begin(savedFreq, savedBW, sf, savedCR,
+                                        savedSync, savedTx, savedPre, 1.8f);
+            if (qrc != RADIOLIB_ERR_NONE) continue;
+            radio->lora.setDio2AsRfSwitch(true);
+            radio->lora.setCurrentLimit(140.0f);
+            radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
+            uint32_t cnt = 0;
+            uint32_t qEnd = millis() + 3000;
+            while (millis() < qEnd) {
+                if (keepAlive) keepAlive();
+                uint32_t irq = radio->lora.getIrqFlags();
+                if (irq != 0) {
+                    if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)) cnt++;
+                    radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
+                }
+                delay(1);
+            }
+            if (cnt > bestCount) { bestCount = cnt; bestSF = sf; }
+        }
+
+        io->print(F("  Best SF: ")); io->print(bestSF);
+        io->print(F(" (")); io->print(bestCount);
+        io->println(F(" preambles in 3s)"));
+        io->print(F("  Freq: ")); io->print(savedFreq, 1);
+        io->println(F(" MHz"));
+
+        // Known LoRa sync words to test
+        struct SyncEntry { uint8_t sync; const char* name; };
+        const SyncEntry syncWords[] = {
+            { 0x12, "Reticulum/RNode" },
+            { 0x34, "LoRaWAN" },
+            { 0x2B, "Meshtastic" },
+            { 0x1B, "RadioLib default" },
+            { 0x14, "LoRa Alliance test" },
+            { 0x44, "Helium" },
+        };
+        const int nSyncs = sizeof(syncWords) / sizeof(syncWords[0]);
+
+        io->println(F("  Sync   Network          Preambles  Syncs  RxDone  Len"));
+        io->println(F("  ────   ───────────────  ─────────  ─────  ──────  ───"));
+
+        bool foundMatch = false;
+        for (int si = 0; si < nSyncs; si++) {
+            if (keepAlive) keepAlive();
+
+            radio->lora.standby();
+            int rc = radio->lora.begin(savedFreq, savedBW, bestSF, savedCR,
+                                        syncWords[si].sync, savedTx, savedPre, 1.8f);
+            if (rc != RADIOLIB_ERR_NONE) {
+                io->print(F("  0x")); io->print(syncWords[si].sync, HEX);
+                io->print(F("   ")); io->print(syncWords[si].name);
+                io->print(F("  init err=")); io->println(rc);
+                continue;
+            }
             radio->lora.setDio2AsRfSwitch(true);
             radio->lora.setCurrentLimit(140.0f);
             radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
 
             uint32_t preambles = 0, syncs = 0, rxDone = 0;
-            uint32_t scanEnd = millis() + 5000;
+            int lastLen = 0;
+            uint32_t scanEnd = millis() + 8000;  // 8s per sync word
+
             while (millis() < scanEnd) {
                 if (keepAlive) keepAlive();
                 uint32_t irq = radio->lora.getIrqFlags();
                 if (irq != 0) {
                     if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)) preambles++;
                     if (irq & (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID))   syncs++;
-                    if (irq & (1UL << RADIOLIB_IRQ_RX_DONE))           rxDone++;
+                    if (irq & (1UL << RADIOLIB_IRQ_RX_DONE)) {
+                        rxDone++;
+                        lastLen = radio->lora.getPacketLength();
+                        // Dump first received packet
+                        if (rxDone == 1 && lastLen > 0 && lastLen <= RNS_MTU) {
+                            uint8_t buf[RNS_MTU];
+                            radio->lora.readData(buf, lastLen);
+                            float rssi = radio->lora.getRSSI();
+                            float snr  = radio->lora.getSNR();
+                            io->print(F("\n  ★ PACKET on sync 0x"));
+                            io->print(syncWords[si].sync, HEX);
+                            io->print(F(" (")); io->print(syncWords[si].name);
+                            io->print(F(") len=")); io->print(lastLen);
+                            io->print(F(" RSSI=")); io->print(rssi, 1);
+                            io->print(F(" SNR=")); io->println(snr, 1);
+                            io->print(F("    HEX: "));
+                            for (int i = 0; i < lastLen && i < 64; i++) {
+                                if (buf[i] < 0x10) io->print('0');
+                                io->print(buf[i], HEX);
+                                if (i < lastLen - 1) io->print(' ');
+                            }
+                            if (lastLen > 64) io->print(F("..."));
+                            io->println();
+                        }
+                    }
                     radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
                 }
                 delay(1);
             }
+
             totalPreambles += preambles;
-            io->print(F("  Preambles: ")); io->print(preambles);
-            io->print(F("  Syncs: ")); io->print(syncs);
-            io->print(F("  RxDone: ")); io->println(rxDone);
-        } else {
-            io->print(F("  Init failed rc=")); io->println(rc);
+            io->print(F("  0x")); io->print(syncWords[si].sync, HEX);
+            if (syncWords[si].sync < 0x10) io->print(' ');
+            io->print(F("   "));
+            // Pad name to 15 chars
+            int nameLen = strlen(syncWords[si].name);
+            io->print(syncWords[si].name);
+            for (int p = nameLen; p < 15; p++) io->print(' ');
+            io->print(F("  ")); io->print(preambles);
+            io->print(F("          ")); io->print(syncs);
+            io->print(F("      ")); io->print(rxDone);
+            io->print(F("       "));
+            if (rxDone > 0) io->println(lastLen);
+            else io->println(F("---"));
+
+            if (syncs > 0 || rxDone > 0) foundMatch = true;
+        }
+
+        // Also try both BWs on SF9 with Meshtastic sync if no match yet
+        if (!foundMatch && bestSF >= 8) {
+            io->println(F("\n  ── Extra: Meshtastic BW scan ──"));
+            const float bws[] = { 125.0f, 250.0f, 500.0f };
+            const char* bwNames[] = { "125", "250", "500" };
+            for (int bi = 0; bi < 3; bi++) {
+                if (keepAlive) keepAlive();
+                radio->lora.standby();
+                int rc = radio->lora.begin(savedFreq, bws[bi], bestSF, savedCR,
+                                            0x2B, savedTx, savedPre, 1.8f);
+                if (rc != RADIOLIB_ERR_NONE) continue;
+                radio->lora.setDio2AsRfSwitch(true);
+                radio->lora.setCurrentLimit(140.0f);
+                radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
+
+                uint32_t preambles = 0, syncs = 0, rxDone = 0;
+                uint32_t scanEnd = millis() + 5000;
+                while (millis() < scanEnd) {
+                    if (keepAlive) keepAlive();
+                    uint32_t irq = radio->lora.getIrqFlags();
+                    if (irq != 0) {
+                        if (irq & (1UL << RADIOLIB_IRQ_PREAMBLE_DETECTED)) preambles++;
+                        if (irq & (1UL << RADIOLIB_IRQ_SYNC_WORD_VALID))   syncs++;
+                        if (irq & (1UL << RADIOLIB_IRQ_RX_DONE)) {
+                            rxDone++;
+                            int len = radio->lora.getPacketLength();
+                            if (rxDone == 1 && len > 0 && len <= RNS_MTU) {
+                                uint8_t buf[RNS_MTU];
+                                radio->lora.readData(buf, len);
+                                io->print(F("\n  ★ PACKET Meshtastic BW"));
+                                io->print(bwNames[bi]);
+                                io->print(F(" len=")); io->print(len);
+                                io->print(F(" RSSI=")); io->print(radio->lora.getRSSI(), 1);
+                                io->print(F(" SNR=")); io->println(radio->lora.getSNR(), 1);
+                                io->print(F("    HEX: "));
+                                for (int i = 0; i < len && i < 64; i++) {
+                                    if (buf[i] < 0x10) io->print('0');
+                                    io->print(buf[i], HEX);
+                                    if (i < len - 1) io->print(' ');
+                                }
+                                if (len > 64) io->print(F("..."));
+                                io->println();
+                            }
+                        }
+                        radio->lora.startReceive(RADIOLIB_SX126X_RX_TIMEOUT_INF, allFlags, allFlags, 0);
+                    }
+                    delay(1);
+                }
+                io->print(F("    BW")); io->print(bwNames[bi]);
+                io->print(F(" SF")); io->print(bestSF);
+                io->print(F(" sync=0x2B: pre=")); io->print(preambles);
+                io->print(F(" sync=")); io->print(syncs);
+                io->print(F(" rx=")); io->println(rxDone);
+                if (syncs > 0 || rxDone > 0) foundMatch = true;
+            }
         }
 
         // ── Summary ──
         io->println(F("\n══ Scan Complete ══"));
         io->print(F("  Total preambles detected: ")); io->println(totalPreambles);
-        if (totalPreambles == 0) {
+        if (foundMatch) {
+            io->println(F("  ★ SYNC WORD MATCH FOUND — see results above!"));
+            io->println(F("  → Your radio can fully decode packets from that network."));
+        } else if (totalPreambles > 0) {
+            io->println(F("  ⚠ Preambles detected but NO sync word match."));
+            io->println(F("  → A LoRa device is nearby but uses an unknown sync word,"));
+            io->println(F("    non-standard BW, or the signal is spurious/intermittent."));
+            io->println(F("  → Your RX hardware is CONFIRMED WORKING (preamble detection"));
+            io->println(F("    requires a functional RF front-end + baseband correlator)."));
+        } else {
             io->println(F("  ✗ No LoRa activity found on ANY parameter combination."));
             io->println(F("  → The RSSI spikes in nfloor are non-LoRa interference"));
             io->println(F("    (WiFi/BLE/802.15.4/other ISM 915 MHz devices)."));
-            io->println(F("  → Your radio RX chain is functional but there is no"));
-            io->println(F("    compatible LoRa transmitter within range right now."));
-        } else {
-            io->println(F("  ✓ LoRa activity detected! Check SF/freq rows above."));
         }
 
         // Restore original radio config
         io->println(F("\n  Restoring original radio config..."));
         radio->lora.standby();
-        rc = radio->lora.begin(savedFreq, savedBW, savedSF, savedCR,
+        int restoreRc = radio->lora.begin(savedFreq, savedBW, savedSF, savedCR,
                                savedSync, savedTx, savedPre, 1.8f);
         radio->lora.setDio2AsRfSwitch(true);
         radio->lora.setCurrentLimit(140.0f);
@@ -1501,7 +1657,7 @@ private:
         io->print(F("  Restored: ")); io->print(savedFreq, 1);
         io->print(F(" MHz SF")); io->print(savedSF);
         io->print(F(" sync 0x")); io->print(savedSync, HEX);
-        io->print(F(" rc=")); io->println(rc);
+        io->print(F(" rc=")); io->println(restoreRc);
 #endif
     }
 
