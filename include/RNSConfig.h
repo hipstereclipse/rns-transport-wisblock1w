@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    24
-#define FW_VERSION_STRING   "1.0.24"
+#define FW_VERSION_PATCH    25
+#define FW_VERSION_STRING   "1.0.25"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.24"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.25"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -46,12 +46,12 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── LoRa default parameters ──────────────────────────────
 #define LORA_FREQ_MHZ       915.0f   // US ISM band
 #define LORA_BW_KHZ         125.0f
-#define LORA_SF             8
+#define LORA_SF             9
 #define LORA_CR             5        // coding rate 4/5
 #define LORA_TX_DBM         17       // safer default for power stability (PA adds ~8 dB)
 #define LORA_TX_DBM_MAX_SAFE 17
 #define LORA_TX_DBM_ANNOUNCE_SAFE 2
-#define LORA_PREAMBLE       8
+#define LORA_PREAMBLE       18       // ratspeak-us balanced default
 #define LORA_SYNC_WORD      0x12     // private LoRa sync word
 
 // ── Reticulum protocol constants ─────────────────────────
