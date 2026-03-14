@@ -22,10 +22,10 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 // ── Firmware version ──────────────────────────────────────
 #define FW_VERSION_MAJOR    1
 #define FW_VERSION_MINOR    0
-#define FW_VERSION_PATCH    14
-#define FW_VERSION_STRING   "1.0.14"
+#define FW_VERSION_PATCH    15
+#define FW_VERSION_STRING   "1.0.15"
 #define FW_PRODUCT_NAME     "RatTunnel"
-#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.14"
+#define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.15"
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
 
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
@@ -33,7 +33,8 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define PIN_LORA_SCK         3   // WB_SPI_CLK
 #define PIN_LORA_MISO       29   // WB_SPI_MISO
 #define PIN_LORA_MOSI       30   // WB_SPI_MOSI
-#define PIN_LORA_DIO1       15   // IO-slot interrupt (P15 — verified via reinit)
+#define PIN_LORA_DIO1_ACTIVE false  // P15 is floating HIGH (not real DIO1); use IRQ polling
+#define PIN_LORA_DIO1_PIN   15     // physical pin (only for diagnostics/pintest)
 #define PIN_LORA_BUSY        9   // discovered P9 via Phase C timing probe
 #define PIN_LORA_RESET       4   // discovered P4 via Phase B brute-force
 #define PIN_LORA_ENABLE     34   // WB_IO2 → 3V3_S gate (P34, tested V1.0.12)

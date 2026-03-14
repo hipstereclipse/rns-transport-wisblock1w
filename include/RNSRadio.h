@@ -25,8 +25,8 @@
 class RNSRadio {
 public:
 #ifndef NATIVE_TEST
-    /// RadioLib SX1262 with explicit pin assignments
-    SX1262 lora = new Module(PIN_LORA_NSS, PIN_LORA_DIO1,
+    /// RadioLib SX1262 with explicit pin assignments (DIO1=NC — P15 not connected)
+    SX1262 lora = new Module(PIN_LORA_NSS, RADIOLIB_NC,
                               PIN_LORA_RESET, PIN_LORA_BUSY);
 #endif
 
@@ -454,11 +454,10 @@ public:
         // Determine effective pins
         int effBusy  = (discoveredBusy >= 0)  ? discoveredBusy  : PIN_LORA_BUSY;
         int effRst   = (discoveredRst >= 0)   ? discoveredRst   : PIN_LORA_RESET;
-        int effDio1  = PIN_LORA_DIO1;
 
         Serial.print(F("[DIAG]   Effective: BUSY=P")); Serial.print(effBusy);
         Serial.print(F("  RST=P")); Serial.print(effRst);
-        Serial.print(F("  DIO1=P")); Serial.println(effDio1);
+        Serial.println(F("  DIO1=NC"));
 
         // Ensure power is on
         if (p34IsPowerGate) {
@@ -634,15 +633,16 @@ public:
             const char* label;
         };
         // Build label strings dynamically — use static buffers
-        char lbl0[40], lbl1[40], lbl2[40];
-        snprintf(lbl0, sizeof(lbl0), "BUSY=%d/RST=%d/DIO1=%d", effBusy, effRst, effDio1);
-        snprintf(lbl1, sizeof(lbl1), "NC/RST=%d/DIO1=%d", effRst, effDio1);
-        snprintf(lbl2, sizeof(lbl2), "NC/NC/DIO1=%d", effDio1);
+        char lbl0[40], lbl1[40];
+        snprintf(lbl0, sizeof(lbl0), "BUSY=%d/RST=%d/DIO1=NC", effBusy, effRst);
+        snprintf(lbl1, sizeof(lbl1), "NC/RST=%d/DIO1=NC", effRst);
 
+        // DIO1 must be NC: P15 is floating HIGH (not real DIO1), causing
+        // RadioLib to think TX/CAD completes instantly.  With DIO1=NC,
+        // RadioLib uses timeout-based waits and we poll the IRQ register.
         PinCombo combos[] = {
-            { effBusy,       effRst,        effDio1,       lbl0 },
-            { RADIOLIB_NC,   effRst,        effDio1,       lbl1 },
-            { RADIOLIB_NC,   RADIOLIB_NC,   effDio1,       lbl2 },
+            { effBusy,       effRst,        RADIOLIB_NC,   lbl0 },
+            { RADIOLIB_NC,   effRst,        RADIOLIB_NC,   lbl1 },
             { RADIOLIB_NC,   RADIOLIB_NC,   RADIOLIB_NC,   "NC/NC/NC (all NC)" },
         };
         const int nCombos = sizeof(combos) / sizeof(combos[0]);
@@ -845,6 +845,8 @@ public:
         if (!channelFree) {
             Serial.print(F("[DIAG] TX aborted: channel busy after 8 CAD attempts ("));
             Serial.print(millis() - txStart); Serial.println(F("ms)"));
+            // Restore RX mode so the radio isn't stuck in standby
+            lora.startReceive();
             return false;
         }
 

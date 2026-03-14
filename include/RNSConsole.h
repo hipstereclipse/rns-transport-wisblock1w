@@ -719,7 +719,7 @@ private:
         }
 
         io->println();
-        io->println(F("  Current config: DIO1="PIN_STR(PIN_LORA_DIO1)
+        io->println(F("  Current config: DIO1=NC"
                        " BUSY="PIN_STR(PIN_LORA_BUSY)
                        " RST="PIN_STR(PIN_LORA_RESET)));
 #endif
