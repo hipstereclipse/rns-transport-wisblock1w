@@ -123,6 +123,8 @@ private:
         else if (strcmp(command, "rxraw")     == 0) cmdRxRaw();
         else if (strcmp(command, "txraw")     == 0) cmdTxRaw(args);
         else if (strcmp(command, "pktdump")   == 0) cmdPktDump(args);
+        else if (strcmp(command, "nfloor")    == 0) cmdNoiseFloor(args);
+        else if (strcmp(command, "regdump")   == 0) cmdRegDump();
         else if (strcmp(command, "help")      == 0) cmdHelp();
         else {
             io->print(F("Unknown: "));
@@ -824,6 +826,10 @@ private:
         io->println(F("s) — press any key to stop ──"));
         io->println(F("  Watching for: PREAMBLE, SYNCWORD, RX_DONE, CRC_ERR, TIMEOUT, HDR_ERR"));
 
+        // Flush any leftover serial bytes so they don't instantly break the loop
+        delay(50);
+        while (io->available()) io->read();
+
         radio->lora.startReceive();
         uint32_t prevIrq = 0;
         uint32_t end = millis() + (uint32_t)seconds * 1000;
@@ -1028,6 +1034,173 @@ private:
 #endif
     }
 
+    // ── nfloor: Noise floor / instantaneous RSSI test ──
+    void cmdNoiseFloor(const char* args) {
+#ifndef NATIVE_TEST
+        if (!radio || !radio->hwReady) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        int seconds = 5;
+        if (args && args[0]) seconds = atoi(args);
+        if (seconds < 1) seconds = 1;
+        if (seconds > 30) seconds = 30;
+
+        io->print(F("── Noise Floor Test (")); io->print(seconds);
+        io->println(F("s) ──"));
+        io->println(F("  Reading instantaneous RSSI while in RX..."));
+        io->println(F("  Expected: -100 to -115 dBm (antenna OK)"));
+        io->println(F("  Bad:      < -125 dBm (no antenna / RX broken)"));
+
+        radio->lora.startReceive();
+        delay(10); // let RX settle
+
+        float minRssi = 0, maxRssi = -200, sumRssi = 0;
+        uint32_t count = 0;
+        uint32_t end = millis() + (uint32_t)seconds * 1000;
+
+        while (millis() < end) {
+            float rssi = radio->lora.getRSSI(false); // instantaneous
+            if (rssi < minRssi) minRssi = rssi;
+            if (rssi > maxRssi) maxRssi = rssi;
+            sumRssi += rssi;
+            count++;
+
+            // Print every ~500ms
+            if (count % 500 == 0) {
+                io->print(F("  RSSI: ")); io->print(rssi, 1); io->println(F(" dBm"));
+            }
+            delay(1);
+        }
+
+        float avgRssi = (count > 0) ? sumRssi / count : 0;
+        io->println(F("  ── Results ──"));
+        io->print(F("    Samples: ")); io->println(count);
+        io->print(F("    Min RSSI: ")); io->print(minRssi, 1); io->println(F(" dBm"));
+        io->print(F("    Max RSSI: ")); io->print(maxRssi, 1); io->println(F(" dBm"));
+        io->print(F("    Avg RSSI: ")); io->print(avgRssi, 1); io->println(F(" dBm"));
+
+        if (avgRssi > -120.0f) {
+            io->println(F("    ✓ Antenna appears connected (noise floor detected)"));
+        } else {
+            io->println(F("    ✗ Very low RSSI — check antenna connection!"));
+        }
+        radio->lora.startReceive();
+#endif
+    }
+
+    // ── regdump: Read key SX1262 config registers ─────────
+    void cmdRegDump() {
+#ifndef NATIVE_TEST
+        if (!radio || !radio->hwReady) {
+            io->println(F("Radio not ready."));
+            return;
+        }
+        io->println(F("── SX1262 Register Dump ──"));
+
+        // Helper: read N bytes from SX1262 register address via raw SPI
+        // ReadRegister opcode = 0x1D, then 2-byte addr, then NOP for status, then NOPs for data
+        auto readReg = [&](uint16_t addr, uint8_t* out, uint8_t n) {
+            SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+            // wait for BUSY low
+            uint32_t t0 = millis();
+            while (digitalRead(PIN_LORA_BUSY) && (millis() - t0 < 100));
+            digitalWrite(PIN_LORA_NSS, LOW);
+            delayMicroseconds(200);
+            SPI.transfer(0x1D);              // ReadRegister opcode
+            SPI.transfer((addr >> 8) & 0xFF); // addr MSB
+            SPI.transfer(addr & 0xFF);        // addr LSB
+            SPI.transfer(0x00);              // status byte (discard)
+            for (uint8_t i = 0; i < n; i++) {
+                out[i] = SPI.transfer(0x00);
+            }
+            digitalWrite(PIN_LORA_NSS, HIGH);
+            SPI.endTransaction();
+            delayMicroseconds(100);
+        };
+
+        // 1. RF Frequency (4 bytes at 0x088B-0x088E)
+        uint8_t freqReg[4];
+        readReg(0x088B, freqReg, 4);
+        uint32_t freqRaw = ((uint32_t)freqReg[0] << 24) | ((uint32_t)freqReg[1] << 16) |
+                           ((uint32_t)freqReg[2] << 8) | freqReg[3];
+        double freqMHz = (double)freqRaw * 32.0 / 33554432.0; // fRF = fREG * fXTAL / 2^25
+        io->print(F("  RF Freq reg: 0x"));
+        for (int i = 0; i < 4; i++) { if (freqReg[i] < 0x10) io->print('0'); io->print(freqReg[i], HEX); }
+        io->print(F(" → ")); io->print(freqMHz, 3); io->println(F(" MHz"));
+        io->print(F("    Expected:  ")); io->print(radio->curFreqMHz, 3); io->println(F(" MHz"));
+        if (abs(freqMHz - radio->curFreqMHz) > 0.1) {
+            io->println(F("    ✗ MISMATCH! Frequency register doesn't match config!"));
+        } else {
+            io->println(F("    ✓ Match"));
+        }
+
+        // 2. LoRa Sync Word (2 bytes at 0x0740-0x0741)
+        uint8_t syncReg[2];
+        readReg(0x0740, syncReg, 2);
+        io->print(F("  Sync Word reg: 0x"));
+        if (syncReg[0] < 0x10) io->print('0'); io->print(syncReg[0], HEX);
+        if (syncReg[1] < 0x10) io->print('0'); io->print(syncReg[1], HEX);
+        // SX126x encodes sync word: high nibbles matter, e.g. 0x12→0x1424, 0x34→0x3444
+        uint8_t encodedMSB = (radio->curSyncWord & 0xF0) | (((radio->curSyncWord & 0xF0) >> 4) << 0) | 0x04;
+        uint8_t encodedLSB = ((radio->curSyncWord & 0x0F) << 4) | (radio->curSyncWord & 0x0F) | 0x04;
+        // Actually RadioLib encodes as: MSB = (sw >> 4) << 4 | 0x04, LSB = (sw & 0x0F) << 4 | 0x04
+        uint8_t expMSB = ((radio->curSyncWord & 0xF0)) | 0x04;
+        uint8_t expLSB = ((radio->curSyncWord & 0x0F) << 4) | 0x04;
+        io->print(F("  (expected 0x"));
+        if (expMSB < 0x10) io->print('0'); io->print(expMSB, HEX);
+        if (expLSB < 0x10) io->print('0'); io->print(expLSB, HEX);
+        io->println(F(")"));
+        if (syncReg[0] == expMSB && syncReg[1] == expLSB) {
+            io->println(F("    ✓ Sync word matches config (0x12 → 0x1424)"));
+        } else if (syncReg[0] == 0x34 && syncReg[1] == 0x44) {
+            io->println(F("    ! Chip has PUBLIC LoRaWAN sync word (0x3444) — NOT Reticulum!"));
+        } else {
+            io->print(F("    ✗ MISMATCH! Got 0x"));
+            io->print(syncReg[0], HEX); io->print(syncReg[1], HEX);
+            io->println(F(" — doesn't match config"));
+        }
+
+        // 3. Packet Params (read a few bytes from 0x0704)
+        uint8_t pktReg[4];
+        readReg(0x0704, pktReg, 4);
+        io->print(F("  Pkt params @0x704: "));
+        for (int i = 0; i < 4; i++) { if (pktReg[i] < 0x10) io->print('0'); io->print(pktReg[i], HEX); io->print(' '); }
+        io->println();
+
+        // 4. CRC / Header mode from register 0x0704+ area
+        io->print(F("  Payload len reg @0x702: "));
+        uint8_t plReg[2];
+        readReg(0x0702, plReg, 2);
+        io->print(plReg[0], HEX); io->print(' '); io->println(plReg[1], HEX);
+
+        // 5. DIO / IRQ mask (0x0580)
+        uint8_t irqMask[4];
+        readReg(0x0580, irqMask, 4);
+        io->print(F("  IRQ mask @0x580: "));
+        for (int i = 0; i < 4; i++) { if (irqMask[i] < 0x10) io->print('0'); io->print(irqMask[i], HEX); io->print(' '); }
+        io->println();
+
+        // 6. Confirm RX via GetStatus
+        SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+        while (digitalRead(PIN_LORA_BUSY));
+        digitalWrite(PIN_LORA_NSS, LOW);
+        delayMicroseconds(200);
+        SPI.transfer(0xC0);
+        uint8_t status = SPI.transfer(0x00);
+        digitalWrite(PIN_LORA_NSS, HIGH);
+        SPI.endTransaction();
+        uint8_t chipMode = (status >> 4) & 0x07;
+        io->print(F("  GetStatus: 0x")); io->print(status, HEX);
+        io->print(F("  ChipMode=")); io->println(chipMode);
+
+        io->println(F("── Sync Word Cheat Sheet ──"));
+        io->println(F("  0x12 / 0x1424 = Reticulum/RNode (private LoRa)"));
+        io->println(F("  0x34 / 0x3444 = LoRaWAN public network"));
+        io->println(F("  If your RatDeck uses a different sync word, no RX is possible."));
+#endif
+    }
+
     // ── help ──────────────────────────────────────────────
     void cmdHelp() {
         io->println(F("── Available Commands ──"));
@@ -1055,6 +1228,8 @@ private:
         io->println(F("  rxraw          Force-read SX1262 FIFO and hex dump"));
         io->println(F("  txraw <hex>    Transmit raw hex bytes (no header, no CSMA)"));
         io->println(F("  pktdump [on|off] Toggle verbose hex dump of every RX packet"));
+        io->println(F("  nfloor [sec]   Noise floor RSSI test (antenna check)"));
+        io->println(F("  regdump        Read SX1262 freq/syncword/pkt registers"));
         io->println(F("  help           This message"));
     }
 
