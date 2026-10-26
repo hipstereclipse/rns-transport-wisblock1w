@@ -73,6 +73,9 @@ public:
     RNSIdentity*   identity = nullptr;
     RNSRadio*      radio    = nullptr;
     TransportStats stats;
+    // Wall clock hook (set by main when GNSS time is available): unix
+    // seconds, or 0 when none; LXMF timestamps then use uptime seconds.
+    uint32_t (*wallClockSeconds)() = nullptr;
     float          lastRxRSSI = 0.0f;
     float          lastRxSNR  = 0.0f;
 
@@ -164,7 +167,8 @@ private:
 
             uint8_t replayHops = announceCache[i].hops;
             if (replayHops < RNS_MAX_HOPS) replayHops++;
-            if (!queueRawAnnounce(announceCache[i].raw, announceCache[i].rawLen, replayHops)) break;
+            (void)replayHops;   // queueRebroadcast derives hops from the cached packet
+            if (!queueRebroadcast(announceCache[i].raw, announceCache[i].rawLen)) break;
 
             queued++;
             if (queued >= limit) break;
@@ -243,8 +247,9 @@ private:
         return readMsgpackStr(data, len, pos, outText, maxText);
     }
 
+
     // ── Pack LXMF content as msgpack ──────────────────────
-    static uint16_t packLxmfContent(const char* text, uint32_t uptimeMs,
+    static uint16_t packLxmfContent(const char* text, uint32_t timestampSeconds,
                                     uint8_t* out, uint16_t maxLen) {
         if (!text || !out) return 0;
         uint16_t tLen = strlen(text);
@@ -254,7 +259,7 @@ private:
         uint16_t pos = 0;
         out[pos++] = 0x94; // array of 4
         out[pos++] = 0xCB; // float64 timestamp
-        double ts = (double)(uptimeMs / 1000);
+        double ts = (double)timestampSeconds;
         uint8_t* tb = (uint8_t*)&ts;
         for (int i = 7; i >= 0; i--) out[pos++] = tb[i]; // big-endian
         out[pos++] = 0xC4; out[pos++] = 0x00; // empty bin8 title
@@ -702,8 +707,49 @@ public:
     }
 
     // ── Announce retransmit queue ─────────────────────────
+    /**
+     * @brief Queue an announce for rebroadcast with THIS node as the
+     *        transport, the way reference Reticulum does it.
+     *
+     * RNS/Transport.py rebroadcasts an announce as a new packet with
+     * header type 2, transport type TRANSPORT, transport_id = this
+     * node's identity hash, and hops + 1. Receivers then learn the path
+     * "via" us, which is what makes them address forwarded traffic to
+     * us. Builds up to 1.0.33 resent the original bytes with only the
+     * hop byte bumped, so paths were learned via whatever transport
+     * (or originator) was in the packet before us, and traffic routed
+     * through a RatTunnel never carried our transport ID.
+     *
+     * The context flag (ratchet present) and context byte are kept.
+     */
+    bool queueRebroadcast(const uint8_t* raw, uint16_t rawLen) {
+        if (!identity || !raw || rawLen == 0 || rawLen > RNS_MTU) return false;
+        static RNSPacket src;
+        if (!src.parse(raw, rawLen)) return false;
+        if (src.hops >= RNS_MAX_HOPS) return false;
+
+        static RNSPacket out;
+        out.ifacFlag    = src.ifacFlag;
+        out.headerType  = HEADER_2;
+        out.contextFlag = src.contextFlag;
+        out.propType    = TRANSPORT;
+        out.destType    = src.destType;
+        out.packetType  = src.packetType;
+        out.hops        = (uint8_t)(src.hops + 1);
+        memcpy(out.transportId, identity->identityHash, RNS_ADDR_LEN);
+        memcpy(out.destHash,    src.destHash,           RNS_ADDR_LEN);
+        out.context = src.context;
+        out.data    = src.data;
+        out.dataLen = src.dataLen;
+
+        static uint8_t buf[RNS_MTU];
+        uint16_t n = out.serialize(buf, RNS_MTU);
+        if (n == 0) return false;
+        return queueRawAnnounce(buf, n, out.hops);
+    }
+
     void queueAnnounceRetransmit(RNSPacket& pkt) {
-        queueRawAnnounce(pkt.raw, pkt.rawLen, (uint8_t)(pkt.hops + 1));
+        queueRebroadcast(pkt.raw, pkt.rawLen);
         // Queue full — drop (announce flood protection)
     }
 
