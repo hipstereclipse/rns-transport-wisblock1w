@@ -86,7 +86,9 @@ int main(){
         chk(!RNSIdentity::validateAnnounce(dummy_hash, nullptr,200), "reject null ann");
     }
 
-    // Validate both standard and legacy announce layouts
+    // Announce layouts: reference RNS (with and without ratchet) and the
+    // RatTunnel <= 1.0.33 trailing-signature layout. All use real
+    // Ed25519 signatures so layout detection is driven by verification.
     {
         RNSIdentity id; id.generate();
         uint8_t pub[RNS_KEYSIZE];
@@ -94,31 +96,70 @@ int main(){
         uint8_t destHash[RNS_ADDR_LEN];
         RNSIdentity::computeDestHash(RNS_TRANSPORT_DEST_NAME, pub, destHash);
 
-        const uint8_t appData[] = {0x91, 0xA3, 'f', 'o', 'o'};
+        const uint8_t appData[] = {0x92, 0xC4, 0x04, 'T', 'A', 'G', 'M', 0xC0};   // LXMF: [b"TAGM", nil]
         const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-        const uint16_t totalLen = baseLen + (uint16_t)sizeof(appData) + RNS_SIGLENGTH;
-        uint8_t standard[256] = {0};
-        memcpy(standard, pub, RNS_KEYSIZE);
-        memset(standard + RNS_KEYSIZE, 0x11, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
-        memcpy(standard + baseLen, appData, sizeof(appData));
-        memset(standard + baseLen + sizeof(appData), 0x33, RNS_SIGLENGTH);
-
+        uint8_t signedBuf[RNS_MTU];
+        uint8_t sig[RNS_SIGLENGTH];
         RNSIdentity::AnnounceInfo info;
-        chk(RNSIdentity::inspectAnnounce(destHash, standard, totalLen, &info), "accept standard announce layout");
-        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_STANDARD, "detect standard layout");
-        chk(info.appDataLen == sizeof(appData), "standard appdata len");
-        chk(info.appData && memcmp(info.appData, appData, sizeof(appData)) == 0, "standard appdata ptr");
 
-        uint8_t legacy[256] = {0};
-        memcpy(legacy, pub, RNS_KEYSIZE);
-        memset(legacy + RNS_KEYSIZE, 0x22, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
-        memset(legacy + baseLen, 0x33, RNS_SIGLENGTH);
-        memcpy(legacy + baseLen + RNS_SIGLENGTH, appData, sizeof(appData));
+        // (a) reference layout, no ratchet: pub|nh|rand|SIG|app
+        uint8_t rns[256] = {0};
+        memcpy(rns, pub, RNS_KEYSIZE);
+        memset(rns + RNS_KEYSIZE, 0x11, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
+        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
+        memcpy(signedBuf + RNS_ADDR_LEN, rns, baseLen);
+        memcpy(signedBuf + RNS_ADDR_LEN + baseLen, appData, sizeof(appData));
+        id.sign(signedBuf, RNS_ADDR_LEN + baseLen + sizeof(appData), sig);
+        memcpy(rns + baseLen, sig, RNS_SIGLENGTH);
+        memcpy(rns + baseLen + RNS_SIGLENGTH, appData, sizeof(appData));
+        const uint16_t rnsLen = baseLen + RNS_SIGLENGTH + sizeof(appData);
 
-        chk(RNSIdentity::inspectAnnounce(destHash, legacy, totalLen, &info), "accept legacy announce layout");
-        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_LEGACY_FIXED_SIG, "detect legacy layout");
+        chk(RNSIdentity::inspectAnnounce(destHash, rns, rnsLen, false, &info), "accept RNS announce layout");
+        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_RNS, "detect RNS layout");
+        chk(info.ratchet == nullptr, "RNS layout: no ratchet");
+        chk(info.appDataLen == sizeof(appData), "RNS appdata len");
+        chk(info.appData && memcmp(info.appData, appData, sizeof(appData)) == 0, "RNS appdata ptr");
+        chk(!RNSIdentity::inspectAnnounce(destHash, rns, rnsLen, true, &info), "RNS layout rejected when context flag claims a ratchet");
+
+        // (b) reference layout with ratchet: pub|nh|rand|RATCHET|SIG|app  (context flag set)
+        uint8_t rat[256] = {0};
+        memcpy(rat, pub, RNS_KEYSIZE);
+        memset(rat + RNS_KEYSIZE, 0x22, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
+        memset(rat + baseLen, 0x5A, RNS_RATCHETSIZE);
+        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
+        memcpy(signedBuf + RNS_ADDR_LEN, rat, baseLen + RNS_RATCHETSIZE);
+        memcpy(signedBuf + RNS_ADDR_LEN + baseLen + RNS_RATCHETSIZE, appData, sizeof(appData));
+        id.sign(signedBuf, RNS_ADDR_LEN + baseLen + RNS_RATCHETSIZE + sizeof(appData), sig);
+        memcpy(rat + baseLen + RNS_RATCHETSIZE, sig, RNS_SIGLENGTH);
+        memcpy(rat + baseLen + RNS_RATCHETSIZE + RNS_SIGLENGTH, appData, sizeof(appData));
+        const uint16_t ratLen = baseLen + RNS_RATCHETSIZE + RNS_SIGLENGTH + sizeof(appData);
+
+        chk(RNSIdentity::inspectAnnounce(destHash, rat, ratLen, true, &info), "accept RNS ratchet announce layout");
+        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_RNS_RATCHET, "detect ratchet layout");
+        chk(info.ratchet == rat + baseLen, "ratchet ptr");
+        chk(info.appDataLen == sizeof(appData), "ratchet appdata len");
+        chk(info.appData && memcmp(info.appData, appData, sizeof(appData)) == 0, "ratchet appdata ptr");
+        chk(!RNSIdentity::inspectAnnounce(destHash, rat, ratLen, false, &info), "ratchet announce rejected without context flag");
+
+        // (c) RatTunnel <= 1.0.33 layout: pub|nh|rand|app|SIG (still accepted, never emitted)
+        uint8_t old[256] = {0};
+        memcpy(old, pub, RNS_KEYSIZE);
+        memset(old + RNS_KEYSIZE, 0x33, RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN);
+        memcpy(old + baseLen, appData, sizeof(appData));
+        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
+        memcpy(signedBuf + RNS_ADDR_LEN, old, baseLen + sizeof(appData));
+        id.sign(signedBuf, RNS_ADDR_LEN + baseLen + sizeof(appData), sig);
+        memcpy(old + baseLen + sizeof(appData), sig, RNS_SIGLENGTH);
+        const uint16_t oldLen = baseLen + sizeof(appData) + RNS_SIGLENGTH;
+
+        chk(RNSIdentity::inspectAnnounce(destHash, old, oldLen, false, &info), "accept legacy RatTunnel trailing-sig layout");
+        chk(info.layout == RNSIdentity::ANNOUNCE_LAYOUT_RATTUNNEL_TRAILING_SIG, "detect legacy layout");
         chk(info.appDataLen == sizeof(appData), "legacy appdata len");
         chk(info.appData && memcmp(info.appData, appData, sizeof(appData)) == 0, "legacy appdata ptr");
+
+        // (d) tampered signature is rejected in every layout
+        rns[baseLen] ^= 0x01;
+        chk(!RNSIdentity::inspectAnnounce(destHash, rns, rnsLen, false, &info), "reject tampered RNS signature");
     }
 
     printf("\n%d passed, %d failed\n",ok,bad);

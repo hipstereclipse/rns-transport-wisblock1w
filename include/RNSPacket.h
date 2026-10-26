@@ -134,10 +134,23 @@ struct RNSPacket {
     }
 
     // ── Compute truncated SHA-256 packet hash ─────────────
+    /**
+     * @brief Packet hash per reference RNS (Packet.get_hashable_part):
+     *   hashable = [flags & 0x0F] + raw[2 + (HEADER_2 ? 16 : 0):]
+     * i.e. the header-type/propagation bits, the hop count and the
+     * transport ID are EXCLUDED, so a packet keeps the same hash on
+     * every hop. Builds up to 1.0.33 hashed the whole raw frame, which
+     * made every relayed copy look new: a RatTunnel and its neighbour
+     * could ping-pong an announce, adding a hop each pass (14-hop paths
+     * seen on 2026-10-01), and proofs/acks referenced the wrong hash.
+     */
     void computeHash() {
         SHA256 sha;
         sha.reset();
-        sha.update(raw, rawLen);
+        uint8_t flagsLow = (uint8_t)(raw[0] & 0x0F);
+        sha.update(&flagsLow, 1);
+        uint16_t start = (headerType == HEADER_2) ? (uint16_t)(2 + RNS_ADDR_LEN) : 2;
+        if (rawLen > start) sha.update(raw + start, rawLen - start);
         uint8_t full[32];
         sha.finalize(full, 32);
         memcpy(packetHash, full, RNS_ADDR_LEN);

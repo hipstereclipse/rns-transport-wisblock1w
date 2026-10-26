@@ -25,9 +25,16 @@
 class RNSRadio {
 public:
 #ifndef NATIVE_TEST
-    /// RadioLib SX1262 with explicit pin assignments (DIO1=NC — P15 not connected)
+    /// RadioLib SX1262 with explicit pin assignments.
+    /// DIO1 is wired only when PIN_LORA_DIO1_ACTIVE (WisBlock: P15 floats,
+    /// so DIO1=NC and RX is IRQ-polled; Ikoka Stick: real DIO1 on P0.03).
+#if PIN_LORA_DIO1_ACTIVE
+    SX1262 lora = new Module(PIN_LORA_NSS, PIN_LORA_DIO1_PIN,
+                              PIN_LORA_RESET, PIN_LORA_BUSY);
+#else
     SX1262 lora = new Module(PIN_LORA_NSS, RADIOLIB_NC,
                               PIN_LORA_RESET, PIN_LORA_BUSY);
+#endif
 #endif
 
     RNSTransport* transport = nullptr;
@@ -39,6 +46,15 @@ public:
     bool          pollMode = false;  // true when DIO1 ISR unavailable
     float         lastRSSI = 0.0f;
     float         lastSNR  = 0.0f;
+    uint32_t      rxBytes  = 0;      // on-air bytes received (incl. RNode header)
+    uint32_t      txBytes  = 0;      // on-air bytes sent (incl. RNode header)
+    // TX diagnostics (visible in `status`)
+    uint32_t      txAttempts   = 0;  // transmit() calls
+    uint32_t      txOk         = 0;  // packets fully sent (all frames TX_DONE)
+    uint32_t      txCadBusy    = 0;  // transmit() aborted: channel busy after all CAD tries
+    uint32_t      txErrors     = 0;  // startTransmit error or TX_DONE timeout
+    uint32_t      txCadBypass  = 0;  // sent without CAD after consecutive busy aborts
+    uint8_t       cadBusyStreak = 0; // consecutive CAD-busy aborts
     int           lastInitState = -1; // RadioLib error code from begin()
     uint8_t       initAttempts  = 0;
 
@@ -49,8 +65,30 @@ public:
     uint8_t curCR    = LORA_CR;
     int8_t  curTxDbm = LORA_TX_DBM;
     uint8_t curSyncWord = LORA_SYNC_WORD;
+
+    // ── TX power invariant ────────────────────────────────
+    /**
+     * @brief Clamp a requested SX1262 setpoint to the firmware cap.
+     *
+     * This is the single choke point for the LORA_TX_DBM_MAX_SAFE
+     * invariant (see RNSConfig.h). EVERY write of the setpoint to the
+     * chip — begin(), setTxPower(), and the console's scan re-inits —
+     * passes through here, so no console command, persisted config,
+     * profile or remote path can drive the PA above the cap.
+     */
+    static constexpr int8_t clampTxDbm(int8_t dbm) {
+        return (dbm > LORA_TX_DBM_MAX_SAFE) ? (int8_t)LORA_TX_DBM_MAX_SAFE
+             : (dbm < LORA_TX_DBM_MIN)      ? (int8_t)LORA_TX_DBM_MIN
+             : dbm;
+    }
     uint16_t curPreamble = LORA_PREAMBLE;
     uint8_t rnodeSeq = 0;
+
+    // Split-frame reassembly (RNode framing)
+    static const uint8_t SPLIT_SEQ_UNSET = 0xFF;
+    uint8_t  splitSeq = SPLIT_SEQ_UNSET;
+    uint16_t splitLen = 0;
+    uint8_t  splitBuf[RNS_MTU];
 
     // ── DIO1 ISR (minimal — just set flag) ────────────────
     static RNSRadio* instance;
@@ -77,6 +115,7 @@ public:
         rnodeSeq  = (uint8_t)random(0, 16);
 
 #ifndef NATIVE_TEST
+#if RADIO_HAS_RAK_PIN_DISCOVERY
         // ── SPI FIX ──────────────────────────────────────────────
         // The nrf52840_dk_adafruit board variant maps the default SPI
         // to the DK's pins (P1.13/P1.14/P1.15), but the RAK4631
@@ -693,8 +732,9 @@ public:
 
             state = lora.begin(
                 curFreqMHz, curBwKHz, curSF, curCR,
-                curSyncWord, curTxDbm, curPreamble, 1.8f
+                curSyncWord, clampTxDbm(curTxDbm), curPreamble, 1.8f
             );
+            curTxDbm = clampTxDbm(curTxDbm);
             lastInitState = state;
             initAttempts = c + 1;
 
@@ -736,6 +776,135 @@ public:
 
         hwReady = true;
         Serial.println(F("[DIAG] SX1262 init OK — radio is live"));
+
+#else  // !RADIO_HAS_RAK_PIN_DISCOVERY — fixed, documented pin map (Ikoka Stick, Heltec T096)
+        // ── SPI on SPIM3 at the board's LoRa pins ────────────────
+        // The pca10056 variant's default SPI is P1.13/P1.14/P1.15 which
+        // happens to be the XIAO's D8/D9/D10, but we remap explicitly so
+        // the pin map in RNSConfig.h is the single source of truth.
+        static SPIClass loraSPI(NRF_SPIM3, PIN_LORA_MISO, PIN_LORA_SCK, PIN_LORA_MOSI);
+        loraSPI.begin();
+        static ArduinoHal loraHal(loraSPI);
+
+        Serial.println(F("[DIAG] SPI on SPIM3 (" BOARD_DISPLAY_NAME ")"));
+        Serial.print(F("[DIAG]   MOSI=")); Serial.print(PIN_LORA_MOSI);
+        Serial.print(F(" MISO=")); Serial.print(PIN_LORA_MISO);
+        Serial.print(F(" SCK=")); Serial.print(PIN_LORA_SCK);
+        Serial.print(F(" NSS=")); Serial.print(PIN_LORA_NSS);
+        Serial.print(F(" RST=")); Serial.print(PIN_LORA_RESET);
+        Serial.print(F(" BUSY=")); Serial.print(PIN_LORA_BUSY);
+        Serial.print(F(" DIO1=")); Serial.print(PIN_LORA_DIO1_ACTIVE ? PIN_LORA_DIO1_PIN : -1);
+        Serial.print(F(" RXEN=")); Serial.println(PIN_LORA_RXEN);
+
+        pinMode(PIN_LORA_NSS, OUTPUT);
+        digitalWrite(PIN_LORA_NSS, HIGH);
+        pinMode(PIN_LORA_BUSY, INPUT);
+#if PIN_LORA_RXEN >= 0
+        // RXEN idles LOW; RadioLib drives it HIGH only while in RX.
+        pinMode(PIN_LORA_RXEN, OUTPUT);
+        digitalWrite(PIN_LORA_RXEN, LOW);
+#endif
+#if defined(PIN_PA_CSD)
+        // On-board FEM (Heltec T096 KCT8103L): power the FEM rail, enable
+        // the chip, select the receive-LNA path. Done once, before the
+        // SX1262 reset, so the FEM is settled by the time RadioLib runs.
+        // Per-packet TX/RX switching is DIO2 → CPS (setDio2AsRfSwitch).
+        // The board's own pulldown on CSD keeps the PA off until here.
+        pinMode(PIN_PA_VFEM, OUTPUT);
+        digitalWrite(PIN_PA_VFEM, HIGH);
+        pinMode(PIN_PA_CTX, OUTPUT);
+        digitalWrite(PIN_PA_CTX, LOW);        // idle = RX LNA; RadioLib raises it for TX
+        pinMode(PIN_PA_CSD, OUTPUT);
+        digitalWrite(PIN_PA_CSD, HIGH);
+        delay(PA_SETTLE_MS);
+        Serial.print(F("[DIAG] FEM enabled: VFEM(P")); Serial.print(PIN_PA_VFEM);
+        Serial.print(F(")=1 CSD(P")); Serial.print(PIN_PA_CSD);
+        Serial.print(F(")=1 CTX(P")); Serial.print(PIN_PA_CTX);
+        Serial.println(F(") per-packet TXEN"));
+#endif
+
+        // Hard reset, then wait for BUSY to drop.
+        pinMode(PIN_LORA_RESET, OUTPUT);
+        digitalWrite(PIN_LORA_RESET, LOW);
+        delay(5);
+        digitalWrite(PIN_LORA_RESET, HIGH);
+        delay(10);
+        {
+            uint32_t t0 = millis();
+            while (digitalRead(PIN_LORA_BUSY) == HIGH && (millis() - t0) < 200) delay(1);
+            Serial.print(F("[DIAG]   post-reset BUSY=")); Serial.print(digitalRead(PIN_LORA_BUSY));
+            Serial.print(F(" after ")); Serial.print(millis() - t0); Serial.println(F("ms"));
+        }
+
+        Serial.println(F("[DIAG] SX1262 begin: starting init sequence (V" FW_VERSION_STRING ")"));
+        Serial.print(F("[DIAG]   freq=")); Serial.print(curFreqMHz, 1);
+        Serial.print(F(" bw=")); Serial.print(curBwKHz, 1);
+        Serial.print(F(" sf=")); Serial.print(curSF);
+        Serial.print(F(" cr=")); Serial.print(curCR);
+        Serial.print(F(" tx=")); Serial.print(clampTxDbm(curTxDbm));
+        Serial.print(F(" (cap ")); Serial.print(LORA_TX_DBM_MAX_SAFE);
+        Serial.print(F(") sync=0x")); Serial.print(curSyncWord, HEX);
+        Serial.print(F(" pre=")); Serial.println(curPreamble);
+
+#if PIN_LORA_DIO1_ACTIVE
+        const uint32_t dio1Pin = PIN_LORA_DIO1_PIN;
+#else
+        const uint32_t dio1Pin = RADIOLIB_NC;
+#endif
+        lora = SX1262(new Module(&loraHal, PIN_LORA_NSS, dio1Pin,
+                                  PIN_LORA_RESET, PIN_LORA_BUSY));
+
+        // RadioLib's SX126x::begin() runs findChip("SX1262") and returns
+        // RADIOLIB_ERR_CHIP_NOT_FOUND (-2) if the version string does not
+        // match, so a clean rc here is the findChip check.
+        // TCXO on DIO3 at 1.8 V per E22-900M30S manual §4.2
+        // ("DIO 3 is used to supply 32 MHz TCXO crystal oscillator").
+        curTxDbm = clampTxDbm(curTxDbm);
+        int state = lora.begin(
+            curFreqMHz, curBwKHz, curSF, curCR,
+            curSyncWord, curTxDbm, curPreamble, 1.8f
+        );
+        lastInitState = state;
+        initAttempts = 1;
+        Serial.print(F("[DIAG]   begin rc=")); Serial.println(state);
+        if (state != RADIOLIB_ERR_NONE) {
+            Serial.println(F("[DIAG] SX1262 init FAILED (findChip / TCXO / SPI)"));
+            return false;
+        }
+        Serial.println(F("[DIAG]   findChip OK — SX1262 version string matched"));
+
+        // RF switch: on the Ikoka Stick the E22 TXEN is hard-wired to
+        // SX1262 DIO2 and RXEN is a GPIO driven by RadioLib; on the
+        // Heltec T096 DIO2 drives the KCT8103L CPS pin and there is no
+        // RXEN (see RNSConfig.h).
+        Serial.println(F("[DIAG] SX1262 configuring DIO2-as-TXEN / RXEN / DCDC..."));
+        lora.setDio2AsRfSwitch(true);
+#if PIN_LORA_RXEN >= 0 || PIN_LORA_TXEN >= 0
+        // RadioLib drives these per mode: TXEN high only while transmitting,
+        // RXEN high only while receiving, both low in standby.
+        lora.setRfSwitchPins(PIN_LORA_RXEN >= 0 ? (uint32_t)PIN_LORA_RXEN : RADIOLIB_NC,
+                             PIN_LORA_TXEN >= 0 ? (uint32_t)PIN_LORA_TXEN : RADIOLIB_NC);
+        Serial.print(F("[DIAG] RF switch pins: RXEN=")); Serial.print(PIN_LORA_RXEN);
+        Serial.print(F(" TXEN=")); Serial.println(PIN_LORA_TXEN);
+#endif
+        lora.setRegulatorDCDC();
+        lora.setCRC(true);
+        lora.setCurrentLimit(140.0);
+
+        if (dio1Pin != RADIOLIB_NC) {
+            lora.setPacketReceivedAction(dio1ISR);
+            pollMode = false;
+            Serial.println(F("[DIAG] RX mode: DIO1 interrupt"));
+        } else {
+            pollMode = true;
+            Serial.println(F("[DIAG] RX mode: IRQ polling (DIO1 not connected)"));
+        }
+        int rxState = lora.startReceive();
+        Serial.print(F("[DIAG] startReceive rc=")); Serial.println(rxState);
+
+        hwReady = true;
+        Serial.println(F("[DIAG] SX1262 init OK — radio is live"));
+#endif  // RADIO_HAS_RAK_PIN_DISCOVERY
 #else
         hwReady = true;
 #endif
@@ -770,6 +939,7 @@ public:
         if (state == RADIOLIB_ERR_NONE) {
             lastRSSI = lora.getRSSI();
             lastSNR  = lora.getSNR();
+            rxBytes += (uint32_t)len;
 
             // Verbose packet hex dump when enabled via 'pktdump' cmd
             if (dumpStream) {
@@ -790,15 +960,43 @@ public:
 
             const uint8_t* payload = buf;
             uint16_t payloadLen = (uint16_t)len;
+            bool deliver = true;
 #if RNODE_LORA_HEADER_ENABLED
             if (payloadLen <= 1) {
                 lora.startReceive();
                 return;
             }
+            // RNode air framing (see transmit()): reassemble split packets
+            // exactly as RNode_Firmware receive_callback() does.
+            const uint8_t header = buf[0];
+            const uint8_t seq    = (uint8_t)(header >> 4);
+            const bool    isSplit = (header & RNODE_LORA_FLAG_SPLIT) != 0;
             payload = &buf[1];
             payloadLen--;
+            if (isSplit) {
+                if (splitSeq == seq && splitLen > 0) {
+                    // second part: append and deliver the whole packet
+                    if (splitLen + payloadLen <= RNS_MTU) {
+                        memcpy(splitBuf + splitLen, payload, payloadLen);
+                        splitLen += payloadLen;
+                        payload = splitBuf;
+                        payloadLen = splitLen;
+                    } else {
+                        deliver = false;
+                    }
+                    splitSeq = SPLIT_SEQ_UNSET; splitLen = 0;
+                } else {
+                    // first part (fresh, or a different sequence than the one pending)
+                    splitSeq = seq; splitLen = 0;
+                    if (payloadLen <= RNS_MTU) { memcpy(splitBuf, payload, payloadLen); splitLen = payloadLen; }
+                    deliver = false;
+                }
+            } else if (splitSeq != SPLIT_SEQ_UNSET) {
+                // unsplit frame while a first half was pending: drop the half
+                splitSeq = SPLIT_SEQ_UNSET; splitLen = 0;
+            }
 #endif
-            if (transport) {
+            if (deliver && transport) {
                 transport->lastRxRSSI = lastRSSI;
                 transport->lastRxSNR  = lastSNR;
                 transport->ingestPacket(payload, payloadLen);
@@ -833,12 +1031,27 @@ public:
 
 #ifndef NATIVE_TEST
         uint32_t txStart = millis();
+        txAttempts++;
 
         // CAD at SF8/BW125 completes in ~17 ms; 200 ms is generous.
         static const uint32_t CAD_TIMEOUT_MS = 200;
 
+        // CAD lockout guard: a site where CAD keeps reporting busy (a
+        // strong nearby transmitter, a noisy channel at this SF) would
+        // otherwise mute the node indefinitely while it still receives
+        // fine. After CAD_BUSY_STREAK_MAX consecutive aborts one packet
+        // is sent without CAD, which is what RNode's CSMA also degrades
+        // to; the streak then restarts.
+        static const uint8_t CAD_BUSY_STREAK_MAX = 3;
         bool channelFree = false;
-        for (int attempt = 0; attempt < 8; attempt++) {
+        bool bypassCad = (cadBusyStreak >= CAD_BUSY_STREAK_MAX);
+        if (bypassCad) {
+            channelFree = true;
+            txCadBypass++;
+            cadBusyStreak = 0;
+            Serial.println(F("[DIAG] CAD bypassed after repeated busy aborts"));
+        }
+        for (int attempt = 0; !channelFree && attempt < 8; attempt++) {
             // Ensure radio is in STBY before CAD — avoids -705 when
             // BUSY=NC leaves the chip in an indeterminate state.
             lora.standby();
@@ -866,61 +1079,83 @@ public:
             delay(random(10, 50));
         }
         if (!channelFree) {
+            txCadBusy++;
+            if (cadBusyStreak < 255) cadBusyStreak++;
             Serial.print(F("[DIAG] TX aborted: channel busy after 8 CAD attempts ("));
             Serial.print(millis() - txStart); Serial.println(F("ms)"));
             // Restore RX mode so the radio isn't stuck in standby
+            rxFlag = false;   // CAD_DONE may have raised the DIO1 ISR flag
             lora.startReceive();
             return false;
         }
 
-        uint8_t txBuf[RNS_MTU + 1];
-        const uint8_t* txData = data;
-        uint16_t txLen = len;
-    #if RNODE_LORA_HEADER_ENABLED
-        txBuf[0] = (uint8_t)(((rnodeSeq & 0x0F) << 4) | (RNODE_LORA_HEADER_FLAGS_UNSPLIT & 0x0F));
+        // ── RNode air framing ──────────────────────────────────
+        // One header byte per LoRa frame: [seq nibble << 4 | flags].
+        // A packet longer than 254 bytes goes out as two frames that
+        // share the sequence nibble and carry FLAG_SPLIT (bit 0): the
+        // first with 254 payload bytes, the second with the rest. This
+        // is RNode_Firmware transmit() exactly, so reference RNS nodes
+        // reassemble it, and it is what lets a 323-byte discovery
+        // announce (or any LXMF announce with ratchet + app data) leave
+        // this node at all: an SX1262 frame is capped at 255 bytes.
+        static const uint16_t FRAME_MAX = 255;
+        static const uint16_t FRAME_PAYLOAD_MAX = FRAME_MAX - 1;
+        uint8_t txBuf[FRAME_MAX];
+        const bool split = (len > FRAME_PAYLOAD_MAX);
+        const uint8_t header = (uint8_t)(((rnodeSeq & 0x0F) << 4) | (split ? RNODE_LORA_FLAG_SPLIT : 0));
         rnodeSeq = (uint8_t)((rnodeSeq + 1) & 0x0F);
-        memcpy(txBuf + 1, data, len);
-        txData = txBuf;
-        txLen = len + 1;
-    #endif
 
-        Serial.print(F("[DIAG] TX start: ")); Serial.print(txLen);
-        Serial.print(F(" bytes, txPower=")); Serial.print(curTxDbm);
-        Serial.println(F(" dBm"));
-
-        txActive = true;
-
-        // Non-blocking TX: RadioLib's blocking transmit() polls the DIO1
-        // GPIO for TX_DONE, but DIO1 is NC so it always times out.
-        // Use startTransmit() + SPI IRQ polling instead.
-        int state = lora.startTransmit(txData, txLen);
-        if (state != RADIOLIB_ERR_NONE) {
-            txActive = false;
-            Serial.print(F("[DIAG] startTransmit failed rc=")); Serial.println(state);
-            lora.startReceive();
-            return false;
-        }
-
-        // Poll SPI IRQ register for TX_DONE (max ~5 s for worst-case SF12)
-        static const uint32_t TX_TIMEOUT_MS = 5000;
-        uint32_t txWaitStart = millis();
+        int state = RADIOLIB_ERR_NONE;
         bool txDone = false;
-        while (millis() - txWaitStart < TX_TIMEOUT_MS) {
-            uint32_t irq = lora.getIrqFlags();
-            if (irq & (1UL << RADIOLIB_IRQ_TX_DONE)) {
-                txDone = true;
-                break;
+        uint16_t sent = 0;
+        uint8_t frameNo = 0;
+        while (sent < len) {
+            uint16_t chunk = len - sent;
+            if (chunk > FRAME_PAYLOAD_MAX) chunk = FRAME_PAYLOAD_MAX;
+            txBuf[0] = header;
+            memcpy(txBuf + 1, data + sent, chunk);
+            const uint16_t txLen = chunk + 1;
+
+            Serial.print(F("[DIAG] TX start: ")); Serial.print(txLen);
+            Serial.print(F(" bytes"));
+            if (split) { Serial.print(F(" (frame ")); Serial.print(frameNo + 1); Serial.print(F("/2)")); }
+            Serial.print(F(", txPower=")); Serial.print(curTxDbm);
+            Serial.println(F(" dBm"));
+
+            txActive = true;
+
+            // Non-blocking TX: RadioLib's blocking transmit() polls the DIO1
+            // GPIO for TX_DONE, but DIO1 is NC on the WisBlock so it always
+            // times out. Use startTransmit() + SPI IRQ polling instead.
+            state = lora.startTransmit(txBuf, txLen);
+            if (state != RADIOLIB_ERR_NONE) {
+                txActive = false;
+                txErrors++;
+                Serial.print(F("[DIAG] startTransmit failed rc=")); Serial.println(state);
+                lora.startReceive();
+                return false;
             }
-            delay(1);
-        }
 
-        // Clean up TX state inside RadioLib
-        state = lora.finishTransmit();
-        txActive = false;
+            // Poll SPI IRQ register for TX_DONE (max ~5 s for worst-case SF12)
+            static const uint32_t TX_TIMEOUT_MS = 5000;
+            uint32_t txWaitStart = millis();
+            txDone = false;
+            while (millis() - txWaitStart < TX_TIMEOUT_MS) {
+                uint32_t irq = lora.getIrqFlags();
+                if (irq & (1UL << RADIOLIB_IRQ_TX_DONE)) { txDone = true; break; }
+                delay(1);
+            }
 
-        if (!txDone) {
-            state = RADIOLIB_ERR_TX_TIMEOUT;
+            // Clean up TX state inside RadioLib
+            state = lora.finishTransmit();
+            txActive = false;
+            rxFlag = false;   // TX_DONE raises the DIO1 ISR flag on boards with DIO1 wired
+            if (!txDone) { state = RADIOLIB_ERR_TX_TIMEOUT; txErrors++; break; }
+            txBytes += (uint32_t)txLen;
+            sent += chunk;
+            frameNo++;
         }
+        if (txDone && sent == len) { txOk++; if (!bypassCad) cadBusyStreak = 0; }
 
         uint32_t txElapsed = millis() - txStart;
         Serial.print(F("[DIAG] TX done: rc=")); Serial.print(state);
@@ -977,8 +1212,7 @@ public:
         restartRx();
     }
     void setTxPower(int8_t dbm) {
-        if (dbm > LORA_TX_DBM_MAX_SAFE) dbm = LORA_TX_DBM_MAX_SAFE;
-        if (dbm < -9) dbm = -9;
+        dbm = clampTxDbm(dbm);   // firmware invariant, see RNSConfig.h
 #ifndef NATIVE_TEST
         lora.setOutputPower(dbm);
 #endif

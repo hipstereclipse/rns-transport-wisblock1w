@@ -8,6 +8,7 @@
  * using default radio parameters — it never bricks.
  */
 #pragma once
+#include <stddef.h>
 #include "RNSConfig.h"
 #include "RNSIdentity.h"
 #include "RNSTransport.h"
@@ -61,6 +62,37 @@ struct LedConfigBlob {
     uint32_t checksum;
 };
 
+struct DisplayConfigBlob {
+    uint8_t  version;
+    uint8_t  enabled;      // 0 = panel stays dark, 1 = normal
+    uint16_t timeoutSec;   // 0 = never blank
+    uint32_t checksum;
+};
+
+struct DiscoveryConfigBlob {
+    uint8_t  version;         // DISCOVERY_CONFIG_VERSION
+    uint8_t  enabled;
+    uint8_t  haveHeight;
+    uint8_t  stampValid;
+    int32_t  latUdeg;
+    int32_t  lonUdeg;
+    int16_t  heightM;
+    uint16_t intervalMin;
+    uint8_t  stamp[32];
+    uint8_t  stampInfohash[32];
+    uint32_t checksum;
+};
+#define DISCOVERY_CONFIG_VERSION 1
+
+struct GnssConfigBlob {
+    uint8_t  version;
+    uint8_t  mode;         // 0 off, 1 on
+    uint16_t intervalMin;  // 0 = continuous
+    uint16_t dwellSec;     // max seconds per cycle waiting for a fix
+    uint8_t  reserved[2];
+    uint32_t checksum;
+};
+
 struct SecurityConfigBlob {
     uint8_t enabled;
     uint8_t wipeOnBoot;
@@ -69,7 +101,24 @@ struct SecurityConfigBlob {
 };
 
 // ── Identity blob layout (fixed 160 bytes) ────────────────
+// v1 (through 2026-10-16): keys only. Those keys came from an unseeded
+// RNG and are identical on every board (see RNSEntropy.h), so a v1 file
+// is deliberately NOT accepted: loadIdentity() reports it as legacy and
+// the caller regenerates with hardware entropy and saves a v2 blob.
+#define IDENTITY_BLOB_MAGIC   0x52544944UL   // "RTID"
+#define IDENTITY_BLOB_VERSION 2
 struct IdentityBlob {
+    uint32_t magic;
+    uint8_t  version;
+    uint8_t  seeded;        // 1 = generated after RNSEntropy seeding
+    uint8_t  reserved[2];
+    uint8_t  privEncKey[32];
+    uint8_t  privSigKey[64];
+    uint8_t  pubEncKey[32];
+    uint8_t  pubSigKey[32];
+    uint32_t checksum;
+};
+struct IdentityBlobV1 {
     uint8_t  privEncKey[32];
     uint8_t  privSigKey[64];
     uint8_t  pubEncKey[32];
@@ -102,22 +151,32 @@ public:
      * @brief Try to load identity from flash; return false if not found
      *        or corrupted (caller should generate fresh).
      */
+    /// Set by loadIdentity() when the file was a pre-seeding (v1) blob.
+    bool lastIdentityWasLegacy = false;
+
     bool loadIdentity(RNSIdentity& id) {
 #ifndef NATIVE_TEST
+        lastIdentityWasLegacy = false;
         if (!fsReady) return false;
 
         File f = InternalFS.open(IDENTITY_FILE, FILE_O_READ);
         if (!f) return false;
 
-        IdentityBlob blob;
-        if (f.read((uint8_t*)&blob, sizeof(blob)) != sizeof(blob)) {
-            f.close();
-            return false;
-        }
+        uint8_t raw[sizeof(IdentityBlob)];
+        size_t n = f.read(raw, sizeof(raw));
         f.close();
 
-        // Verify checksum
+        if (n == sizeof(IdentityBlobV1)) {
+            // Legacy unseeded identity: refuse it so the caller regenerates.
+            lastIdentityWasLegacy = true;
+            return false;
+        }
+        if (n != sizeof(IdentityBlob)) return false;
+        IdentityBlob blob;
+        memcpy(&blob, raw, sizeof(blob));
+        if (blob.magic != IDENTITY_BLOB_MAGIC || blob.version != IDENTITY_BLOB_VERSION) return false;
         if (computeBlobChecksum(blob) != blob.checksum) return false;
+        if (!blob.seeded) { lastIdentityWasLegacy = true; return false; }
 
         id.load(blob.privEncKey, blob.privSigKey,
                 blob.pubEncKey,  blob.pubSigKey);
@@ -135,7 +194,10 @@ public:
 #ifndef NATIVE_TEST
         if (!fsReady) return false;
 
-        IdentityBlob blob;
+        IdentityBlob blob = {};
+        blob.magic = IDENTITY_BLOB_MAGIC;
+        blob.version = IDENTITY_BLOB_VERSION;
+        blob.seeded = 1;
         id.exportKeys(blob.privEncKey, blob.privSigKey,
                       blob.pubEncKey,  blob.pubSigKey);
         blob.checksum = computeBlobChecksum(blob);
@@ -370,6 +432,129 @@ public:
 #endif
     }
 
+    // ── Display config (/display.bin) ────────────────────────
+    static uint32_t computeDisplayChecksum(const DisplayConfigBlob& cfg) {
+        // FNV-1a over everything before the checksum field.
+        uint32_t h = 2166136261UL;
+        const uint8_t* b = (const uint8_t*)&cfg;
+        for (size_t i = 0; i < offsetof(DisplayConfigBlob, checksum); i++) {
+            h ^= b[i]; h *= 16777619UL;
+        }
+        return h;
+    }
+
+    bool loadDisplayConfig(DisplayConfigBlob& cfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        File f = InternalFS.open(DISPLAY_CONFIG_FILE, FILE_O_READ);
+        if (!f) return false;
+        DisplayConfigBlob stored;
+        if (f.read((uint8_t*)&stored, sizeof(stored)) != sizeof(stored)) { f.close(); return false; }
+        f.close();
+        if (computeDisplayChecksum(stored) != stored.checksum) return false;
+        if (stored.version != DISPLAY_CONFIG_VERSION) { InternalFS.remove(DISPLAY_CONFIG_FILE); return false; }
+        if (stored.timeoutSec > DISPLAY_TIMEOUT_MAX_SEC) stored.timeoutSec = DISPLAY_TIMEOUT_MAX_SEC;
+        cfg = stored;
+        return true;
+#else
+        (void)cfg; return false;
+#endif
+    }
+
+    bool saveDisplayConfig(const DisplayConfigBlob& inputCfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        DisplayConfigBlob cfg = inputCfg;
+        cfg.version = DISPLAY_CONFIG_VERSION;
+        cfg.checksum = computeDisplayChecksum(cfg);
+        InternalFS.remove(DISPLAY_CONFIG_FILE);
+        InternalFS.remove(DISCOVERY_CONFIG_FILE);
+        InternalFS.remove(GNSS_CONFIG_FILE);
+        File f = InternalFS.open(DISPLAY_CONFIG_FILE, FILE_O_WRITE);
+        if (!f) return false;
+        size_t written = f.write((uint8_t*)&cfg, sizeof(cfg));
+        f.close();
+        return written == sizeof(cfg);
+#else
+        (void)inputCfg; return false;
+#endif
+    }
+
+    // ── Discovery config + stamp cache (/discovery.bin) ─────
+    static uint32_t computeDiscoveryChecksum(const DiscoveryConfigBlob& cfg) {
+        uint32_t h = 2166136261UL;
+        const uint8_t* b = (const uint8_t*)&cfg;
+        for (size_t i = 0; i < offsetof(DiscoveryConfigBlob, checksum); i++) { h ^= b[i]; h *= 16777619UL; }
+        return h;
+    }
+    bool loadDiscoveryConfig(DiscoveryConfigBlob& cfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        File f = InternalFS.open(DISCOVERY_CONFIG_FILE, FILE_O_READ);
+        if (!f) return false;
+        DiscoveryConfigBlob stored;
+        if (f.read((uint8_t*)&stored, sizeof(stored)) != sizeof(stored)) { f.close(); return false; }
+        f.close();
+        if (computeDiscoveryChecksum(stored) != stored.checksum) return false;
+        if (stored.version != DISCOVERY_CONFIG_VERSION) { InternalFS.remove(DISCOVERY_CONFIG_FILE); return false; }
+        cfg = stored;
+        return true;
+#else
+        (void)cfg; return false;
+#endif
+    }
+    bool saveDiscoveryConfig(const DiscoveryConfigBlob& inputCfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        DiscoveryConfigBlob cfg = inputCfg;
+        cfg.version = DISCOVERY_CONFIG_VERSION;
+        cfg.checksum = computeDiscoveryChecksum(cfg);
+        InternalFS.remove(DISCOVERY_CONFIG_FILE);
+        File f = InternalFS.open(DISCOVERY_CONFIG_FILE, FILE_O_WRITE);
+        if (!f) return false;
+        size_t written = f.write((uint8_t*)&cfg, sizeof(cfg));
+        f.close();
+        return written == sizeof(cfg);
+#else
+        (void)inputCfg; return false;
+#endif
+    }
+
+    // ── GNSS config (/gps.bin) ───────────────────────────────
+    static uint32_t computeGnssChecksum(const GnssConfigBlob& cfg) {
+        uint32_t h = 2166136261UL; const uint8_t* b = (const uint8_t*)&cfg;
+        for (size_t i = 0; i < offsetof(GnssConfigBlob, checksum); i++) { h ^= b[i]; h *= 16777619UL; }
+        return h;
+    }
+    bool loadGnssConfig(GnssConfigBlob& cfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        File f = InternalFS.open(GNSS_CONFIG_FILE, FILE_O_READ);
+        if (!f) return false;
+        GnssConfigBlob stored;
+        if (f.read((uint8_t*)&stored, sizeof(stored)) != sizeof(stored)) { f.close(); return false; }
+        f.close();
+        if (computeGnssChecksum(stored) != stored.checksum) return false;
+        if (stored.version != GNSS_CONFIG_VERSION) { InternalFS.remove(GNSS_CONFIG_FILE); return false; }
+        cfg = stored; return true;
+#else
+        (void)cfg; return false;
+#endif
+    }
+    bool saveGnssConfig(const GnssConfigBlob& inputCfg) {
+#ifndef NATIVE_TEST
+        if (!fsReady) return false;
+        GnssConfigBlob cfg = inputCfg; cfg.version = GNSS_CONFIG_VERSION; cfg.checksum = computeGnssChecksum(cfg);
+        InternalFS.remove(GNSS_CONFIG_FILE);
+        File f = InternalFS.open(GNSS_CONFIG_FILE, FILE_O_WRITE);
+        if (!f) return false;
+        size_t w = f.write((uint8_t*)&cfg, sizeof(cfg)); f.close();
+        return w == sizeof(cfg);
+#else
+        (void)inputCfg; return false;
+#endif
+    }
+
     bool loadSecurityConfig(bool& enabled, bool& wipeOnBoot) {
 #ifndef NATIVE_TEST
         if (!fsReady) return false;
@@ -426,6 +611,7 @@ public:
         InternalFS.remove(ANNOUNCE_NAME_FILE);
         InternalFS.remove(MORSE_CONFIG_FILE);
         InternalFS.remove(LED_CONFIG_FILE);
+        InternalFS.remove(DISPLAY_CONFIG_FILE);
         InternalFS.remove(PATH_TABLE_FILE);
 #endif
     }

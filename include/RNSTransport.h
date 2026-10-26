@@ -73,6 +73,9 @@ public:
     RNSIdentity*   identity = nullptr;
     RNSRadio*      radio    = nullptr;
     TransportStats stats;
+    // Wall clock hook (set by main when GNSS time is available): unix
+    // seconds, or 0 when none; LXMF timestamps then use uptime seconds.
+    uint32_t (*wallClockSeconds)() = nullptr;
     float          lastRxRSSI = 0.0f;
     float          lastRxSNR  = 0.0f;
 
@@ -113,6 +116,32 @@ private:
         return false;
     }
 
+    // ── Announce appData name field ───────────────────────
+    /**
+     * @brief Locate the display-name field in announce appData.
+     *
+     * Accepts the msgpack shapes seen on the air:
+     *   [name]            RatTunnel, older Sideband       0x91 <str>
+     *   [name, cost, ...] LXMF delivery (Sideband, Columba, Ratspeak)
+     * where <str> is fixstr (0xA0-0xBF), str8 (0xD9 n) or bin8 (0xC4 n) —
+     * LXMF encodes the display name as raw bytes, which msgpack emits as
+     * bin8, so fixstr-only parsing missed every phone client.
+     * @return length of the name, 0 if no name field was found.
+     */
+    static uint8_t announceNameField(const uint8_t* app, uint16_t appLen,
+                                     const uint8_t** outName) {
+        if (!app || appLen < 3) return 0;
+        if ((app[0] & 0xF0) != 0x90 || (app[0] & 0x0F) < 1) return 0;   // fixarray, >= 1 element
+        uint8_t tag = app[1];
+        uint16_t nameLen = 0, nameOff = 0;
+        if ((tag & 0xE0) == 0xA0)              { nameLen = tag & 0x1F; nameOff = 2; }
+        else if ((tag == 0xD9 || tag == 0xC4) && appLen >= 3) { nameLen = app[2]; nameOff = 3; }
+        else return 0;
+        if (nameLen == 0 || nameOff + nameLen > appLen) return 0;
+        *outName = app + nameOff;
+        return (uint8_t)nameLen;
+    }
+
     void cacheAnnounce(const RNSPacket& pkt,
                        const uint8_t* appData = nullptr,
                        uint16_t appDataLen = 0) {
@@ -121,11 +150,8 @@ private:
         if (announceHashCacheReady && memcmp(pkt.destHash, cachedTransportDestHash, RNS_ADDR_LEN) == 0) return;
 
         if (appData && appDataLen > 0) {
-            bool looksLikeName = appDataLen >= 3
-                && (appData[0] & 0xF0) == 0x90
-                && (appData[0] & 0x0F) >= 1
-                && (appData[1] & 0xE0) == 0xA0;
-            if (!looksLikeName) return;
+            const uint8_t* namePtr = nullptr;
+            if (announceNameField(appData, appDataLen, &namePtr) == 0) return;
         }
 
         uint32_t now = millis();
@@ -164,7 +190,8 @@ private:
 
             uint8_t replayHops = announceCache[i].hops;
             if (replayHops < RNS_MAX_HOPS) replayHops++;
-            if (!queueRawAnnounce(announceCache[i].raw, announceCache[i].rawLen, replayHops)) break;
+            (void)replayHops;   // queueRebroadcast derives hops from the cached packet
+            if (!queueRebroadcast(announceCache[i].raw, announceCache[i].rawLen)) break;
 
             queued++;
             if (queued >= limit) break;
@@ -243,8 +270,9 @@ private:
         return readMsgpackStr(data, len, pos, outText, maxText);
     }
 
+
     // ── Pack LXMF content as msgpack ──────────────────────
-    static uint16_t packLxmfContent(const char* text, uint32_t uptimeMs,
+    static uint16_t packLxmfContent(const char* text, uint32_t timestampSeconds,
                                     uint8_t* out, uint16_t maxLen) {
         if (!text || !out) return 0;
         uint16_t tLen = strlen(text);
@@ -254,7 +282,7 @@ private:
         uint16_t pos = 0;
         out[pos++] = 0x94; // array of 4
         out[pos++] = 0xCB; // float64 timestamp
-        double ts = (double)(uptimeMs / 1000);
+        double ts = (double)timestampSeconds;
         uint8_t* tb = (uint8_t*)&ts;
         for (int i = 7; i >= 0; i--) out[pos++] = tb[i]; // big-endian
         out[pos++] = 0xC4; out[pos++] = 0x00; // empty bin8 title
@@ -358,11 +386,27 @@ public:
         }
 
         RNSIdentity::AnnounceInfo announceInfo;
-        if (!RNSIdentity::inspectAnnounce(pkt.destHash, pkt.data, pkt.dataLen, &announceInfo)) {
+        // The packet's context flag tells the validator whether a 32-byte
+        // ratchet sits between the random blob and the signature (every
+        // LXMF delivery announce from Sideband / Columba / Ratspeak has one).
+        if (!RNSIdentity::inspectAnnounce(pkt.destHash, pkt.data, pkt.dataLen,
+                                          pkt.contextFlag, &announceInfo)) {
             stats.invalidPackets++;
             return;
         }
         stats.announces++;
+
+        // Our own announce coming back to us (rebroadcast by another
+        // transport node, hops >= 1) must not become a path to ourselves,
+        // and must not be rebroadcast again. Reference RNS drops announces
+        // for destinations it owns at the same point.
+        // Any destination of OUR identity (lxmf.delivery, discovery, ...):
+        // the announce carries the 64-byte public key first.
+        if (identity && identity->initialized) {
+            uint8_t ourPub[RNS_KEYSIZE];
+            identity->getPublicKey(ourPub);
+            if (memcmp(pkt.data, ourPub, RNS_KEYSIZE) == 0) return;
+        }
 
         // Extract peer name and messages from announce appData
         char extractedName[PEER_NAME_MAX] = {0};
@@ -396,15 +440,15 @@ public:
 #endif
                 }
             }
-            // Check for MsgPack-encoded name: fixarray(1+) + fixstr
-            // Sideband sends [name] or [name, stamp_cost, ...] as 0x91-0x9F arrays
-            else if (app && appLen >= 3 && (app[0] & 0xF0) == 0x90 && (app[0] & 0x0F) >= 1
-                     && (app[1] & 0xE0) == 0xA0) {
-                uint8_t nameLen = app[1] & 0x1F;
-                if (nameLen > 0 && (2 + nameLen) <= appLen && nameLen < PEER_NAME_MAX) {
+            // MsgPack-encoded name: [name] or [name, stamp_cost, ...];
+            // fixstr, str8 or bin8 name (see announceNameField).
+            else {
+                const uint8_t* namePtr = nullptr;
+                uint8_t nameLen = announceNameField(app, appLen, &namePtr);
+                if (nameLen > 0) {
                     uint8_t outIdx = 0;
                     for (uint8_t ni = 0; ni < nameLen && outIdx < (PEER_NAME_MAX - 1); ni++) {
-                        uint8_t c = app[2 + ni];
+                        uint8_t c = namePtr[ni];
                         if (c >= 0x20 && c <= 0x7E)
                             extractedName[outIdx++] = (char)c;
                     }
@@ -702,8 +746,49 @@ public:
     }
 
     // ── Announce retransmit queue ─────────────────────────
+    /**
+     * @brief Queue an announce for rebroadcast with THIS node as the
+     *        transport, the way reference Reticulum does it.
+     *
+     * RNS/Transport.py rebroadcasts an announce as a new packet with
+     * header type 2, transport type TRANSPORT, transport_id = this
+     * node's identity hash, and hops + 1. Receivers then learn the path
+     * "via" us, which is what makes them address forwarded traffic to
+     * us. Builds up to 1.0.33 resent the original bytes with only the
+     * hop byte bumped, so paths were learned via whatever transport
+     * (or originator) was in the packet before us, and traffic routed
+     * through a RatTunnel never carried our transport ID.
+     *
+     * The context flag (ratchet present) and context byte are kept.
+     */
+    bool queueRebroadcast(const uint8_t* raw, uint16_t rawLen) {
+        if (!identity || !raw || rawLen == 0 || rawLen > RNS_MTU) return false;
+        static RNSPacket src;
+        if (!src.parse(raw, rawLen)) return false;
+        if (src.hops >= RNS_MAX_HOPS) return false;
+
+        static RNSPacket out;
+        out.ifacFlag    = src.ifacFlag;
+        out.headerType  = HEADER_2;
+        out.contextFlag = src.contextFlag;
+        out.propType    = TRANSPORT;
+        out.destType    = src.destType;
+        out.packetType  = src.packetType;
+        out.hops        = (uint8_t)(src.hops + 1);
+        memcpy(out.transportId, identity->identityHash, RNS_ADDR_LEN);
+        memcpy(out.destHash,    src.destHash,           RNS_ADDR_LEN);
+        out.context = src.context;
+        out.data    = src.data;
+        out.dataLen = src.dataLen;
+
+        static uint8_t buf[RNS_MTU];
+        uint16_t n = out.serialize(buf, RNS_MTU);
+        if (n == 0) return false;
+        return queueRawAnnounce(buf, n, out.hops);
+    }
+
     void queueAnnounceRetransmit(RNSPacket& pkt) {
-        queueRawAnnounce(pkt.raw, pkt.rawLen, (uint8_t)(pkt.hops + 1));
+        queueRebroadcast(pkt.raw, pkt.rawLen);
         // Queue full — drop (announce flood protection)
     }
 
@@ -713,6 +798,12 @@ public:
     bool sendLocalAnnounce(const uint8_t* nameHash = nullptr,
                            const uint8_t* appData = nullptr,
                            uint16_t appDataLen = 0);
+    /// Announce an arbitrary SINGLE destination owned by this identity
+    /// (e.g. rnstransport.discovery.interface). Reference layout, no ratchet.
+    bool sendAnnounceFor(const uint8_t destHash[RNS_ADDR_LEN],
+                         const uint8_t nameHash[RNS_NAME_HASH_LEN],
+                         const uint8_t* appData, uint16_t appDataLen,
+                         bool defaultNameAppData);
     bool sendDiscoverySweep();
 
     // ── Send a message-bearing announce ──────────────────

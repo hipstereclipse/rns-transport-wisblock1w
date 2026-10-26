@@ -1,4 +1,9 @@
-# RatTunnel V. 1.0.33 — WisBlock 1W
+# RatTunnel V. 1.0.34 — WisBlock 1W / Ikoka Stick / Heltec T096
+
+> **Ikoka Stick (Seeed XIAO nRF52840 + EBYTE E22-900M30S) is an added
+> target** — env `ikoka_stick_transport`. See
+> [Ikoka Stick target](#ikoka-stick-target-xiao-nrf52840--e22-900m30s)
+> below. The WisBlock 1W env is unchanged.
 
 `RatTunnel` is a standalone Reticulum transport/repeater/node firmware for the RAKwireless WisBlock 1W stack (`RAK3401 + RAK13302`).
 The name **RatTunnel** is a nod to [Ratspeak](https://github.com/ratspeak/), a messaging app/platform built on [Reticulum](https://github.com/markqvist/Reticulum/).
@@ -13,7 +18,7 @@ It is designed for safe field updates with:
 
 ## Current Status
 
-- Firmware brand/version: `RatTunnel V. 1.0.33`
+- Firmware brand/version: `RatTunnel V. 1.0.34`
 - Hardware target: WisBlock 1W (`nRF52840 + SX1262`)
 - Primary flashing path: Web flasher (`flasher/index.html`) served over HTTP
 - Secondary flashing path: UF2 drag-and-drop bootloader drive
@@ -109,6 +114,299 @@ save                     # persist the setting
 ```
 
 When `boot-reset` is on, each power cycle generates a fresh identity key pair — the node appears as a different Reticulum destination on every boot. The RatHole flag itself is preserved across wipes so the setting survives reboot.
+
+
+## Heltec Mesh Node T096 target (nRF52840 + SX1262 + KCT8103L)
+
+Hardware: [Heltec Mesh Node T096](https://heltec.org/project/t096/) —
+nRF52840, SX1262 with a KCT8103L front-end (PA + LNA, ~28 dBm), UC6580
+GNSS and a 0.96" TFT. RatTunnel uses the radio, the LED and the button;
+the TFT rail (Vext) and the GNSS rail are held off. Build with:
+
+```
+pio run -e heltec_t096_transport
+```
+
+Outputs land in `.pio/build/heltec_t096_transport/` (`firmware.uf2` for
+drag-and-drop onto the `HT-n5262G` bootloader drive). Double-tap reset
+to get the drive, or use the console `dfu` command, or **hold the user
+button while resetting**.
+
+### SoftDevice / linker
+
+The T096 ships Heltec's Adafruit-derived bootloader with S140 **v6.1.1**,
+so this target links at 0x26000 like the WisBlock 1W and uses the BSP's
+stock linker script (`boards/heltec_t096_s140v6.json`, provenance in
+`boards/README.md`). **Check `INFO_UF2.TXT` on the bootloader drive
+before the first flash** and confirm 6.1.1; the portal refuses the
+0x27000 (Ikoka) image on an `HT-n5262G` drive, but a manual drag of the
+wrong image is not protected.
+
+### TX power is a firmware invariant on this board
+
+| Constant | KCT8103L | Source |
+|---|---|---|
+| `LORA_TX_DBM_VARIANT_MAX` | 22 dBm | Meshtastic `heltec_mesh_node_t096` and MeshCore `heltec_t096` both allow the full SX1262 range ("Max SX1262 output -> ~28dBm at antenna") |
+| `LORA_TX_DBM_MAX_SAFE` (build cap) | 18 dBm | on the gain knee; nothing above it but current |
+| `LORA_TX_DBM` (default) | 18 dBm | |
+| `LORA_TX_DBM_ANNOUNCE_SAFE` | 18 dBm | |
+
+Derivation, verified 2026-09-25 against primary sources:
+
+| Fact | Value | Source |
+|---|---|---|
+| Pad between SX1262 and FEM TX input | 280 Ω series, 59 Ω / 59 Ω shunt = **21.1 dB** | Heltec schematic `Mesh_Node_T096_V0.2`, sheet 1 (R37/R38/R39) |
+| KCT8103L TX gain / Psat at 3.3 V | 33.0 dB / **28.0 dBm** | Kangxi Communication product portfolio, KCT8103L row |
+| Vfem supply | 3.3 V LDO (U5 TLV75733) | schematic |
+| Family absolute-max TX input | **+8 dBm** | KCT8101L datasheet rev C (sibling part; no KCT8103L datasheet obtainable) |
+
+So the FEM saturates at 16 dBm chip drive (−5 dBm at its input), the
+full 22 dBm chip drive delivers only +0.9 dBm to the FEM, 7 dB under
+the family absolute maximum, and the 18 dBm cap sits 2 dB past the
+saturation knee at −3.1 dBm FEM input. The Heltec V4 bench table in
+MeshCore issue #1708 (same FEM family) shows the same knee: 27–28 dBm
+conducted from setting 18 upward. Prns's measured T096 gain table
+agrees (net 14 dB at low drive tapering to 7 dB at 21 dBm).
+
+**Verify with a power meter before sustained TX** — see
+[docs/BENCH_HELTEC_T096.md](docs/BENCH_HELTEC_T096.md).
+
+### FEM control
+
+The KCT8103L has three control lines plus the SX1262's DIO2:
+
+| Net | GPIO | Firmware | Board default |
+|---|---|---|---|
+| VFEM_Ctrl (FEM LDO enable) | P0.30 | HIGH at radio init | 5.1 MΩ pull-up (on) |
+| PA_CSD (chip enable) | P0.12 | HIGH at radio init | 10 kΩ pulldown (**PA off**) |
+| PA_CTX (RX path) | P1.09 | LOW = 21 dB LNA | 10 kΩ pulldown (LNA) |
+| PA_CPS (TX/RX select) | SX1262 DIO2 | `setDio2AsRfSwitch(true)` | 10 kΩ pulldown |
+
+Because CSD has a pulldown, the PA stays off until `RNSRadio::begin()`
+asserts it; a firmware that never gets that far leaves the FEM idle.
+
+### Status display
+
+The 0.96" ST7735 TFT (160x80 landscape) shows a three-page dashboard,
+driven by `include/RNSDisplay.h` on the Adafruit GFX + ST7735 stack
+(the same driver family RNode firmware uses on Heltec TFTs). The panel
+sits on the Vext rail, which is only powered while the panel is awake.
+
+| Page | Content |
+|---|---|
+| 1 STATUS | name, battery % (or `USB`), uptime, free RAM, RX/TX/forwarded, announces/duplicates/invalid, RX/TX bytes, paths, last RSSI/SNR, radio one-liner |
+| 2 RADIO | frequency, bandwidth, SF, CR, preamble, TX drive and cap, sync word, RX mode, init result |
+| 3 PEERS | first seven path-table entries: hash, name, hops, RSSI, age |
+
+* **Button** (P1.10): a short press wakes a blanked panel, or advances
+  the page. The boot-time hold-for-DFU behaviour is unchanged.
+* **Timeout**: `display timeout <seconds>` (0 = never, max 3600, default
+  60) blanks the panel and drops the Vext rail; persisted in
+  `/display.bin`. `display on|off` parks the panel entirely;
+  `display page [n]` selects a page; `display` alone prints the state.
+* **Battery**: the on-board 390K/100K divider on P0.03 is gated by
+  P1.15 and read every 10 s. On USB power the top row shows `USB`.
+* Rows are cached and only redrawn when their text changes, so the 1 Hz
+  refresh normally repaints one or two rows.
+
+### Pin map
+
+From the Heltec V0.2 schematic net table, raw nRF52840 numbering:
+
+| Function | GPIO | # |
+|---|---|---|
+| SX1262 NSS / SCK / MOSI / MISO | P0.05 / P1.08 / P0.11 / P0.14 | 5 / 40 / 11 / 14 |
+| SX1262 RESET / BUSY / DIO1 | P0.16 / P0.19 / P0.21 | 16 / 19 / 21 |
+| Vext_Ctrl (TFT rail, held LOW) | P0.26 | 26 |
+| VGNSS_CTRL (PMOS, held HIGH = off) | P0.06 | 6 |
+| White LED (active HIGH) | P0.28 | 28 |
+| User button (active LOW, 10 kΩ pull-up) | P1.10 | 42 |
+
+The SX1262 supply (VDD_IN / VBAT) is on the always-on VDD_3V3 LDO, not
+on Vext, so the radio runs with the display rail off.
+
+## Security notice (2026-10-16): regenerate identities
+
+Builds before 2026-10-16 generated the node identity from an unseeded
+RNG, so **every board produced the same key pair**, and that key pair is
+derivable from the Crypto library's source. Two nodes on one network
+showed the same identity hash. From this build on, key generation, IVs
+and nonces use the nRF52840 hardware RNG (`include/RNSEntropy.h`), and
+the stored identity file is versioned: a node with a pre-fix identity
+regenerates it automatically on the first boot of this firmware and
+logs `[RNS] Identity: REGENERATING`. Its identity, `lxmf.delivery` and
+discovery hashes change; re-add it in your clients and expect RMAP to
+show a new entry. `identity regen` rotates the key pair on demand.
+
+## Air framing: RNode split packets
+
+Every LoRa frame carries RNode's one-byte header (`seq << 4 | flags`).
+A Reticulum packet longer than 254 bytes is sent as two frames sharing
+the sequence nibble with the split flag (bit 0) set, 254 payload bytes
+in the first, the rest in the second, exactly as RNode_Firmware
+`transmit()` does; the receiver reassembles by sequence the way RNode's
+`receive_callback()` does. Before 2026-09-25 RatTunnel sent one frame
+per packet and never reassembled, so anything over 254 bytes on air
+(the map discovery announce, LXMF announces with a ratchet and a long
+name) was refused on TX with RadioLib rc -4 and counted as Invalid on RX.
+
+## Map discovery announce (RMAP, `discoverable = yes`)
+
+All targets can announce themselves the way a Python RNS node does for a
+discoverable interface, so the node shows up on RMAP-style maps with its
+position and radio parameters. Off by default.
+
+```
+location 47.043620 -122.872110 [height_m]   # or: location clear
+discovery on                                # computes the proof-of-work stamp once
+discovery                                   # state, stamp progress, next announce
+discovery interval <5-1440>                 # minutes, default 360 (6 h, the RNS default)
+discovery now                               # send one immediately
+discovery dump                              # PACKED / INFOHASH / APPDATA / DEST for validation
+```
+
+What goes on the air (`include/RNSDiscovery.h`): a normal announce for
+the destination `rnstransport.discovery.interface` from this node's
+identity, with app data `[flags 0x00][msgpack map][32-byte stamp]`. The
+map has the same keys and value types as `RNS/Discovery.py`
+(`RNodeInterface`, transport flag, identity hash, name, float64
+latitude/longitude/height or nil, frequency/bandwidth in Hz, SF, CR).
+The stamp is LXStamper hashcash: a 20-round HKDF workblock over the
+descriptor hash and a 32-byte nonce whose SHA-256 has 16 leading zero
+bits. The search keeps a SHA-256 midstate so each attempt is one
+compression; it runs in 48-attempt slices from the main loop (~65k
+attempts on average, a few seconds) and the result is cached in
+`/discovery.bin`, so it only recomputes when the name, position or
+radio parameters change.
+
+Validate a node's bytes against the reference implementation (needs the
+`rns` Python package):
+
+```
+python tools/validate_discovery.py < dump.txt     # paste `discovery dump` output
+```
+
+Bench 2026-09-25, T096: stamp found on-device, reference validator
+reports `VALID`, all handler field checks pass.
+
+## Ikoka Stick target (XIAO nRF52840 + E22-900M30S)
+
+Hardware: [ndoo/ikoka-stick-meshtastic-device](https://github.com/ndoo/ikoka-stick-meshtastic-device),
+populated with a Seeed XIAO nRF52840 and an EBYTE E22-900M30S (SX1262 +
+PA + LNA, 30 dBm). Build with:
+
+```
+pio run -e ikoka_stick_transport
+```
+
+Outputs land in `.pio/build/ikoka_stick_transport/` (`firmware.uf2` for
+drag-and-drop onto the `XIAO-BOOT` bootloader drive, `firmware.zip` for
+`adafruit-nrfutil`). Double-tap reset to get the drive, or use the
+console `dfu` command, or **hold the D0 user button while resetting**.
+
+### Do not flash the WisBlock image onto a XIAO
+
+The portal's Flash tab lists every release asset. The WisBlock 1W UF2
+loads at 0x26000, which on the XIAO is the **last page of the S140
+v7.3.0 SoftDevice**; writing it leaves the board hung in setup (solid
+green LED, USB enumerated but the console never answers). The portal now
+refuses that write when the bootloader drive is named `XIAO-BOOT`, but a
+manual drag-and-drop is not protected. Always pick the
+`rns-transport-ikoka-stick-*.uf2` asset for this board. Recovery without
+serial DFU: `tools/make_sd_repair_uf2.py`, procedure in
+`docs/BENCH_IKOKA_STICK.md` §0b.
+
+### Board revision — read this first
+
+The E22 is fed by an MT3608 boost converter hanging off the XIAO's
+charger output. **Ikoka Stick boards before v0.2.0 drew excessive current
+when no battery was inserted**; fixed by commit
+[2cd2400](https://github.com/ndoo/ikoka-stick-meshtastic-device/commit/2cd2400)
+("Supply E22 LoRa module +5V2 rail from 5V when no battery is present",
+tag `v0.2.0-52a6ed2`). Commit 84d24a0 also raised the LoRa supply
+current budget from 1 A to 2.5 A. Use v0.2.0 or later, and keep
+RatTunnel's power mitigations (17→18 dBm conservative default, SX1262
+current limit 140 mA, DCDC regulator, announce-time TX cap, watchdog +
+reset-cause logging) — they are all active on this target.
+
+### TX power is a firmware invariant on this board
+
+The E22-900M30S PA will be damaged by too much SX1262 drive. RatTunnel's
+WisBlock power table (17 dBm into a SKY66122) is **not** valid here, so
+this target carries its own table in `include/RNSConfig.h`:
+
+| Constant | E22-900M30S | Source |
+|---|---|---|
+| `LORA_TX_DBM_VARIANT_MAX` | 20 dBm | MeshCore `variants/ikoka_stick_nrf/platformio.ini` @ 0679dbe: "limit txpower to 20dBm on E22-900M30S … 20dBm in -> 30dBm out" |
+| `LORA_TX_DBM_MAX_SAFE` (build cap) | 18 dBm | 2 dB under the ceiling, pending power-meter check |
+| `LORA_TX_DBM` (default) | 18 dBm | |
+| `LORA_TX_DBM_ANNOUNCE_SAFE` | 18 dBm | same PA basis; rail rated 2.5 A |
+
+Ebyte's own E22-900M30S manual (v1.20 §2.2 p.3 / v1.5 rev 1.4 §2.2 p.5)
+gives only "Max Tx power 29.5/30/31 dBm, TX current 650 mA" and **no PA
+gain or drive-level table**, so the ceiling is MeshCore's field-proven
+figure, not a datasheet number. The 9 dBm limit you may have seen quoted
+for Ikoka boards is MeshCore's rule for the **E22-900M33S**, a different
+module ("9dBm in -> 33dBm out").
+
+The cap is enforced in `RNSRadio::clampTxDbm()`, which is the only path
+to `lora.setOutputPower()` and `lora.begin()`. The console `set txpower`,
+`profile` presets, a persisted `config.bin` from another build, and the
+`scan`/`sfscan` re-inits all pass through it. A `static_assert` refuses
+to build a cap above the variant maximum.
+
+**Verify with a power meter before sustained TX** — see
+[docs/BENCH_IKOKA_STICK.md](docs/BENCH_IKOKA_STICK.md).
+
+### Pin map
+
+From the Ikoka README GPIO table, raw nRF52840 numbering (pca10056):
+
+| Function | XIAO | GPIO | # |
+|---|---|---|---|
+| User button (active LOW, board pull-up) | D0 | P0.02 | 2 |
+| E22 DIO1 (IRQ) | D1 | P0.03 | 3 |
+| E22 RST | D2 | P0.28 | 28 |
+| E22 BUSY | D3 | P0.29 | 29 |
+| E22 NSS | D4 | P0.04 | 4 |
+| E22 RXEN | D5 | P0.05 | 5 |
+| E22 SCK / MISO / MOSI | D8 / D9 / D10 | P1.13 / P1.14 / P1.15 | 45 / 46 / 47 |
+| E22 TXEN | — | wired to SX1262 **DIO2** on the PCB | `setDio2AsRfSwitch(true)` |
+| LEDs (active LOW) | — | green P0.30, blue P0.06, red P0.26 | 30 / 6 / 26 |
+
+The optional SSD1306 OLED on D6/D7 is not used.
+
+### SoftDevice / linker
+
+The XIAO ships with S140 **v7.3.0**, so this env uses
+`boards/xiao_nrf52840_s140v7.json` (fwid 0x0123), links with
+`boards/nrf52840_s140_v7.ld` (app at 0x27000) and compiles against the
+v7 API headers in `lib/nrf52/`. Provenance in `boards/README.md`.
+`tools/generate_uf2.py` needs no change: the UF2 family ID is the same
+nRF52840 ID and the base address is read from the hex.
+
+### Memory
+
+| | WisBlock 1W | Ikoka Stick |
+|---|---|---|
+| `.data` + `.bss` (arm-none-eabi-size) | 1,064 + 234,456 = 235,520 B | 1,160 + 234,360 = 235,520 B |
+| PlatformIO "RAM used" (`.data`+`.bss` minus the BSP's own reservation) | 111,720 B of 248,832 | 111,824 B of 237,568 |
+| Flash (`.text`+`.data`) | 313,256 B (app @ 0x26000) | 308,344 B (app @ 0x27000) |
+
+The Ikoka figure has 11,264 B less RAM available because the S140 v7
+linker script reserves RAM up to 0x20006000 for the SoftDevice. Live
+free heap: `status` on the console prints `Free RAM:` (stack pointer
+minus heap end); record it in the bench sheet.
+
+### Path persistence
+
+Neither target persists the path table; `/paths.bin` is reserved but
+never written (`PATH_TABLE_MAX` 200 entries live in RAM only). Internal
+LittleFS is 28 KB (7 × 4 KB pages at 0xED000) shared by identity, config,
+LED, morse, security, auth and name blobs — a full 200-entry table
+(~27 KB) would not fit there anyway. The XIAO's on-board 2 MB P25Q16H
+QSPI flash is the natural home if persistence is added; costing is in
+`docs/DeveloperGuide.md`.
 
 ## Hardware Requirements
 

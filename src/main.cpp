@@ -8,7 +8,7 @@
  *   3. LittleFS (persistence)
  *   4. Identity (load or generate)
  *   5. Transport engine
- *   6. Radio (SX1262 + RAK13302)
+ *   6. Radio (SX1262 + board PA stage, see RNSConfig.h)
  *   7. Console
  *
  * SAFETY:
@@ -26,13 +26,32 @@
 #include "RNSRadio.h"
 #include "RNSTransport.h"
 #include "RNSConsole.h"
+#include "RNSDisplay.h"
+#include "RNSDiscovery.h"
+#include "RNSGnss.h"
+#include "RNSVext.h"
+#include "RNSEntropy.h"
 #include "RNSPersistence.h"
+#include "RNSDfu.h"
 #include <nrf_wdt.h>
 #include <ctype.h>
 
 // ── Global objects (static allocation) ────────────────────
 static RNSIdentity    nodeIdentity;
 static RNSRadio       radio;
+#if HAS_DISPLAY
+static RNSDisplay     display;
+#endif
+static RNSDiscovery   discovery;
+uint8_t RNSDiscovery::workblock[DISCOVERY_WORKBLOCK_LEN];
+#if defined(PIN_VEXT_CTRL)
+uint8_t RNSVext::claims = 0;
+bool    RNSVext::on = false;
+#endif
+#if HAS_GNSS
+static RNSGnss        gnss;
+static uint32_t gnssWallClock() { return gnss.unixNow(millis()); }
+#endif
 static RNSTransport   transport;
 static RNSConsole     console;
 static RNSPersistence persist;
@@ -628,10 +647,16 @@ static void emitLedAlertStatus(Stream& io) {
     io.println();
 }
 
+// LED_ACTIVE_HIGH (RNSConfig.h): WisBlock LEDs are active HIGH, the
+// XIAO's common-anode RGB is active LOW.
+static inline int ledLevel(bool on) {
+    return (on == (LED_ACTIVE_HIGH != 0)) ? HIGH : LOW;
+}
+
 static void writeLedChannel(uint8_t channel, bool on) {
     if (!ledChannelAvailable(channel)) return;
     if (ledOutputState[channel] == on) return;
-    digitalWrite(ledChannelPin(channel), on ? HIGH : LOW);
+    digitalWrite(ledChannelPin(channel), ledLevel(on));
     ledOutputState[channel] = on;
 }
 
@@ -1885,15 +1910,409 @@ void RNSConsole::cmdFactoryReset() {
     }
 }
 
+// ── Board battery sense (boards with PIN_BATT_ADC) ───────────
+#if defined(PIN_BATT_ADC)
+// Returns pack voltage in mV (0 if unreadable). The divider is gated:
+// ADC_Ctrl HIGH connects it, so no drain while idle.
+static uint32_t readBatteryMillivolts() {
+    pinMode(PIN_BATT_ADC_CTRL, OUTPUT);
+    digitalWrite(PIN_BATT_ADC_CTRL, HIGH);
+    delay(3);
+    analogReference(AR_INTERNAL_3_0);
+    analogReadResolution(12);
+    uint32_t acc = 0;
+    for (uint8_t i = 0; i < 8; i++) acc += (uint32_t)analogRead(PIN_BATT_ADC);
+    digitalWrite(PIN_BATT_ADC_CTRL, LOW);
+    float raw = (float)acc / 8.0f;
+    float mv = raw * (3000.0f / 4096.0f) * BATT_DIVIDER_MULT;
+    return (uint32_t)mv;
+}
+
+// Single-cell LiPo open-circuit curve, coarse.
+static int8_t batteryPercentFromMv(uint32_t mv) {
+    static const struct { uint16_t mv; uint8_t pct; } tbl[] = {
+        {4200,100},{4100,90},{4000,78},{3900,62},{3800,45},{3700,25},{3600,10},{3500,4},{3400,1},{3300,0}
+    };
+    if (mv >= tbl[0].mv) return 100;
+    for (uint8_t i = 1; i < sizeof(tbl)/sizeof(tbl[0]); i++) {
+        if (mv >= tbl[i].mv) {
+            uint32_t span = tbl[i-1].mv - tbl[i].mv;
+            uint32_t frac = mv - tbl[i].mv;
+            return (int8_t)(tbl[i].pct + (tbl[i-1].pct - tbl[i].pct) * frac / span);
+        }
+    }
+    return 0;
+}
+
+static bool usbPowerPresent() {
+    return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+}
+#endif
+
+// ── Runtime user button (short press → display wake / next page) ──
+#if PIN_USER_BUTTON >= 0
+static void pollUserButton(uint32_t now) {
+    static bool     wasPressed = false;
+    static uint32_t pressedAt  = 0;
+    static uint32_t lastEdge   = 0;
+    const int pressedLevel = BUTTON_ACTIVE_LOW ? LOW : HIGH;
+    bool pressed = (digitalRead(PIN_USER_BUTTON) == pressedLevel);
+    if (pressed != wasPressed && (now - lastEdge) < 30) return;   // debounce
+    if (pressed && !wasPressed) { pressedAt = now; lastEdge = now; }
+    if (!pressed && wasPressed) {
+        lastEdge = now;
+        uint32_t held = now - pressedAt;
+        if (held < 800) {
+#if HAS_DISPLAY
+            display.buttonPress(now);
+#endif
+        }
+        // ≥ 800 ms: reserved (no action yet)
+    }
+    wasPressed = pressed;
+}
+#endif
+
+#if HAS_DISPLAY
+static void persistDisplayConfig() {
+    DisplayConfigBlob blob = {};
+    blob.enabled    = display.enabled ? 1 : 0;
+    blob.timeoutSec = display.timeoutSec;
+    persist.saveDisplayConfig(blob);
+}
+#endif
+
+// ── Discovery (RMAP) announce ─────────────────────────────
+static void persistDiscoveryConfig() {
+    DiscoveryConfigBlob b = {};
+    b.enabled     = discovery.cfg.enabled ? 1 : 0;
+    b.haveHeight  = discovery.cfg.haveHeight ? 1 : 0;
+    b.latUdeg     = discovery.cfg.latUdeg;
+    b.lonUdeg     = discovery.cfg.lonUdeg;
+    b.heightM     = discovery.cfg.heightM;
+    b.intervalMin = discovery.cfg.intervalMin;
+    b.stampValid  = discovery.stampReady ? 1 : 0;
+    memcpy(b.stamp, discovery.stamp, sizeof(b.stamp));
+    memcpy(b.stampInfohash, discovery.stampInfohash, sizeof(b.stampInfohash));
+    persist.saveDiscoveryConfig(b);
+}
+
+static void printHexBytes(Stream* io, const uint8_t* p, uint16_t n) {
+    for (uint16_t i = 0; i < n; i++) { if (p[i] < 0x10) io->print('0'); io->print(p[i], HEX); }
+}
+
+void RNSConsole::cmdDiscovery(const char* args) {
+    uint32_t now = millis();
+    if (!args || !*args) {
+        io->println(F("── Interface discovery (rnstransport.discovery.interface) ──"));
+        io->print(F("  Enabled:   ")); io->println(discovery.cfg.enabled ? F("yes") : F("no"));
+        io->print(F("  Dest hash: ")); printHexBytes(io, discovery.destinationHash(), RNS_ADDR_LEN); io->println();
+        io->print(F("  Location:  "));
+        if (discovery.hasLocation()) {
+            io->print(discovery.cfg.latUdeg / 1e6, 6); io->print(F(", ")); io->print(discovery.cfg.lonUdeg / 1e6, 6);
+            if (discovery.cfg.haveHeight) { io->print(F(", ")); io->print(discovery.cfg.heightM); io->print(F(" m")); }
+            io->println();
+        } else io->println(F("not set (announce carries nil)"));
+        io->print(F("  Interval:  ")); io->print(discovery.cfg.intervalMin); io->println(F(" min"));
+        io->print(F("  Packed:    ")); io->print(discovery.packedLength()); io->println(F(" bytes"));
+        io->print(F("  Stamp:     "));
+        if (discovery.stampReady) { io->print(F("ready  ")); printHexBytes(io, discovery.stamp, 8); io->println(F("...")); }
+        else if (discovery.searching) { io->print(F("searching, ")); io->print(discovery.attempts); io->print(F(" attempts, "));
+                                        io->print((now - discovery.searchStartedAt) / 1000); io->println(F(" s")); }
+        else io->println(F("none (enable to compute)"));
+        io->print(F("  Announces: ")); io->print(discovery.announcesSent);
+        if (discovery.cfg.enabled && discovery.stampReady) {
+            io->print(F("  next in ")); io->print(discovery.nextAnnounceAt > now ? (discovery.nextAnnounceAt - now) / 1000 : 0); io->print(F(" s"));
+        }
+        io->println();
+        io->println(F("  Usage: discovery on|off | interval <min> | now | dump"));
+        return;
+    }
+    if (strcmp(args, "on") == 0)  { discovery.cfg.enabled = true;  discovery.refresh(now); persistDiscoveryConfig();
+                                    io->println(discovery.stampReady ? F("Discovery enabled (stamp cached)") : F("Discovery enabled; computing stamp (~65k hashes)")); return; }
+    if (strcmp(args, "off") == 0) { discovery.cfg.enabled = false; discovery.searching = false; persistDiscoveryConfig(); io->println(F("Discovery disabled")); return; }
+    if (strncmp(args, "interval", 8) == 0) {
+        long m = atol(args + 8);
+        if (m < DISCOVERY_INTERVAL_MIN_MIN || m > 1440) { io->println(F("Interval must be 5-1440 minutes")); return; }
+        discovery.cfg.intervalMin = (uint16_t)m; persistDiscoveryConfig();
+        io->print(F("Discovery interval -> ")); io->print(m); io->println(F(" min")); return;
+    }
+    if (strcmp(args, "now") == 0) {
+        if (!discovery.cfg.enabled) { io->println(F("Discovery is off")); return; }
+        if (!discovery.stampReady)  { io->println(F("Stamp not ready yet")); return; }
+        io->println(discovery.announce() ? F("Discovery announce sent") : F("Discovery announce failed"));
+        return;
+    }
+    if (strcmp(args, "dump") == 0) {
+        // Hex for tools/validate_discovery.py: app_data then dest hash then identity pubkey hash
+        static uint8_t buf[1 + DISCOVERY_PACKED_MAX + DISCOVERY_STAMP_LEN];
+        uint16_t n = discovery.buildAppData(buf, sizeof(buf));
+        io->print(F("PACKED ")); printHexBytes(io, discovery.packedBytes(), discovery.packedLength()); io->println();
+        io->print(F("INFOHASH ")); printHexBytes(io, discovery.currentInfohash(), 32); io->println();
+        if (n) { io->print(F("APPDATA ")); printHexBytes(io, buf, n); io->println(); }
+        else io->println(F("APPDATA (stamp not ready)"));
+        io->print(F("DEST ")); printHexBytes(io, discovery.destinationHash(), RNS_ADDR_LEN); io->println();
+        return;
+    }
+    io->println(F("Usage: discovery | discovery on|off | interval <min> | now | dump"));
+}
+
+void RNSConsole::cmdLocation(const char* args) {
+    uint32_t now = millis();
+    if (!args || !*args) {
+        io->print(F("Location: "));
+        if (discovery.hasLocation()) {
+            io->print(discovery.cfg.latUdeg / 1e6, 6); io->print(F(" ")); io->print(discovery.cfg.lonUdeg / 1e6, 6);
+            if (discovery.cfg.haveHeight) { io->print(F(" ")); io->print(discovery.cfg.heightM); io->print(F(" m")); }
+            io->println();
+        } else io->println(F("not set"));
+        io->println(F("Usage: location <lat> <lon> [height_m] | location clear"));
+        return;
+    }
+    if (strcmp(args, "clear") == 0) {
+        discovery.cfg.latUdeg = 0; discovery.cfg.lonUdeg = 0; discovery.cfg.haveHeight = false;
+        discovery.refresh(now); persistDiscoveryConfig(); io->println(F("Location cleared")); return;
+    }
+    char buf[96]; strncpy(buf, args, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0';
+    char* save = nullptr;
+    char* a = strtok_r(buf, " ,", &save);
+    char* b = a ? strtok_r(nullptr, " ,", &save) : nullptr;
+    char* c = b ? strtok_r(nullptr, " ,", &save) : nullptr;
+    if (!a || !b) { io->println(F("Usage: location <lat> <lon> [height_m]")); return; }
+    double lat = atof(a), lon = atof(b);
+    if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) { io->println(F("Latitude -90..90, longitude -180..180")); return; }
+    discovery.cfg.latUdeg = (int32_t)(lat * 1e6 + (lat >= 0 ? 0.5 : -0.5));
+    discovery.cfg.lonUdeg = (int32_t)(lon * 1e6 + (lon >= 0 ? 0.5 : -0.5));
+    if (c) { long h = atol(c); if (h < -4000 || h > 30000) { io->println(F("Height -4000..30000 m")); return; }
+             discovery.cfg.heightM = (int16_t)h; discovery.cfg.haveHeight = true; }
+    else discovery.cfg.haveHeight = false;
+    discovery.refresh(now); persistDiscoveryConfig();
+    io->print(F("Location -> ")); io->print(lat, 6); io->print(F(", ")); io->print(lon, 6);
+    if (c) { io->print(F(", ")); io->print(discovery.cfg.heightM); io->print(F(" m")); }
+    io->println(discovery.cfg.enabled ? F("  (descriptor changed; stamp recomputes)") : F(""));
+}
+
+#if HAS_GNSS
+static void persistGnssConfig() {
+    GnssConfigBlob b = {}; b.mode = (uint8_t)gnss.mode; b.intervalMin = gnss.intervalMin; b.dwellSec = gnss.dwellSec;
+    persist.saveGnssConfig(b);
+}
+#endif
+
+void RNSConsole::cmdGps(const char* args) {
+#if HAS_GNSS
+    uint32_t now = millis();
+    if (!args || !*args) {
+        io->println(F("── GNSS (UC6580) ──"));
+        io->print(F("  Mode:      ")); io->print(gnss.mode == RNSGnss::GNSS_ON ? F("on") : F("off"));
+        if (gnss.mode == RNSGnss::GNSS_ON) {
+            if (gnss.intervalMin) { io->print(F(", every ")); io->print(gnss.intervalMin); io->print(F(" min, dwell ")); io->print(gnss.dwellSec); io->print(F(" s")); }
+            else io->print(F(", continuous"));
+        }
+        io->println();
+        if (gnss.mode == RNSGnss::GNSS_ON && gnss.intervalMin) {
+            io->print(F("  Cycles:    ")); io->print(gnss.cycles); io->print(F(" run, ")); io->print(gnss.cyclesFixed); io->print(F(" fixed"));
+            if (!gnss.powered) { io->print(F(", next wake in ")); io->print(gnss.nextWakeAt > now ? (gnss.nextWakeAt - now) / 1000 : 0); io->print(F(" s")); }
+            io->println();
+        }
+        io->print(F("  Powered:   ")); io->print(gnss.powered ? F("yes, ") : F("no"));
+        if (gnss.powered) { io->print((now - gnss.poweredAt) / 1000); io->println(F(" s")); } else io->println();
+        io->print(F("  Sentences: ")); io->print(gnss.sentences); io->print(F(" ok, ")); io->print(gnss.badChecksum); io->print(F(" bad"));
+        if (gnss.lastSentenceAt) { io->print(F(", last ")); io->print((now - gnss.lastSentenceAt) / 1000); io->print(F(" s ago")); }
+        io->println();
+        io->print(F("  Fix:       "));
+        if (gnss.hasFix) {
+            io->print(F("yes  ")); io->print(gnss.latUdeg / 1e6, 6); io->print(F(", ")); io->print(gnss.lonUdeg / 1e6, 6);
+            if (gnss.hasAlt) { io->print(F(", ")); io->print(gnss.altM, 0); io->print(F(" m")); }
+            io->println();
+        } else io->println(gnss.powered ? F("no (searching)") : F("no"));
+        io->print(F("  Sats/qual: ")); io->print(gnss.sats); io->print(F(" / ")); io->print(gnss.fixQuality);
+        io->print(F("  HDOP ")); io->println(gnss.hdop, 1);
+        io->print(F("  RMC/GGA:   ")); io->print(gnss.rmcSeen); io->print(F(" RMC (")); io->print(gnss.rmcValid);
+        io->print(F(" valid), ")); io->print(gnss.ggaSeen); io->println(F(" GGA"));
+        if (gnss.lastRmc[0]) { io->print(F("  Last RMC:  ")); io->println(gnss.lastRmc); }
+        io->print(F("  Clock:     "));
+        uint32_t u = gnss.unixNow(now);
+        if (u) { io->print(F("unix ")); io->println(u); } else io->println(F("not set"));
+        io->println(F("  Usage: gps on|off | gps interval <min> (0 = continuous) | gps dwell <sec> | gps raw [sec]"));
+        return;
+    }
+    if (strcmp(args, "on") == 0)  { gnss.setMode(RNSGnss::GNSS_ON, now);  persistGnssConfig(); io->println(F("GNSS on (rail powered, 115200 NMEA)")); return; }
+    if (strcmp(args, "off") == 0) { gnss.setMode(RNSGnss::GNSS_OFF, now); persistGnssConfig(); io->println(F("GNSS off")); return; }
+    if (strncmp(args, "interval", 8) == 0) {
+        long m = atol(args + 8);
+        if (m < 0 || m > 1440) { io->println(F("Interval 0 (continuous) to 1440 minutes")); return; }
+        gnss.setInterval((uint16_t)m, now); persistGnssConfig();
+        if (m == 0) io->println(F("GNSS continuous")); else { io->print(F("GNSS every ")); io->print(m); io->println(F(" min")); }
+        return;
+    }
+    if (strncmp(args, "raw", 3) == 0) {
+        long sec = atol(args + 3); if (sec <= 0) sec = 5; if (sec > 60) sec = 60;
+        gnss.rawTo = io; gnss.rawUntil = now + (uint32_t)sec * 1000UL;
+        io->print(F("Echoing NMEA for ")); io->print(sec); io->println(F(" s..."));
+        return;
+    }
+    if (strncmp(args, "dwell", 5) == 0) {
+        long sec = atol(args + 5);
+        if (sec < 30 || sec > 3600) { io->println(F("Dwell 30-3600 seconds")); return; }
+        gnss.dwellSec = (uint16_t)sec; persistGnssConfig();
+        io->print(F("GNSS dwell -> ")); io->print(sec); io->println(F(" s")); return;
+    }
+    io->println(F("Usage: gps | gps on|off | gps interval <min> | gps dwell <sec>"));
+#else
+    (void)args;
+    io->println(F("No GNSS on this board"));
+#endif
+}
+
+// ── Extra `status` lines: discovery, GNSS, display, power ──────────
+static void statusExtraLines(Stream* io) {
+    uint32_t now = millis();
+    io->print(F("  Discovery:  "));
+    if (!discovery.cfg.enabled) io->println(F("off"));
+    else {
+        io->print(discovery.stampReady ? F("on, stamp ready") : (discovery.searching ? F("on, computing stamp") : F("on, no stamp")));
+        io->print(F(", ")); io->print(discovery.announcesSent); io->print(F(" sent"));
+        if (discovery.stampReady) { io->print(F(", next in ")); io->print(discovery.nextAnnounceAt > now ? (discovery.nextAnnounceAt - now) / 60000UL : 0); io->print(F(" min")); }
+        io->println();
+    }
+    io->print(F("  Location:   "));
+    if (discovery.hasLocation()) {
+        io->print(discovery.cfg.latUdeg / 1e6, 5); io->print(F(", ")); io->print(discovery.cfg.lonUdeg / 1e6, 5);
+        if (discovery.cfg.haveHeight) { io->print(F(", ")); io->print(discovery.cfg.heightM); io->print(F(" m")); }
+        io->println();
+    } else io->println(F("not set"));
+#if HAS_GNSS
+    io->print(F("  GNSS:       "));
+    if (gnss.mode != RNSGnss::GNSS_ON) io->println(F("off"));
+    else {
+        io->print(gnss.powered ? F("powered") : F("sleeping"));
+        if (gnss.intervalMin) { io->print(F(" (every ")); io->print(gnss.intervalMin); io->print(F(" min)")); }
+        io->print(F(", ")); io->print(gnss.sats); io->print(F(" sats, "));
+        io->println(gnss.hasFix ? F("fix") : F("no fix"));
+    }
+    {
+        uint32_t u = gnss.unixNow(now);
+        io->print(F("  Clock:      "));
+        if (u) { io->print(F("unix ")); io->print(u); io->println(F(" (GNSS)")); } else io->println(F("uptime only"));
+    }
+#endif
+#if HAS_DISPLAY
+    io->print(F("  Display:    "));
+    if (!display.enabled) io->println(F("off"));
+    else { io->print(display.isAwake() ? F("awake") : F("blanked")); io->print(F(", page ")); io->print(display.currentPage() + 1);
+           io->print(F(", timeout ")); if (display.timeoutSec) { io->print(display.timeoutSec); io->println(F(" s")); } else io->println(F("never")); }
+#endif
+#if defined(PIN_BATT_ADC)
+    {
+        uint32_t mv = readBatteryMillivolts();
+        io->print(F("  Power:      "));
+        if (usbPowerPresent()) io->print(F("USB"));
+        if (mv > 2500) { if (usbPowerPresent()) io->print(F(", ")); io->print(F("battery ")); io->print(mv); io->print(F(" mV (")); io->print(batteryPercentFromMv(mv)); io->print(F("%)")); }
+        io->println();
+    }
+#endif
+}
+
+void RNSConsole::cmdDisplay(const char* args) {
+#if HAS_DISPLAY
+    uint32_t now = millis();
+    if (!args || !*args) {
+        io->println(F("── Display ──"));
+        io->print(F("  Panel:   ")); io->println(display.present ? F("ST7735 160x80 OK") : F("not initialised"));
+        io->print(F("  Enabled: ")); io->println(display.enabled ? F("yes") : F("no"));
+        io->print(F("  Awake:   ")); io->println(display.isAwake() ? F("yes") : F("no (blanked)"));
+        io->print(F("  Timeout: "));
+        if (display.timeoutSec == 0) io->println(F("never")); else { io->print(display.timeoutSec); io->println(F(" s")); }
+        io->print(F("  Page:    ")); io->println(display.currentPage() + 1);
+        io->println(F("  Usage: display timeout <0-3600> | on | off | page [1-3]"));
+        return;
+    }
+    if (strncmp(args, "timeout", 7) == 0) {
+        const char* v = args + 7; while (*v == ' ') v++;
+        if (!*v) { io->println(F("Usage: display timeout <seconds> (0 = never)")); return; }
+        long sec = atol(v);
+        if (sec < 0 || sec > DISPLAY_TIMEOUT_MAX_SEC) { io->println(F("Timeout must be 0-3600 s")); return; }
+        display.setTimeout((uint16_t)sec, now);
+        persistDisplayConfig();
+        io->print(F("Display timeout -> ")); if (sec == 0) io->println(F("never")); else { io->print(sec); io->println(F(" s")); }
+        return;
+    }
+    if (strcmp(args, "on") == 0)  { display.setEnabled(true, now);  persistDisplayConfig(); io->println(F("Display enabled"));  return; }
+    if (strcmp(args, "off") == 0) { display.setEnabled(false, now); persistDisplayConfig(); io->println(F("Display disabled")); return; }
+    if (strncmp(args, "page", 4) == 0) {
+        const char* v = args + 4; while (*v == ' ') v++;
+        if (*v) display.setPage((uint8_t)(atoi(v) - 1), now); else display.buttonPress(now);
+        io->print(F("Page ")); io->println(display.currentPage() + 1);
+        return;
+    }
+    io->println(F("Usage: display | display timeout <s> | display on|off | display page [n]"));
+#else
+    (void)args;
+    io->println(F("No display on this board"));
+#endif
+}
+
+// ── identity regen (console) ──────────────────────────────
+static void identityRegenerate(Stream* io) {
+    io->println(F("Generating a new hardware-seeded identity..."));
+    nodeIdentity.generate();
+    if (!persist.saveIdentity(nodeIdentity)) { io->println(F("FAILED to save identity")); return; }
+    transport.initDestHashCache();          // recomputes the lxmf.delivery hashes from the new key
+    discovery.begin(&transport, &nodeIdentity, &radio);   // new dest/transport hashes, re-stamp
+    io->print(F("New identity hash: "));
+    for (int i = 0; i < RNS_ADDR_LEN; i++) { if (nodeIdentity.identityHash[i] < 0x10) io->print('0'); io->print(nodeIdentity.identityHash[i], HEX); }
+    io->println();
+    io->println(F("All of this node's destination hashes have changed. Rebooting to apply cleanly..."));
+    io->flush(); delay(300);
+    NVIC_SystemReset();
+}
+
 // ── Setup ─────────────────────────────────────────────────
 void setup() {
     // LEDs
     if (PIN_LED_GREEN >= 0) pinMode(PIN_LED_GREEN, OUTPUT);
     if (PIN_LED_BLUE >= 0) pinMode(PIN_LED_BLUE, OUTPUT);
     if (PIN_LED_RED >= 0) pinMode(PIN_LED_RED, OUTPUT);
-    if (PIN_LED_GREEN >= 0) digitalWrite(PIN_LED_GREEN, HIGH);
-    if (PIN_LED_BLUE >= 0) digitalWrite(PIN_LED_BLUE, LOW);
-    if (PIN_LED_RED >= 0) digitalWrite(PIN_LED_RED, LOW);
+    if (PIN_LED_GREEN >= 0) digitalWrite(PIN_LED_GREEN, ledLevel(true));
+    if (PIN_LED_BLUE >= 0) digitalWrite(PIN_LED_BLUE, ledLevel(false));
+    if (PIN_LED_RED >= 0) digitalWrite(PIN_LED_RED, ledLevel(false));
+
+#if defined(BOARD_HELTEC_T096)
+    // ── Heltec T096: park the peripheral rails until their owners run ──
+    // Vext (TFT + backlight) is raised by RNSDisplay only while awake;
+    // the GNSS rail (PMOS, HIGH = off) is raised by RNSGnss on `gps on`.
+    // Asserted here so a warm reboot from another firmware cannot leave
+    // them on. FEM pins are handled in RNSRadio.
+    RNSVext::begin();                       // Vext low until the display or GNSS claims it
+    pinMode(PIN_GNSS_CTRL, OUTPUT);
+    digitalWrite(PIN_GNSS_CTRL, HIGH);
+#endif
+
+    // ── User button → UF2 bootloader (boards with PIN_USER_BUTTON) ──
+    // Hold the button through power-on for BUTTON_DFU_HOLD_MS and the
+    // node reboots into DFU via the same GPREGRET path as the console
+    // `dfu` command. The bootloader is never modified. Checked before
+    // USB/serial so a wedged main loop can still be recovered.
+#if PIN_USER_BUTTON >= 0
+    pinMode(PIN_USER_BUTTON, BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
+    delay(5);
+    {
+        const int pressed = BUTTON_ACTIVE_LOW ? LOW : HIGH;
+        uint32_t t0 = millis();
+        bool held = true;
+        while (millis() - t0 < BUTTON_DFU_HOLD_MS) {
+            if (digitalRead(PIN_USER_BUTTON) != pressed) { held = false; break; }
+            delay(10);
+        }
+        if (held) {
+            // Signal with all available LEDs, then go.
+            writeLedMask(availableLedMask(), true);
+            delay(200);
+            rnsRebootToDfu();
+        }
+    }
+#endif
 
     // USB serial
     Serial.begin(115200);
@@ -1903,7 +2322,7 @@ void setup() {
     }
 
     Serial.println(F("[RNS] ── RatTunnel Transport Node ──"));
-    Serial.println(F("[RNS] WisBlock 1W  |  " FW_DISPLAY_VERSION));
+    Serial.println(F("[RNS] " BOARD_DISPLAY_NAME "  |  " FW_DISPLAY_VERSION));
     printResetReason();
 
     // ── Persistence ───────────────────────────────────────
@@ -1931,12 +2350,18 @@ void setup() {
         emitRatHoleStatus(Serial);
     }
 
-    // ── Identity ──────────────────────────────────────────
+    // ── Entropy, then identity ────────────────────────────
+    RNSEntropy::begin();     // hardware-seeded Crypto RNG + libc rand() (see RNSEntropy.h)
     Serial.print(F("[RNS] Identity: "));
     if (!wipedOnBoot && persist.loadIdentity(nodeIdentity)) {
         Serial.println(F("loaded from flash"));
     } else {
-        Serial.print(F("generating... "));
+        if (persist.lastIdentityWasLegacy) {
+            Serial.println(F("REGENERATING — the stored identity predates hardware RNG seeding"));
+            Serial.println(F("[RNS]   (builds before 2026-10-16 derived the same key pair on every board;"));
+            Serial.println(F("[RNS]    those keys are public. This node's hashes change now.)"));
+        }
+        Serial.print(F("[RNS] Identity: generating with hardware entropy... "));
         nodeIdentity.generate();
         persist.saveIdentity(nodeIdentity);
         Serial.println(F("done (saved)"));
@@ -2010,7 +2435,7 @@ void setup() {
             emitPowerStatus(Serial);
         }
     } else {
-        Serial.println(F("FAILED — check RAK13302 connection"));
+        Serial.println(F("FAILED — check " BOARD_MODULE_NAME " connection"));
         Serial.print(F("[DIAG] Radio init error code: "));
         Serial.println(radio.lastInitState);
         Serial.print(F("[DIAG] Init attempts: "));
@@ -2026,6 +2451,57 @@ void setup() {
 
     // ── Console ───────────────────────────────────────────
     console.begin(&Serial, &transport, &radio, &nodeIdentity, &persist);    console.keepAlive = wdtFeed;
+    console.statusExtra = statusExtraLines;
+    console.identityRegen = identityRegenerate;
+
+#if HAS_DISPLAY
+    {
+        DisplayConfigBlob dcfg = {};
+        if (persist.loadDisplayConfig(dcfg)) {
+            display.enabled    = dcfg.enabled != 0;
+            display.timeoutSec = dcfg.timeoutSec;
+        }
+        display.begin(&transport, &radio, FW_VERSION_STRING);
+        Serial.print(F("[DISP] ST7735 160x80 ")); Serial.print(display.present ? F("initialised") : F("skipped"));
+        Serial.print(F(", timeout ")); Serial.print(display.timeoutSec); Serial.println(F(" s"));
+    }
+#endif
+
+    // ── Interface discovery (RMAP) ──
+    {
+        DiscoveryConfigBlob dc = {};
+        if (persist.loadDiscoveryConfig(dc)) {
+            discovery.cfg.enabled     = dc.enabled != 0;
+            discovery.cfg.haveHeight  = dc.haveHeight != 0;
+            discovery.cfg.latUdeg     = dc.latUdeg;
+            discovery.cfg.lonUdeg     = dc.lonUdeg;
+            discovery.cfg.heightM     = dc.heightM;
+            discovery.cfg.intervalMin = dc.intervalMin ? dc.intervalMin : DISCOVERY_INTERVAL_DEFAULT_MIN;
+            if (dc.stampValid) {
+                memcpy(discovery.stamp, dc.stamp, sizeof(discovery.stamp));
+                memcpy(discovery.stampInfohash, dc.stampInfohash, sizeof(discovery.stampInfohash));
+                discovery.stampReady = true;
+            }
+        }
+        discovery.begin(&transport, &nodeIdentity, &radio);
+        Serial.print(F("[DISC] discovery ")); Serial.print(discovery.cfg.enabled ? F("on") : F("off"));
+        Serial.print(F(", stamp ")); Serial.println(discovery.stampReady ? F("cached") : (discovery.searching ? F("computing") : F("none")));
+    }
+
+#if HAS_GNSS
+    {
+        GnssConfigBlob gc = {};
+        RNSGnss::Mode m = RNSGnss::GNSS_OFF;
+        if (persist.loadGnssConfig(gc)) {
+            if (gc.mode == 1) m = RNSGnss::GNSS_ON;
+            gnss.intervalMin = gc.intervalMin;
+            gnss.dwellSec = (gc.dwellSec >= 30) ? gc.dwellSec : 300;
+        }
+        gnss.begin(m, millis());
+        transport.wallClockSeconds = gnssWallClock;
+        Serial.print(F("[GNSS] UC6580 ")); Serial.println(m == RNSGnss::GNSS_ON ? F("on") : F("off"));
+    }
+#endif
     // ── Watchdog ──────────────────────────────────────────
     wdtInit();
 
@@ -2035,7 +2511,9 @@ void setup() {
         Serial.print(radio.curFreqMHz, 3); Serial.print(F(" MHz, SF"));
         Serial.print(radio.curSF); Serial.print(F(", BW"));
         Serial.print(radio.curBwKHz, 0); Serial.print(F(" kHz, "));
-        Serial.print(radio.curTxDbm); Serial.println(F(" dBm (+8 dB PA)"));
+        Serial.print(radio.curTxDbm); Serial.print(F(" dBm SX1262 drive (cap "));
+        Serial.print(LORA_TX_DBM_MAX_SAFE); Serial.print(F(", announce "));
+        Serial.print(LORA_TX_DBM_ANNOUNCE_SAFE); Serial.println(F(") + board PA"));
     }
 
     // If radio failed, enter error mode (console stays alive)
@@ -2072,6 +2550,7 @@ static inline void scheduleNextDiscovery(uint32_t now) {
 
 void loop() {
     wdtFeed();
+    RNSEntropy::service(millis());   // keep the Crypto RNG stirred with hardware entropy
 
     // Poll radio for received packets (interrupt-driven flag check)
     radio.poll();
@@ -2131,4 +2610,62 @@ void loop() {
     }
 
     refreshLedOutputs(now);
+
+#if PIN_USER_BUTTON >= 0
+    pollUserButton(now);
+#endif
+#if HAS_GNSS
+    gnss.loop(now);
+#if HAS_DISPLAY
+    // The GNSS module's power-up inrush shares the Vext LDO with the
+    // panel; re-run the panel init once the module has settled.
+    {
+        static uint32_t reinitAt = 0;
+        if (gnss.justPoweredOn) { gnss.justPoweredOn = false; reinitAt = now + 300; }
+        if (reinitAt && now >= reinitAt) { reinitAt = 0; display.reinitIfAwake(); }
+    }
+#endif
+    {
+        // Push a fresh fix into the map position: on first fix, or after
+        // moving GNSS_LOCATION_SYNC_MIN_M, at most every holdoff period.
+        static uint32_t lastLocSyncAt = 0;
+        if (gnss.hasFix && (lastLocSyncAt == 0 || (now - lastLocSyncAt) >= GNSS_LOCATION_SYNC_HOLDOFF_MS)) {
+            double dLat = (discovery.cfg.latUdeg - gnss.latUdeg) / 1e6 * 111320.0;
+            double dLon = (discovery.cfg.lonUdeg - gnss.lonUdeg) / 1e6 * 111320.0 * cos(gnss.latUdeg / 1e6 * 3.14159265 / 180.0);
+            double moved = sqrt(dLat * dLat + dLon * dLon);
+            if (!discovery.hasLocation() || moved >= GNSS_LOCATION_SYNC_MIN_M ||
+                (gnss.hasAlt && (!discovery.cfg.haveHeight || fabs((double)discovery.cfg.heightM - gnss.altM) > 30.0))) {
+                discovery.cfg.latUdeg = gnss.latUdeg;
+                discovery.cfg.lonUdeg = gnss.lonUdeg;
+                if (gnss.hasAlt) { discovery.cfg.heightM = (int16_t)(gnss.altM + 0.5f); discovery.cfg.haveHeight = true; }
+                discovery.refresh(now);
+                persistDiscoveryConfig();
+                Serial.print(F("[GNSS] location -> ")); Serial.print(gnss.latUdeg / 1e6, 6); Serial.print(F(", "));
+                Serial.println(gnss.lonUdeg / 1e6, 6);
+            }
+            lastLocSyncAt = now;
+        }
+#if HAS_DISPLAY
+        display.setGnss((uint8_t)gnss.mode, gnss.hasFix, gnss.sats, gnss.latUdeg, gnss.lonUdeg, gnss.unixNow(now));
+#endif
+    }
+#endif
+    if (discovery.loop(now)) {
+        Serial.print(F("[DISC] stamp found after ")); Serial.print(discovery.attempts);
+        Serial.print(F(" attempts, ")); Serial.print((now - discovery.searchStartedAt) / 1000); Serial.println(F(" s"));
+        persistDiscoveryConfig();
+    }
+#if HAS_DISPLAY
+    {
+#if defined(PIN_BATT_ADC)
+        static uint32_t nextBattAt = 0;
+        if (now >= nextBattAt) {
+            nextBattAt = now + 10000UL;
+            uint32_t mv = readBatteryMillivolts();
+            display.setBattery(mv > 2500 ? batteryPercentFromMv(mv) : -1, usbPowerPresent());
+        }
+#endif
+        display.loop(now);
+    }
+#endif
 }

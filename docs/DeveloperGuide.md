@@ -211,3 +211,63 @@ For production, consider replacing the from-scratch transport engine with the [m
 - [ ] DFU: `dfu` command enters bootloader
 - [ ] OTA: full update cycle via ota_update.py
 - [ ] Ratspeak: two clients communicate through transport node
+
+
+---
+
+## Ikoka Stick target notes
+
+See `README.md` → "Ikoka Stick target" for the user-facing summary and
+`docs/BENCH_IKOKA_STICK.md` for the sign-off checklist. Developer facts:
+
+* Board selection is `-DBOARD_IKOKA_STICK=1 -DRADIO_MODULE_E22_900M30S=1`
+  in `platformio.ini`; `include/RNSConfig.h` is the only file that
+  `#if`s on those names. Everything else keys off capability macros
+  (`PIN_LORA_DIO1_ACTIVE`, `RADIO_HAS_RAK_PIN_DISCOVERY`, `LED_ACTIVE_HIGH`,
+  `PIN_USER_BUTTON`, `PIN_LORA_RXEN`).
+* `RNSRadio::begin()` has two bodies: the WisBlock one (P34 gate probe,
+  NRST/BUSY brute-force, cascading pin strategies — unchanged) under
+  `#if RADIO_HAS_RAK_PIN_DISCOVERY`, and a fixed-pin-map one for boards
+  whose schematic is known. Both write the SX1262 setpoint through
+  `RNSRadio::clampTxDbm()`.
+* DIO1 is real on the XIAO, so RX is ISR-driven. Because TX_DONE and
+  CAD_DONE also raise DIO1, `transmit()` clears `rxFlag` before
+  re-entering RX (a no-op on the WisBlock, where DIO1 is NC).
+* TXEN is not a GPIO on the Ikoka Stick; it is hard-wired to SX1262
+  DIO2 (`ikoka-stick-meshtastic-device.kicad_sch`, TXEN pin ↔ DIO2 pin
+  via the 186.69/226.06 wire pair). RXEN is P0.05 and RadioLib drives
+  it via `setRfSwitchPins(PIN_LORA_RXEN, RADIOLIB_NC)`.
+* SoftDevice S140 v7.3.0: custom board JSON + linker + API headers, see
+  `boards/README.md`. `sd_fwid 0x0123` ends up in `firmware.zip`
+  (`--sd-req`). The UF2 path is unaffected (family 0xADA52840, base
+  address read from the hex).
+* `tools/generate_uf2.py` syncs `flasher/firmware/latest.uf2` from
+  whichever env was built last. With two envs this file is ambiguous;
+  CI publishes per-env assets instead. Do not commit a `latest.uf2`
+  built from the Ikoka env unless that is intended.
+
+### Path persistence: current state and QSPI costing
+
+RatTunnel does not persist paths on either target. `PATH_TABLE_FILE`
+(`/paths.bin`) is reserved and removed on factory reset, nothing writes
+it. Internal LittleFS (Adafruit `InternalFileSystem`) is 7 × 4096 B =
+28 KB at 0xED000 with 128 B blocks, shared by identity, config, LED,
+morse, security, auth and announce-name blobs (a few hundred bytes
+total today). `PathEntry` is ~137 B packed (16+16+1+4+4+1+4+4+16+64+1 +
+padding) so the in-RAM table of 200 is ~27 KB — it will not fit in
+InternalFS beside the other blobs, and 128 B LittleFS blocks on
+NRF52 internal flash wear quickly under a table that rewrites on every
+announce.
+
+Cost of moving path persistence to the XIAO's on-board 2 MB P25Q16H over
+QSPI (not implemented):
+
+| Item | Cost |
+|---|---|
+| Libraries | `adafruit/Adafruit SPIFlash` (+ its `SdFat - Adafruit Fork` dependency) — two new `lib_deps`, ~20–30 KB flash. `Adafruit_SPIFlash` lists `P25Q16H` in `flash_devices.h` (2 MiB, JEDEC 85 60 15, QSPI writes supported). |
+| Filesystem | Reuse `Adafruit_LittleFS` with an `Adafruit_FlashTransport_QSPI` backend (pins from Seeed variant: SCK P0.21, CS P0.25, IO0–3 P0.20/P0.24/P0.22/P0.23). 4 KB erase blocks → LittleFS cache/lookahead buffers ~1–2 KB RAM per mounted FS. |
+| RAM | ~1.5 KB (LittleFS buffers) + 4 KB if a page-sized write staging buffer is kept static, per the "no heap after setup()" rule. |
+| Capacity | 2 MB ≫ 27 KB; could persist the full 200 entries plus the announce cache (`ANNOUNCE_CACHE_RAW_MAX` 256 × ~500 B = 128 KB) with room to spare. |
+| Power | P25Q16H active ~5–8 mA during writes, ~1 µA in deep power-down; must be put to sleep explicitly or it costs idle current. |
+| Code | New `RNSPersistence::savePathTable()/loadPathTable()` pair following the existing checksum-blob pattern, a write-back trigger in `RNSTransport::learnPath()` rate-limited to avoid rewriting on every announce, and a `PIN_QSPI_*` block in `RNSConfig.h` under `BOARD_IKOKA_STICK`. Not applicable to the WisBlock (RAK4631 has a 2 MB IS25 QSPI part too, but that is a separate pin map). |
+| Boot | +5 ms flash start-up (`start_up_time_us` 5000) before mount. |

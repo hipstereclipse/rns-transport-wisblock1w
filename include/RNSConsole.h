@@ -14,6 +14,7 @@
 #include "RNSRadio.h"
 #include "RNSIdentity.h"
 #include "RNSPersistence.h"
+#include "RNSDfu.h"
 
 #ifndef NATIVE_TEST
 #include <nrf_gpio.h>
@@ -34,6 +35,8 @@ public:
     Stream*         io          = nullptr;
     bool            pktDumpEnabled = false;
     void          (*keepAlive)() = nullptr;  // WDT feed callback
+    void          (*statusExtra)(Stream*) = nullptr;  // board/feature lines appended to `status` (main.cpp)
+    void          (*identityRegen)(Stream*) = nullptr; // `identity regen`: new seeded key pair (main.cpp)
 
     char    cmdBuf[128];
     uint8_t cmdPos = 0;
@@ -80,7 +83,9 @@ private:
 
     void printBanner() {
         io->println(F("\r\n╔════════════════════════════════════════════╗"));
-        io->println(F("║  RatTunnel Node — WisBlock 1W             ║"));
+        io->print(F("║  RatTunnel Node — ")); io->print(F(BOARD_DISPLAY_NAME));
+        for (int i = (int)strlen(BOARD_DISPLAY_NAME); i < 25; i++) io->print(' ');
+        io->println(F("║"));
         io->println(F("║  " FW_DISPLAY_VERSION "                    ║"));
             io->println(F("║  Reticulum LoRa Transport @ safe TX       ║"));
         io->println(F("╚════════════════════════════════════════════╝"));
@@ -108,7 +113,7 @@ private:
         if      (strcmp(command, "status")    == 0) cmdStatus();
         else if (strcmp(command, "routes")    == 0) cmdRoutes();
         else if (strcmp(command, "peers")     == 0) cmdPeers();
-        else if (strcmp(command, "identity")  == 0) cmdIdentity();
+        else if (strcmp(command, "identity")  == 0) cmdIdentity(args);
         else if (strcmp(command, "stats")     == 0) cmdStatus();
         else if (strcmp(command, "radio")     == 0) cmdRadio();
         else if (strcmp(command, "set")       == 0) cmdSet(args);
@@ -118,6 +123,10 @@ private:
         else if (strcmp(command, "notify")    == 0) cmdNotify(args);
         else if (strcmp(command, "power")     == 0) cmdPower(args);
         else if (strcmp(command, "led")       == 0) cmdLed(args);
+        else if (strcmp(command, "display")   == 0) cmdDisplay(args);
+        else if (strcmp(command, "discovery") == 0) cmdDiscovery(args);
+        else if (strcmp(command, "location")  == 0) cmdLocation(args);
+        else if (strcmp(command, "gps")       == 0) cmdGps(args);
         else if (strcmp(command, "rathole")   == 0) cmdRathole(args);
         else if (strcmp(command, "save")      == 0) cmdSave();
         else if (strcmp(command, "factory-reset") == 0) cmdFactoryReset();
@@ -170,7 +179,19 @@ private:
         io->print(F("  Duplicates: ")); io->println(s.duplicates);
         io->print(F("  Invalid:    ")); io->println(s.invalidPackets);
         io->print(F("  Paths:      ")); io->println(s.pathEntries);
+        io->print(F("  TX detail:  ")); io->print(radio->txAttempts); io->print(F(" attempts, ")); io->print(radio->txOk);
+        io->print(F(" ok, ")); io->print(radio->txCadBusy); io->print(F(" CAD-busy, ")); io->print(radio->txErrors);
+        io->print(F(" errors, ")); io->print(radio->txCadBypass); io->println(F(" CAD-bypassed"));
+        io->print(F("  RX bytes:   ")); io->println(radio->rxBytes);
+        io->print(F("  TX bytes:   ")); io->println(radio->txBytes);
+        if (radio->lastRSSI != 0.0f) {
+            io->print(F("  Last RSSI:  ")); io->print(radio->lastRSSI, 1); io->print(F(" dBm  SNR ")); io->print(radio->lastSNR, 1); io->println(F(" dB"));
+        }
+        io->print(F("  Radio:      ")); io->print(radio->curFreqMHz, 3); io->print(F(" MHz BW")); io->print(radio->curBwKHz, 0);
+        io->print(F(" SF")); io->print(radio->curSF); io->print(F(" CR4/")); io->print(radio->curCR);
+        io->print(F(" TX ")); io->print(radio->curTxDbm); io->print(F("/")); io->print(LORA_TX_DBM_MAX_SAFE); io->println(F(" dBm"));
         io->print(F("  Broadcast name: ")); io->println(transport->getAnnounceName());
+        if (statusExtra) statusExtra(io);
 #ifndef NATIVE_TEST
         io->print(F("  Free RAM:   ")); io->print(freeMemory()); io->println(F(" bytes"));
 #endif
@@ -280,11 +301,17 @@ private:
     }
 
     // ── identity ──────────────────────────────────────────
-    void cmdIdentity() {
+    void cmdIdentity(const char* args) {
+        if (args && strcmp(args, "regen") == 0) {
+            if (identityRegen) identityRegen(io);
+            else io->println(F("Regeneration not available in this build"));
+            return;
+        }
         io->println(F("── Node Identity ──"));
         io->print(F("  Hash:       ")); printHex(identity->identityHash, RNS_ADDR_LEN); io->println();
         io->print(F("  X25519 pub: ")); printHex(identity->pubEncKey, 32); io->println();
         io->print(F("  Ed25519 pub: ")); printHex(identity->pubSigKey, 32); io->println();
+        io->println(F("  identity regen  → new hardware-seeded key pair (changes every hash of this node)"));
     }
 
     // ── radio ─────────────────────────────────────────────
@@ -300,7 +327,8 @@ private:
         io->print(F("  SF:        ")); io->println(radio->curSF);
         io->print(F("  CR:        4/")); io->println(radio->curCR);
         io->print(F("  TX Power:  ")); io->print(radio->curTxDbm);
-                                        io->println(F(" dBm (SX1262 → +8 dB PA)"));
+                                        io->print(F(" dBm SX1262 drive (cap "));
+                                        io->print(LORA_TX_DBM_MAX_SAFE); io->println(F(" dBm) → " BOARD_MODULE_NAME " PA"));
         io->print(F("  Sync Word: 0x"));
         if (radio->curSyncWord < 0x10) io->print('0');
         io->println(radio->curSyncWord, HEX);
@@ -339,7 +367,7 @@ private:
             io->print(F("CR → 4/")); io->println(cr);
         } else if (strcmp(param, "txpower") == 0) {
             int dbm = atoi(value);
-                if (dbm < -9 || dbm > LORA_TX_DBM_MAX_SAFE) {
+                if (dbm < LORA_TX_DBM_MIN || dbm > LORA_TX_DBM_MAX_SAFE) {
                     io->print(F("TX power must be -9 to "));
                     io->print(LORA_TX_DBM_MAX_SAFE);
                     io->println(F(" dBm"));
@@ -584,6 +612,10 @@ private:
 
     // ── led — configure board LED behavior ───────────────
     void cmdLed(const char* args);  // implemented in main.cpp
+    void cmdDisplay(const char* args);  // implemented in main.cpp
+    void cmdDiscovery(const char* args);  // implemented in main.cpp
+    void cmdLocation(const char* args);   // implemented in main.cpp
+    void cmdGps(const char* args);        // implemented in main.cpp
 
     // ── factory-reset ─────────────────────────────────────
     void cmdFactoryReset();  // implemented in main.cpp
@@ -595,20 +627,7 @@ private:
         io->flush();
 #ifndef NATIVE_TEST
         delay(500);
-        // The Adafruit nRF52 bootloader enters DFU when GPREGRET == 0x57.
-        // Use SoftDevice API when SD is active, else direct register write.
-        // Both paths end with a DSB to guarantee the write commits before reset.
-        uint32_t rc = 0xFFFFFFFF;
-#if __has_include("nrf_soc.h")
-        rc  = sd_power_gpregret_clr(0, 0xFF);
-        rc |= sd_power_gpregret_set(0, 0x57);
-#endif
-        if (rc != 0) {
-            NRF_POWER->GPREGRET = 0x57;
-        }
-        __DSB();
-        __ISB();
-        NVIC_SystemReset();
+        rnsRebootToDfu();   // shared with the boot-time button path, see RNSDfu.h
 #endif
     }
 
@@ -631,7 +650,7 @@ private:
         if (!radio->hwReady) {
             io->println(F("Announce blocked: radio hardware not initialized."));
             io->print(F("  Init error code: ")); io->println(radio->lastInitState);
-            io->println(F("  Try power-cycling the device or check RAK13302 connection."));
+            io->println(F("  Try power-cycling the device or check the " BOARD_MODULE_NAME " connection."));
             return;
         }
 
@@ -697,7 +716,11 @@ private:
     void cmdVersion() {
         io->println(F(FW_DISPLAY_VERSION));
         io->print(F("Build: ")); io->println(F(FW_BUILD_TAG));
-        io->print(F("Board: WisBlock 1W (RAK3401 + RAK13302)"));
+        io->print(F("Board: " BOARD_DISPLAY_NAME " (" BOARD_MODULE_NAME ")"));
+        io->println();
+        io->print(F("TX cap: ")); io->print(LORA_TX_DBM_MAX_SAFE);
+        io->print(F(" dBm (variant max ")); io->print(LORA_TX_DBM_VARIANT_MAX);
+        io->print(F(", announce ")); io->print(LORA_TX_DBM_ANNOUNCE_SAFE); io->print(F(")"));
         io->println();
     }
 
@@ -711,7 +734,7 @@ private:
         } else {
             io->println(F("Radio init FAILED again."));
             io->print(F("  Last error: ")); io->println(radio->lastInitState);
-            io->println(F("  Try: reseat RAK13302, check base board 3V3_S rail."));
+            io->println(F("  Try: reseat " BOARD_MODULE_NAME ", check the radio supply rail."));
         }
     }
 
@@ -1546,7 +1569,7 @@ private:
             // Reconfigure radio for this SF
             radio->lora.standby();
             int rc = radio->lora.begin(savedFreq, savedBW, sf, savedCR,
-                                       savedSync, savedTx, savedPre, 1.8f);
+                                       savedSync, RNSRadio::clampTxDbm(savedTx), savedPre, 1.8f);
             if (rc != RADIOLIB_ERR_NONE) {
                 io->print(F("  SF")); io->print(sf);
                 io->print(F("  init err rc=")); io->println(rc);
@@ -1611,7 +1634,7 @@ private:
 
             radio->lora.standby();
             int rc = radio->lora.begin(scanFreqs[fi], savedBW, savedSF, savedCR,
-                                       savedSync, savedTx, savedPre, 1.8f);
+                                       savedSync, RNSRadio::clampTxDbm(savedTx), savedPre, 1.8f);
             if (rc != RADIOLIB_ERR_NONE) continue;
             radio->lora.setDio2AsRfSwitch(true);
             radio->lora.setCurrentLimit(140.0f);
@@ -1666,7 +1689,7 @@ private:
             radio->lora.standby();
             // Use a neutral sync word (0x12) just for preamble counting
             int qrc = radio->lora.begin(savedFreq, savedBW, sf, savedCR,
-                                        savedSync, savedTx, savedPre, 1.8f);
+                                        savedSync, RNSRadio::clampTxDbm(savedTx), savedPre, 1.8f);
             if (qrc != RADIOLIB_ERR_NONE) continue;
             radio->lora.setDio2AsRfSwitch(true);
             radio->lora.setCurrentLimit(140.0f);
@@ -1712,7 +1735,7 @@ private:
 
             radio->lora.standby();
             int rc = radio->lora.begin(savedFreq, savedBW, bestSF, savedCR,
-                                        syncWords[si].sync, savedTx, savedPre, 1.8f);
+                                        syncWords[si].sync, RNSRadio::clampTxDbm(savedTx), savedPre, 1.8f);
             if (rc != RADIOLIB_ERR_NONE) {
                 io->print(F("  0x")); io->print(syncWords[si].sync, HEX);
                 io->print(F("   ")); io->print(syncWords[si].name);
@@ -1790,7 +1813,7 @@ private:
                 if (keepAlive) keepAlive();
                 radio->lora.standby();
                 int rc = radio->lora.begin(savedFreq, bws[bi], bestSF, savedCR,
-                                            0x2B, savedTx, savedPre, 1.8f);
+                                            0x2B, RNSRadio::clampTxDbm(savedTx), savedPre, 1.8f);
                 if (rc != RADIOLIB_ERR_NONE) continue;
                 radio->lora.setDio2AsRfSwitch(true);
                 radio->lora.setCurrentLimit(140.0f);
@@ -1860,7 +1883,7 @@ private:
         io->println(F("\n  Restoring original radio config..."));
         radio->lora.standby();
         int restoreRc = radio->lora.begin(savedFreq, savedBW, savedSF, savedCR,
-                               savedSync, savedTx, savedPre, 1.8f);
+                               savedSync, RNSRadio::clampTxDbm(savedTx), savedPre, 1.8f);
         radio->lora.setDio2AsRfSwitch(true);
         radio->lora.setCurrentLimit(140.0f);
         radio->lora.startReceive();
@@ -1955,7 +1978,7 @@ private:
         io->println(F("  status         Node status and counters"));
         io->println(F("  routes         Show routing table"));
         io->println(F("  peers          Show known peers (name, RSSI, SNR)"));
-        io->println(F("  identity       Display node identity hash + keys"));
+        io->println(F("  identity       Display node identity hash + keys | identity regen"));
         io->println(F("  radio          Current radio configuration"));
         io->println(F("  set <p> <v>    Set radio param (freq/sf/bw/cr/txpower/syncword/preamble)"));
         io->println(F("  profile <p>    One-shot radio preset (rnode-eu/rnode-us/ratspeak-us)"));
@@ -1964,6 +1987,10 @@ private:
         io->println(F("  notify <mode>  Set notification mode (sound/morse/both/silent)"));
         io->println(F("  power          Set announce/discovery cadence"));
         io->println(F("  led            Configure green/blue board LED behavior"));
+        io->println(F("  display        TFT: display | timeout <s> | on | off | page"));
+        io->println(F("  discovery      Map announce: discovery | on | off | interval <min> | now | dump"));
+        io->println(F("  location       location <lat> <lon> [height_m] | location clear"));
+        io->println(F("  gps            GNSS: gps | on | off  (fills location, sets the clock)"));
         io->println(F("  rathole        Configure secure boot-scrub mode"));
         io->println(F("  save           Persist config to flash"));
         io->println(F("  factory-reset  Erase all persisted data"));

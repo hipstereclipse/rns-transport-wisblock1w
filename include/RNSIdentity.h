@@ -13,23 +13,26 @@
 #include <Curve25519.h>
 #include <SHA256.h>
 #include <AES.h>
+#include "RNSEntropy.h"
 #endif
 #include <string.h>
 
 class RNSIdentity {
 public:
     enum AnnounceLayout : uint8_t {
-        ANNOUNCE_LAYOUT_STANDARD = 0,
-        ANNOUNCE_LAYOUT_LEGACY_FIXED_SIG = 1,
+        ANNOUNCE_LAYOUT_RNS = 0,                    ///< reference: sig at fixed offset, appData after
+        ANNOUNCE_LAYOUT_RNS_RATCHET = 1,            ///< reference + 32-byte ratchet (context flag set)
+        ANNOUNCE_LAYOUT_RATTUNNEL_TRAILING_SIG = 2, ///< RatTunnel <= 1.0.33: appData first, sig last
     };
 
     struct AnnounceInfo {
         const uint8_t* signature = nullptr;
         const uint8_t* signingKey = nullptr;
+        const uint8_t* ratchet = nullptr;     ///< 32-byte ratchet key, or nullptr
         const uint8_t* appData = nullptr;
         uint16_t sigOffset = 0;
         uint16_t appDataLen = 0;
-        AnnounceLayout layout = ANNOUNCE_LAYOUT_STANDARD;
+        AnnounceLayout layout = ANNOUNCE_LAYOUT_RNS;
     };
 
     uint8_t pubEncKey[32];    ///< X25519 public
@@ -42,6 +45,9 @@ public:
 
     // ── Generate a fresh random identity ──────────────────
     void generate() {
+#ifndef NATIVE_TEST
+        RNSEntropy::begin();     // never generate keys from an unseeded RNG
+#endif
         Curve25519::dh1(pubEncKey, privEncKey);
         Ed25519::generatePrivateKey(privSigKey);
         Ed25519::derivePublicKey(pubSigKey, privSigKey);
@@ -157,33 +163,51 @@ public:
 
     // ── Validate announce packet's Ed25519 signature ──────
     /**
-     * Announce data layout:
+     * Reference Reticulum announce layout (RNS/Destination.py announce(),
+     * RNS/Identity.py validate_announce()):
      *   [pubkey 64B][nameHash 10B][randomBlob 10B]
-     *   [optional ratchet 32B][optional appData]
-     *   [signature 64B]  ← last 64 bytes
+     *   [ratchet 32B  — present iff the packet's context flag is set]
+     *   [signature 64B]
+     *   [appData — everything after the signature]
+     * signed bytes = destHash + pubkey + nameHash + randomBlob + ratchet + appData.
      *
-     * @return true if signature is valid.
+     * RatTunnel builds up to 1.0.33 emitted a non-standard layout with
+     * the signature LAST (pubkey|nameHash|randomBlob|appData|signature).
+     * That layout is still accepted so older RatTunnel nodes on the air
+     * keep showing up as peers; it is never emitted any more.
+     *
+     * @param hasRatchet  the packet's context flag (RNSPacket::contextFlag).
+     * @return true if a layout matched and its signature verified.
      */
     static bool inspectAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len,
-                                AnnounceInfo* outInfo = nullptr) {
+                                bool hasRatchet, AnnounceInfo* outInfo = nullptr) {
         const uint16_t minLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN
                               + RNS_RANDOM_BLOB_LEN + RNS_SIGLENGTH;
         if (!destHash || !data || len < minLen) return false;
 
         AnnounceInfo info;
-        if (inspectAnnounceLayout(destHash, data, len, false, info)) {
+        if (inspectAnnounceRns(destHash, data, len, hasRatchet, info)) {
             if (outInfo) *outInfo = info;
             return true;
         }
-        if (inspectAnnounceLayout(destHash, data, len, true, info)) {
+        // A sender that sets the context flag but carries no ratchet is
+        // malformed; do not try the ratchet-less RNS layout for it.
+        if (!hasRatchet && inspectAnnounceTrailingSig(destHash, data, len, info)) {
             if (outInfo) *outInfo = info;
             return true;
         }
         return false;
     }
 
-    static bool validateAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len) {
-        return inspectAnnounce(destHash, data, len, nullptr);
+    /// Ratchet-less convenience overload (tests, legacy callers).
+    static bool inspectAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len,
+                                AnnounceInfo* outInfo = nullptr) {
+        return inspectAnnounce(destHash, data, len, false, outInfo);
+    }
+
+    static bool validateAnnounce(const uint8_t* destHash, const uint8_t* data, uint16_t len,
+                                 bool hasRatchet = false) {
+        return inspectAnnounce(destHash, data, len, hasRatchet, nullptr);
     }
 
     // ── Extract 64-byte public key from announce data ─────
@@ -193,27 +217,24 @@ public:
     }
 
 private:
-    static bool inspectAnnounceLayout(const uint8_t* destHash, const uint8_t* data, uint16_t len,
-                                      bool legacyFixedSignature, AnnounceInfo& outInfo) {
+    /// Reference layout: fixed signature offset, optional 32-byte ratchet.
+    static bool inspectAnnounceRns(const uint8_t* destHash, const uint8_t* data, uint16_t len,
+                                   bool hasRatchet, AnnounceInfo& outInfo) {
         const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
-        const uint16_t minLen = baseLen + RNS_SIGLENGTH;
-        if (!destHash || !data || len < minLen) return false;
+        const uint16_t ratchetLen = hasRatchet ? RNS_RATCHETSIZE : 0;
+        const uint16_t sigOffset = baseLen + ratchetLen;
+        if (len < sigOffset + RNS_SIGLENGTH) return false;
 
-        uint16_t sigOffset = legacyFixedSignature ? baseLen : (uint16_t)(len - RNS_SIGLENGTH);
-        if (sigOffset < baseLen || (sigOffset + RNS_SIGLENGTH) > len) return false;
-
-        uint16_t appDataOffset = legacyFixedSignature ? (uint16_t)(baseLen + RNS_SIGLENGTH) : baseLen;
-        uint16_t appDataLen = legacyFixedSignature
-            ? (uint16_t)(len - appDataOffset)
-            : (uint16_t)(sigOffset - baseLen);
-        const uint16_t signedLen = RNS_ADDR_LEN + baseLen + appDataLen;
+        const uint16_t appDataOffset = sigOffset + RNS_SIGLENGTH;
+        const uint16_t appDataLen = (uint16_t)(len - appDataOffset);
+        const uint16_t signedLen = RNS_ADDR_LEN + sigOffset + appDataLen;
         if (signedLen > RNS_MTU) return false;
 
         static uint8_t signedBuf[RNS_MTU];
         memcpy(signedBuf, destHash, RNS_ADDR_LEN);
-        memcpy(signedBuf + RNS_ADDR_LEN, data, baseLen);
+        memcpy(signedBuf + RNS_ADDR_LEN, data, sigOffset);           // pubkey|nameHash|random|[ratchet]
         if (appDataLen > 0) {
-            memcpy(signedBuf + RNS_ADDR_LEN + baseLen, data + appDataOffset, appDataLen);
+            memcpy(signedBuf + RNS_ADDR_LEN + sigOffset, data + appDataOffset, appDataLen);
         }
 
         const uint8_t* signature = data + sigOffset;
@@ -222,11 +243,42 @@ private:
 
         outInfo.signature = signature;
         outInfo.signingKey = signingKey;
+        outInfo.ratchet = hasRatchet ? (data + baseLen) : nullptr;
         outInfo.appData = (appDataLen > 0) ? (data + appDataOffset) : nullptr;
         outInfo.sigOffset = sigOffset;
         outInfo.appDataLen = appDataLen;
-        outInfo.layout = legacyFixedSignature ? ANNOUNCE_LAYOUT_LEGACY_FIXED_SIG
-                                              : ANNOUNCE_LAYOUT_STANDARD;
+        outInfo.layout = hasRatchet ? ANNOUNCE_LAYOUT_RNS_RATCHET : ANNOUNCE_LAYOUT_RNS;
+        return true;
+    }
+
+    /// RatTunnel <= 1.0.33 layout: appData first, signature as the last 64 bytes.
+    static bool inspectAnnounceTrailingSig(const uint8_t* destHash, const uint8_t* data, uint16_t len,
+                                           AnnounceInfo& outInfo) {
+        const uint16_t baseLen = RNS_KEYSIZE + RNS_NAME_HASH_LEN + RNS_RANDOM_BLOB_LEN;
+        if (len < baseLen + RNS_SIGLENGTH) return false;
+        const uint16_t sigOffset = (uint16_t)(len - RNS_SIGLENGTH);
+        const uint16_t appDataLen = (uint16_t)(sigOffset - baseLen);
+        const uint16_t signedLen = RNS_ADDR_LEN + baseLen + appDataLen;
+        if (signedLen > RNS_MTU) return false;
+
+        static uint8_t signedBuf[RNS_MTU];
+        memcpy(signedBuf, destHash, RNS_ADDR_LEN);
+        memcpy(signedBuf + RNS_ADDR_LEN, data, baseLen);
+        if (appDataLen > 0) {
+            memcpy(signedBuf + RNS_ADDR_LEN + baseLen, data + baseLen, appDataLen);
+        }
+
+        const uint8_t* signature = data + sigOffset;
+        const uint8_t* signingKey = data + 32;
+        if (!Ed25519::verify(signature, signingKey, signedBuf, signedLen)) return false;
+
+        outInfo.signature = signature;
+        outInfo.signingKey = signingKey;
+        outInfo.ratchet = nullptr;
+        outInfo.appData = (appDataLen > 0) ? (data + baseLen) : nullptr;
+        outInfo.sigOffset = sigOffset;
+        outInfo.appDataLen = appDataLen;
+        outInfo.layout = ANNOUNCE_LAYOUT_RATTUNNEL_TRAILING_SIG;
         return true;
     }
 
@@ -447,7 +499,7 @@ public:
         const uint8_t* encKey = derivedKey + 32;      // 32 bytes
         // Random IV
         static uint8_t iv[16];
-        for (int i = 0; i < 16; i++) iv[i] = (uint8_t)random(0, 256);
+        RNSEntropy::randomBytes(iv, 16);
         // PKCS7 pad
         static uint8_t padded[RNS_MTU];
         memcpy(padded, plain, plainLen);

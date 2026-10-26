@@ -4,6 +4,9 @@
  *        object (forward declarations break header-only builds).
  */
 #include "RNSTransport.h"
+#ifndef NATIVE_TEST
+#include "RNSEntropy.h"
+#endif
 #include "RNSRadio.h"
 #ifndef NATIVE_TEST
 #include <SHA256.h>
@@ -62,11 +65,6 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
                                      const uint8_t* appData,
                                      uint16_t appDataLen) {
     if (!radio || !identity || !identity->initialized) return false;
-    if (!radio->hwReady) {
-        Serial.println(F("[DIAG] sendLocalAnnounce: radio HW not ready, skipping"));
-        return false;
-    }
-
     if (!announceHashCacheReady) {
         uint8_t publicKeyForHash[RNS_KEYSIZE];
         identity->getPublicKey(publicKeyForHash);
@@ -74,11 +72,26 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
         computeNameHash10(RNS_TRANSPORT_DEST_NAME, cachedTransportNameHash);
         announceHashCacheReady = true;
     }
+    return sendAnnounceFor(cachedTransportDestHash,
+                           nameHash ? nameHash : cachedTransportNameHash,
+                           appData, appDataLen, appData == nullptr);
+}
+
+bool RNSTransport::sendAnnounceFor(const uint8_t destHash[RNS_ADDR_LEN],
+                                   const uint8_t nameHash[RNS_NAME_HASH_LEN],
+                                   const uint8_t* appData,
+                                   uint16_t appDataLen,
+                                   bool defaultNameAppData) {
+    if (!radio || !identity || !identity->initialized) return false;
+    if (!radio->hwReady) {
+        Serial.println(F("[DIAG] sendAnnounceFor: radio HW not ready, skipping"));
+        return false;
+    }
 
     const uint8_t* announceAppData = appData;
     uint16_t announceAppDataLen = appDataLen;
     uint8_t msgpackName[34];
-    if (!announceAppData) {
+    if (defaultNameAppData && !announceAppData) {
         announceAppDataLen = encodeAnnounceNameMsgPack(announceName, msgpackName, sizeof(msgpackName));
         announceAppData = (announceAppDataLen > 0) ? msgpackName : nullptr;
     }
@@ -92,23 +105,27 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
 
     // [pubkey 64B]
     identity->getPublicKey(announceData);
-
     // [nameHash 10B]
-    if (nameHash) {
-        memcpy(announceData + RNS_KEYSIZE, nameHash, RNS_NAME_HASH_LEN);
-    } else {
-        memcpy(announceData + RNS_KEYSIZE, cachedTransportNameHash, RNS_NAME_HASH_LEN);
-    }
-
+    memcpy(announceData + RNS_KEYSIZE, nameHash, RNS_NAME_HASH_LEN);
     // [randomBlob 10B]
+#ifndef NATIVE_TEST
+    RNSEntropy::randomBytes(announceData + RNS_KEYSIZE + RNS_NAME_HASH_LEN, RNS_RANDOM_BLOB_LEN);
+#else
     for (uint16_t i = 0; i < RNS_RANDOM_BLOB_LEN; i++) {
         announceData[RNS_KEYSIZE + RNS_NAME_HASH_LEN + i] = (uint8_t)random(0, 256);
     }
+#endif
 
-    // Standard Reticulum layout: pubkey|nameHash|randomHash|appData|SIGNATURE.
-    // The signed bytes are destHash + pubkey + nameHash + randomHash + appData.
+    // Reference Reticulum layout (RNS/Destination.py announce()):
+    //   pubkey|nameHash|randomHash|SIGNATURE|appData
+    // signed bytes = destHash + pubkey + nameHash + randomHash + appData.
+    // (No ratchet: RatTunnel does not rotate keys, so the context flag
+    // stays clear and the signature sits at a fixed offset of 84.)
+    // Builds up to 1.0.33 put the signature AFTER appData, which the
+    // reference validator reads as a corrupt signature — a named
+    // RatTunnel node was invisible to Sideband/Columba/Ratspeak.
     static uint8_t signedBuf[RNS_MTU];
-    memcpy(signedBuf, cachedTransportDestHash, RNS_ADDR_LEN);
+    memcpy(signedBuf, destHash, RNS_ADDR_LEN);
     memcpy(signedBuf + RNS_ADDR_LEN, announceData, baseLen);
     if (announceAppData && announceAppDataLen > 0) {
         memcpy(signedBuf + RNS_ADDR_LEN + baseLen, announceAppData, announceAppDataLen);
@@ -116,11 +133,10 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     static uint8_t signature[RNS_SIGLENGTH];
     identity->sign(signedBuf, RNS_ADDR_LEN + baseLen + announceAppDataLen, signature);
 
-    // [appData before trailing signature]
+    memcpy(announceData + baseLen, signature, RNS_SIGLENGTH);
     if (announceAppData && announceAppDataLen > 0) {
-        memcpy(announceData + baseLen, announceAppData, announceAppDataLen);
+        memcpy(announceData + baseLen + RNS_SIGLENGTH, announceAppData, announceAppDataLen);
     }
-    memcpy(announceData + baseLen + announceAppDataLen, signature, RNS_SIGLENGTH);
 
     RNSPacket pkt;
     pkt.ifacFlag    = false;
@@ -130,7 +146,7 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     pkt.destType    = SINGLE;
     pkt.packetType  = ANNOUNCE;
     pkt.hops        = 0;
-    memcpy(pkt.destHash, cachedTransportDestHash, RNS_ADDR_LEN);
+    memcpy(pkt.destHash, destHash, RNS_ADDR_LEN);
     pkt.context = 0x00;
     pkt.data    = announceData;
     pkt.dataLen = totalDataLen;
@@ -139,9 +155,17 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 
-    // Transmit at configured TX power (no announce power reduction;
-    // full power ensures peers reliably discover this node).
+    // Announce-time TX cap (LORA_TX_DBM_ANNOUNCE_SAFE, RNSConfig.h).
+    // Announces are the longest and most frequent bursts this node
+    // originates, so they are sent at min(configured, announce cap) and
+    // the configured setpoint is restored afterwards. Both writes go
+    // through RNSRadio::setTxPower(), i.e. through the firmware cap.
+    const int8_t configuredTxDbm = radio->curTxDbm;
+    const int8_t announceTxDbm   = (configuredTxDbm > LORA_TX_DBM_ANNOUNCE_SAFE)
+                                 ? (int8_t)LORA_TX_DBM_ANNOUNCE_SAFE : configuredTxDbm;
+    if (announceTxDbm != configuredTxDbm) radio->setTxPower(announceTxDbm);
     bool ok = transmitWithRetry(radio, outBuf, outLen, 3);
+    if (announceTxDbm != configuredTxDbm) radio->setTxPower(configuredTxDbm);
 
     if (ok) {
         stats.txPackets++;
@@ -174,9 +198,13 @@ bool RNSTransport::sendDiscoverySweep() {
     if (!pathReqHashReady) return false;
 
     uint8_t requestData[RNS_ADDR_LEN * 2] = {0};
+#ifndef NATIVE_TEST
+    RNSEntropy::randomBytes(requestData + RNS_ADDR_LEN, RNS_ADDR_LEN);
+#else
     for (uint8_t i = RNS_ADDR_LEN; i < (RNS_ADDR_LEN * 2); i++) {
         requestData[i] = (uint8_t)random(0, 256);
     }
+#endif
 
     RNSPacket pkt;
     pkt.ifacFlag = false;
@@ -218,7 +246,9 @@ bool RNSTransport::sendEncryptedMessage(const char* text, PathEntry* peer) {
     // 1. Pack LXMF payload: [timestamp, title, content, fields]
     // All large buffers are static to avoid stack overflow (crypto calls are deep)
     static uint8_t packedContent[256];
-    uint16_t contentLen = packLxmfContent(text, millis(), packedContent, sizeof(packedContent));
+    uint32_t tsSeconds = wallClockSeconds ? wallClockSeconds() : 0;
+    if (tsSeconds == 0) tsSeconds = millis() / 1000UL;   // no wall clock: uptime, as before
+    uint16_t contentLen = packLxmfContent(text, tsSeconds, packedContent, sizeof(packedContent));
     if (contentLen == 0) return false;
 
     // 2. Build standard LXMF bytes:
