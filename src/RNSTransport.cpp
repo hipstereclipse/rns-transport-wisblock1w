@@ -139,9 +139,17 @@ bool RNSTransport::sendLocalAnnounce(const uint8_t* nameHash,
     uint16_t outLen = pkt.serialize(outBuf, RNS_MTU);
     if (outLen == 0) return false;
 
-    // Transmit at configured TX power (no announce power reduction;
-    // full power ensures peers reliably discover this node).
+    // Announce-time TX cap (LORA_TX_DBM_ANNOUNCE_SAFE, RNSConfig.h).
+    // Announces are the longest and most frequent bursts this node
+    // originates, so they are sent at min(configured, announce cap) and
+    // the configured setpoint is restored afterwards. Both writes go
+    // through RNSRadio::setTxPower(), i.e. through the firmware cap.
+    const int8_t configuredTxDbm = radio->curTxDbm;
+    const int8_t announceTxDbm   = (configuredTxDbm > LORA_TX_DBM_ANNOUNCE_SAFE)
+                                 ? (int8_t)LORA_TX_DBM_ANNOUNCE_SAFE : configuredTxDbm;
+    if (announceTxDbm != configuredTxDbm) radio->setTxPower(announceTxDbm);
     bool ok = transmitWithRetry(radio, outBuf, outLen, 3);
+    if (announceTxDbm != configuredTxDbm) radio->setTxPower(configuredTxDbm);
 
     if (ok) {
         stats.txPackets++;

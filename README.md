@@ -1,4 +1,9 @@
-# RatTunnel V. 1.0.33 — WisBlock 1W
+# RatTunnel V. 1.0.33 — WisBlock 1W / Ikoka Stick
+
+> **Ikoka Stick (Seeed XIAO nRF52840 + EBYTE E22-900M30S) is an added
+> target** — env `ikoka_stick_transport`. See
+> [Ikoka Stick target](#ikoka-stick-target-xiao-nrf52840--e22-900m30s)
+> below. The WisBlock 1W env is unchanged.
 
 `RatTunnel` is a standalone Reticulum transport/repeater/node firmware for the RAKwireless WisBlock 1W stack (`RAK3401 + RAK13302`).
 The name **RatTunnel** is a nod to [Ratspeak](https://github.com/ratspeak/), a messaging app/platform built on [Reticulum](https://github.com/markqvist/Reticulum/).
@@ -109,6 +114,126 @@ save                     # persist the setting
 ```
 
 When `boot-reset` is on, each power cycle generates a fresh identity key pair — the node appears as a different Reticulum destination on every boot. The RatHole flag itself is preserved across wipes so the setting survives reboot.
+
+
+## Ikoka Stick target (XIAO nRF52840 + E22-900M30S)
+
+Hardware: [ndoo/ikoka-stick-meshtastic-device](https://github.com/ndoo/ikoka-stick-meshtastic-device),
+populated with a Seeed XIAO nRF52840 and an EBYTE E22-900M30S (SX1262 +
+PA + LNA, 30 dBm). Build with:
+
+```
+pio run -e ikoka_stick_transport
+```
+
+Outputs land in `.pio/build/ikoka_stick_transport/` (`firmware.uf2` for
+drag-and-drop onto the `XIAO-BOOT` bootloader drive, `firmware.zip` for
+`adafruit-nrfutil`). Double-tap reset to get the drive, or use the
+console `dfu` command, or **hold the D0 user button while resetting**.
+
+### Do not flash the WisBlock image onto a XIAO
+
+The portal's Flash tab lists every release asset. The WisBlock 1W UF2
+loads at 0x26000, which on the XIAO is the **last page of the S140
+v7.3.0 SoftDevice**; writing it leaves the board hung in setup (solid
+green LED, USB enumerated but the console never answers). The portal now
+refuses that write when the bootloader drive is named `XIAO-BOOT`, but a
+manual drag-and-drop is not protected. Always pick the
+`rns-transport-ikoka-stick-*.uf2` asset for this board. Recovery without
+serial DFU: `tools/make_sd_repair_uf2.py`, procedure in
+`docs/BENCH_IKOKA_STICK.md` §0b.
+
+### Board revision — read this first
+
+The E22 is fed by an MT3608 boost converter hanging off the XIAO's
+charger output. **Ikoka Stick boards before v0.2.0 drew excessive current
+when no battery was inserted**; fixed by commit
+[2cd2400](https://github.com/ndoo/ikoka-stick-meshtastic-device/commit/2cd2400)
+("Supply E22 LoRa module +5V2 rail from 5V when no battery is present",
+tag `v0.2.0-52a6ed2`). Commit 84d24a0 also raised the LoRa supply
+current budget from 1 A to 2.5 A. Use v0.2.0 or later, and keep
+RatTunnel's power mitigations (17→18 dBm conservative default, SX1262
+current limit 140 mA, DCDC regulator, announce-time TX cap, watchdog +
+reset-cause logging) — they are all active on this target.
+
+### TX power is a firmware invariant on this board
+
+The E22-900M30S PA will be damaged by too much SX1262 drive. RatTunnel's
+WisBlock power table (17 dBm into a SKY66122) is **not** valid here, so
+this target carries its own table in `include/RNSConfig.h`:
+
+| Constant | E22-900M30S | Source |
+|---|---|---|
+| `LORA_TX_DBM_VARIANT_MAX` | 20 dBm | MeshCore `variants/ikoka_stick_nrf/platformio.ini` @ 0679dbe: "limit txpower to 20dBm on E22-900M30S … 20dBm in -> 30dBm out" |
+| `LORA_TX_DBM_MAX_SAFE` (build cap) | 18 dBm | 2 dB under the ceiling, pending power-meter check |
+| `LORA_TX_DBM` (default) | 18 dBm | |
+| `LORA_TX_DBM_ANNOUNCE_SAFE` | 18 dBm | same PA basis; rail rated 2.5 A |
+
+Ebyte's own E22-900M30S manual (v1.20 §2.2 p.3 / v1.5 rev 1.4 §2.2 p.5)
+gives only "Max Tx power 29.5/30/31 dBm, TX current 650 mA" and **no PA
+gain or drive-level table**, so the ceiling is MeshCore's field-proven
+figure, not a datasheet number. The 9 dBm limit you may have seen quoted
+for Ikoka boards is MeshCore's rule for the **E22-900M33S**, a different
+module ("9dBm in -> 33dBm out").
+
+The cap is enforced in `RNSRadio::clampTxDbm()`, which is the only path
+to `lora.setOutputPower()` and `lora.begin()`. The console `set txpower`,
+`profile` presets, a persisted `config.bin` from another build, and the
+`scan`/`sfscan` re-inits all pass through it. A `static_assert` refuses
+to build a cap above the variant maximum.
+
+**Verify with a power meter before sustained TX** — see
+[docs/BENCH_IKOKA_STICK.md](docs/BENCH_IKOKA_STICK.md).
+
+### Pin map
+
+From the Ikoka README GPIO table, raw nRF52840 numbering (pca10056):
+
+| Function | XIAO | GPIO | # |
+|---|---|---|---|
+| User button (active LOW, board pull-up) | D0 | P0.02 | 2 |
+| E22 DIO1 (IRQ) | D1 | P0.03 | 3 |
+| E22 RST | D2 | P0.28 | 28 |
+| E22 BUSY | D3 | P0.29 | 29 |
+| E22 NSS | D4 | P0.04 | 4 |
+| E22 RXEN | D5 | P0.05 | 5 |
+| E22 SCK / MISO / MOSI | D8 / D9 / D10 | P1.13 / P1.14 / P1.15 | 45 / 46 / 47 |
+| E22 TXEN | — | wired to SX1262 **DIO2** on the PCB | `setDio2AsRfSwitch(true)` |
+| LEDs (active LOW) | — | green P0.30, blue P0.06, red P0.26 | 30 / 6 / 26 |
+
+The optional SSD1306 OLED on D6/D7 is not used.
+
+### SoftDevice / linker
+
+The XIAO ships with S140 **v7.3.0**, so this env uses
+`boards/xiao_nrf52840_s140v7.json` (fwid 0x0123), links with
+`boards/nrf52840_s140_v7.ld` (app at 0x27000) and compiles against the
+v7 API headers in `lib/nrf52/`. Provenance in `boards/README.md`.
+`tools/generate_uf2.py` needs no change: the UF2 family ID is the same
+nRF52840 ID and the base address is read from the hex.
+
+### Memory
+
+| | WisBlock 1W | Ikoka Stick |
+|---|---|---|
+| `.data` + `.bss` (arm-none-eabi-size) | 1,064 + 234,456 = 235,520 B | 1,160 + 234,360 = 235,520 B |
+| PlatformIO "RAM used" (`.data`+`.bss` minus the BSP's own reservation) | 111,720 B of 248,832 | 111,824 B of 237,568 |
+| Flash (`.text`+`.data`) | 313,256 B (app @ 0x26000) | 308,344 B (app @ 0x27000) |
+
+The Ikoka figure has 11,264 B less RAM available because the S140 v7
+linker script reserves RAM up to 0x20006000 for the SoftDevice. Live
+free heap: `status` on the console prints `Free RAM:` (stack pointer
+minus heap end); record it in the bench sheet.
+
+### Path persistence
+
+Neither target persists the path table; `/paths.bin` is reserved but
+never written (`PATH_TABLE_MAX` 200 entries live in RAM only). Internal
+LittleFS is 28 KB (7 × 4 KB pages at 0xED000) shared by identity, config,
+LED, morse, security, auth and name blobs — a full 200-entry table
+(~27 KB) would not fit there anyway. The XIAO's on-board 2 MB P25Q16H
+QSPI flash is the natural home if persistence is added; costing is in
+`docs/DeveloperGuide.md`.
 
 ## Hardware Requirements
 

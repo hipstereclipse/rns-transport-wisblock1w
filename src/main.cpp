@@ -8,7 +8,7 @@
  *   3. LittleFS (persistence)
  *   4. Identity (load or generate)
  *   5. Transport engine
- *   6. Radio (SX1262 + RAK13302)
+ *   6. Radio (SX1262 + board PA stage, see RNSConfig.h)
  *   7. Console
  *
  * SAFETY:
@@ -27,6 +27,7 @@
 #include "RNSTransport.h"
 #include "RNSConsole.h"
 #include "RNSPersistence.h"
+#include "RNSDfu.h"
 #include <nrf_wdt.h>
 #include <ctype.h>
 
@@ -628,10 +629,16 @@ static void emitLedAlertStatus(Stream& io) {
     io.println();
 }
 
+// LED_ACTIVE_HIGH (RNSConfig.h): WisBlock LEDs are active HIGH, the
+// XIAO's common-anode RGB is active LOW.
+static inline int ledLevel(bool on) {
+    return (on == (LED_ACTIVE_HIGH != 0)) ? HIGH : LOW;
+}
+
 static void writeLedChannel(uint8_t channel, bool on) {
     if (!ledChannelAvailable(channel)) return;
     if (ledOutputState[channel] == on) return;
-    digitalWrite(ledChannelPin(channel), on ? HIGH : LOW);
+    digitalWrite(ledChannelPin(channel), ledLevel(on));
     ledOutputState[channel] = on;
 }
 
@@ -1891,9 +1898,34 @@ void setup() {
     if (PIN_LED_GREEN >= 0) pinMode(PIN_LED_GREEN, OUTPUT);
     if (PIN_LED_BLUE >= 0) pinMode(PIN_LED_BLUE, OUTPUT);
     if (PIN_LED_RED >= 0) pinMode(PIN_LED_RED, OUTPUT);
-    if (PIN_LED_GREEN >= 0) digitalWrite(PIN_LED_GREEN, HIGH);
-    if (PIN_LED_BLUE >= 0) digitalWrite(PIN_LED_BLUE, LOW);
-    if (PIN_LED_RED >= 0) digitalWrite(PIN_LED_RED, LOW);
+    if (PIN_LED_GREEN >= 0) digitalWrite(PIN_LED_GREEN, ledLevel(true));
+    if (PIN_LED_BLUE >= 0) digitalWrite(PIN_LED_BLUE, ledLevel(false));
+    if (PIN_LED_RED >= 0) digitalWrite(PIN_LED_RED, ledLevel(false));
+
+    // ── User button → UF2 bootloader (boards with PIN_USER_BUTTON) ──
+    // Hold the button through power-on for BUTTON_DFU_HOLD_MS and the
+    // node reboots into DFU via the same GPREGRET path as the console
+    // `dfu` command. The bootloader is never modified. Checked before
+    // USB/serial so a wedged main loop can still be recovered.
+#if PIN_USER_BUTTON >= 0
+    pinMode(PIN_USER_BUTTON, BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
+    delay(5);
+    {
+        const int pressed = BUTTON_ACTIVE_LOW ? LOW : HIGH;
+        uint32_t t0 = millis();
+        bool held = true;
+        while (millis() - t0 < BUTTON_DFU_HOLD_MS) {
+            if (digitalRead(PIN_USER_BUTTON) != pressed) { held = false; break; }
+            delay(10);
+        }
+        if (held) {
+            // Signal with all available LEDs, then go.
+            writeLedMask(availableLedMask(), true);
+            delay(200);
+            rnsRebootToDfu();
+        }
+    }
+#endif
 
     // USB serial
     Serial.begin(115200);
@@ -1903,7 +1935,7 @@ void setup() {
     }
 
     Serial.println(F("[RNS] ── RatTunnel Transport Node ──"));
-    Serial.println(F("[RNS] WisBlock 1W  |  " FW_DISPLAY_VERSION));
+    Serial.println(F("[RNS] " BOARD_DISPLAY_NAME "  |  " FW_DISPLAY_VERSION));
     printResetReason();
 
     // ── Persistence ───────────────────────────────────────
@@ -2010,7 +2042,7 @@ void setup() {
             emitPowerStatus(Serial);
         }
     } else {
-        Serial.println(F("FAILED — check RAK13302 connection"));
+        Serial.println(F("FAILED — check " BOARD_MODULE_NAME " connection"));
         Serial.print(F("[DIAG] Radio init error code: "));
         Serial.println(radio.lastInitState);
         Serial.print(F("[DIAG] Init attempts: "));
@@ -2035,7 +2067,9 @@ void setup() {
         Serial.print(radio.curFreqMHz, 3); Serial.print(F(" MHz, SF"));
         Serial.print(radio.curSF); Serial.print(F(", BW"));
         Serial.print(radio.curBwKHz, 0); Serial.print(F(" kHz, "));
-        Serial.print(radio.curTxDbm); Serial.println(F(" dBm (+8 dB PA)"));
+        Serial.print(radio.curTxDbm); Serial.print(F(" dBm SX1262 drive (cap "));
+        Serial.print(LORA_TX_DBM_MAX_SAFE); Serial.print(F(", announce "));
+        Serial.print(LORA_TX_DBM_ANNOUNCE_SAFE); Serial.println(F(") + board PA"));
     }
 
     // If radio failed, enter error mode (console stays alive)

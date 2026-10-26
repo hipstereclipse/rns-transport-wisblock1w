@@ -2748,7 +2748,7 @@
       <strong>Put device into DFU mode manually:</strong>
       <ol>
         <li>Double-tap the <strong>reset button</strong> on the WisBlock.</li>
-        <li>A USB drive named <code style="font-family:var(--mono);font-size:0.85em;">RAK4631</code> (or similar) will appear on your computer.</li>
+        <li>A USB drive named <code style="font-family:var(--mono);font-size:0.85em;">RAK4631</code> (WisBlock) or <code style="font-family:var(--mono);font-size:0.85em;">XIAO-BOOT</code> (Ikoka Stick / XIAO nRF52840) will appear on your computer.</li>
         <li>Click <strong>"Write to device drive"</strong> below and select that drive.</li>
       </ol>
     </div>
@@ -2762,7 +2762,7 @@
         </button>
         <button class="qbtn" id="downloadUf2Btn" onclick="saveFile()">Download UF2</button>
       </div>
-      <div class="drive-hint" id="driveHint">On first use, a folder picker will open — select the <strong>RAK4631</strong> USB drive</div>
+      <div class="drive-hint" id="driveHint">On first use, a folder picker will open — select the <strong>RAK4631</strong> (WisBlock) or <strong>XIAO-BOOT</strong> (Ikoka Stick) USB drive</div>
     </div>
 
     <!-- Success -->
@@ -6863,6 +6863,7 @@ async function doConnect() {
         { usbVendorId: 0x10C4 },
         { usbVendorId: 0x0403 },
         { usbVendorId: 0x2341 },
+        { usbVendorId: 0x2886 },  // Seeed Studio (XIAO nRF52840 / Ikoka Stick)
       ]
     });
     await openSelectedPort(selectedPort);
@@ -6888,7 +6889,7 @@ async function autoConnectNow(silent = false) {
       return true;
     }
 
-    if (!silent) showFlashAlert('info', 'Select your RAK4631 serial port to connect.');
+    if (!silent) showFlashAlert('info', 'Select your RAK4631 / XIAO serial port to connect.');
     await doConnect();
     if (connected && !silent) showFlashAlert('info', 'Serial connected.');
     return connected;
@@ -6911,7 +6912,7 @@ async function enterDfuMode() {
   try {
     await sendCmd('dfu', { bypassCooldown: true, allowLocked: true });
     sysLog('DFU command sent.\n');
-    showFlashAlert('info', 'DFU command sent. The RAK4631 USB drive should appear in a few seconds.');
+    showFlashAlert('info', 'DFU command sent. The RAK4631 (WisBlock) or XIAO-BOOT (Ikoka Stick) USB drive should appear in a few seconds.');
     advanceWizard(2);
   } catch (err) {
     showFlashAlert('error', `Failed to enter DFU mode: ${err.message}`);
@@ -7058,7 +7059,7 @@ async function startFlash(eraseBeforeFlash = false) {
     // send the DFU command automatically.
     if (!connected && ('serial' in navigator)) {
       showFlashAlert('info',
-        'Select your RAK4631 serial port to trigger DFU automatically. If you cancel, manual DFU instructions will be shown.');
+        'Select your RAK4631 / XIAO serial port to trigger DFU automatically. If you cancel, manual DFU instructions will be shown.');
       await autoConnectNow(true);
     }
 
@@ -7099,7 +7100,7 @@ async function startFlash(eraseBeforeFlash = false) {
       document.getElementById('manualDfu').classList.add('show');
       document.getElementById('writeDriveSection').classList.add('show');
       showFlashAlert('info',
-        'Automatic DFU trigger was not available. Follow the instructions below, then click "Write to device drive" when the RAK4631 USB drive appears.');
+        'Automatic DFU trigger was not available. Follow the instructions below, then click "Write to device drive" when the RAK4631 / XIAO-BOOT USB drive appears.');
       return; // Will resume via writeToDrive()
     }
 
@@ -7109,7 +7110,7 @@ async function startFlash(eraseBeforeFlash = false) {
     /* ── 3. Write firmware ── */
     if (supportsFileSystemAccess() && rememberedDriveHandle) {
       setPStep(3, 'active');
-      showFlashAlert('info', 'Waiting for the remembered RAK4631 drive to reappear for automatic write…');
+      showFlashAlert('info', 'Waiting for the remembered bootloader drive to reappear for automatic write…');
       const autoWritten = await tryWriteToRememberedDrive(buf, firmwareName);
       if (autoWritten) {
         setProgress(85);
@@ -7129,10 +7130,10 @@ async function startFlash(eraseBeforeFlash = false) {
 
     if (supportsFileSystemAccess()) {
       showFlashAlert('info', rememberedDriveHandle
-        ? 'Firmware is ready. If automatic write did not start, click "Write to device drive" to reselect the RAK4631 USB drive.'
-        : 'Firmware is ready. First-time setup: click "Write to device drive" and select the RAK4631 USB drive once.');
+        ? 'Firmware is ready. If automatic write did not start, click "Write to device drive" to reselect the RAK4631 / XIAO-BOOT USB drive.'
+        : 'Firmware is ready. First-time setup: click "Write to device drive" and select the RAK4631 / XIAO-BOOT USB drive once.');
     } else {
-      showFlashAlert('info', 'Firmware is ready. Click "Download UF2", then drag the file onto the RAK4631 USB drive.');
+      showFlashAlert('info', 'Firmware is ready. Click "Download UF2", then drag the file onto the RAK4631 / XIAO-BOOT USB drive.');
     }
     document.getElementById('flashBtn').disabled = false;
     return;
@@ -7264,8 +7265,8 @@ function refreshEnvironmentNotice() {
     if (writeBtn) writeBtn.disabled = false;
     if (downloadBtn) downloadBtn.disabled = false;
     if (driveHint) driveHint.innerHTML = rememberedDriveHandle
-      ? 'Automatic write can reuse the remembered <strong>RAK4631</strong> drive in this tab; click <strong>Write to device drive</strong> if you need to reselect it.'
-      : 'On first use, a folder picker will open — select the <strong>RAK4631</strong> USB drive';
+      ? 'Automatic write can reuse the remembered bootloader drive in this tab; click <strong>Write to device drive</strong> if you need to reselect it.'
+      : 'On first use, a folder picker will open — select the <strong>RAK4631</strong> (WisBlock) or <strong>XIAO-BOOT</strong> (Ikoka Stick) USB drive';
     return;
   }
 
@@ -7273,7 +7274,7 @@ function refreshEnvironmentNotice() {
   notice.classList.add('show');
   if (writeBtn) writeBtn.disabled = true;
   if (downloadBtn) downloadBtn.disabled = false;
-  if (driveHint) driveHint.innerHTML = 'Use <strong>Download UF2</strong>, then drag the downloaded file onto the <strong>RAK4631</strong> USB drive manually.';
+  if (driveHint) driveHint.innerHTML = 'Use <strong>Download UF2</strong>, then drag the downloaded file onto the <strong>RAK4631</strong> / <strong>XIAO-BOOT</strong> USB drive manually.';
 }
 
 async function writeToDrive() {
@@ -7282,7 +7283,7 @@ async function writeToDrive() {
     return;
   }
   if (!supportsFileSystemAccess()) {
-    showFlashAlert('warn', `${fileSystemAccessHint()} Use the Download UF2 button, then drag the file onto the RAK4631 drive manually.`);
+    showFlashAlert('warn', `${fileSystemAccessHint()} Use the Download UF2 button, then drag the file onto the RAK4631 / XIAO-BOOT drive manually.`);
     saveFile();
     return;
   }
@@ -7375,6 +7376,33 @@ async function withTimeout(promise, ms, message) {
   }
 }
 
+// Returns an error string if `bytes` (a UF2) must not be written to `dir`,
+// or null when it is safe / unknown.
+function checkImageForDrive(dir, bytes) {
+  if (!bytes || bytes.length < 512) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (dv.getUint32(0, true) !== 0x0A324655) return null;      // not a UF2 header
+  const base = dv.getUint32(12, true);                          // first block target address
+  const drive = (dir && dir.name) ? String(dir.name) : '';
+  const isXiaoDrive = /XIAO/i.test(drive);
+  const isRakDrive  = /RAK4631|WISBLOCK|RAK/i.test(drive);
+  const imageKind = base === 0x27000 ? 'S140 v7.3.0 (Ikoka Stick / XIAO nRF52840)'
+                  : base === 0x26000 ? 'S140 v6.1.1 (WisBlock 1W / RAK4631)'
+                  : base === 0x1000  ? 'SoftDevice image'
+                  : null;
+  if (isXiaoDrive && base === 0x26000) {
+    return `Refusing to write: this UF2 is the WisBlock 1W image (loads at 0x26000), but the drive is "${drive}". ` +
+           'On a XIAO nRF52840 that address is the last page of the S140 v7.3.0 SoftDevice and the board will no longer boot. ' +
+           'Pick the rns-transport-ikoka-stick asset (or a local ikoka_stick_transport firmware.uf2).';
+  }
+  if (isRakDrive && base === 0x27000) {
+    return `Refusing to write: this UF2 is the Ikoka Stick / XIAO image (loads at 0x27000), but the drive is "${drive}". ` +
+           'A RAK4631 boots its app at 0x26000, so this image would never run. Pick the rns-transport-wisblock1w asset.';
+  }
+  if (imageKind) sysLog(`UF2 load address 0x${base.toString(16)} → ${imageKind}; drive "${drive || '?'}"\n`);
+  return null;
+}
+
 async function writeBufferToDir(dir, buf, name, onProgress = null) {
   const ext = name.split('.').pop().toLowerCase();
   // nRF52840 UF2 bootloader expects a UF2 file at the root of the drive.
@@ -7387,6 +7415,20 @@ async function writeBufferToDir(dir, buf, name, onProgress = null) {
   }
 
   const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer || buf);
+
+  // ── Board / image compatibility guard ─────────────────────────────
+  // The WisBlock image links at 0x26000 (S140 v6.1.1). On a XIAO
+  // nRF52840 that address is the LAST PAGE of the S140 v7.3.0
+  // SoftDevice, so writing it bricks the app boot path (solid green
+  // LED, dead console) until the SoftDevice page is restored. Refuse
+  // the write when the bootloader drive name and the UF2's load
+  // address disagree.
+  const guard = checkImageForDrive(dir, bytes);
+  if (guard) {
+    showFlashAlert('error', guard);
+    throw new Error(guard);
+  }
+
   const fileHandle = await dir.getFileHandle(name, { create: true });
   const writable   = await fileHandle.createWritable();
   const chunkSize = 64 * 1024;

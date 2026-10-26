@@ -58,6 +58,11 @@ jobs:
           platformio run -e wisblock_1w_transport \
             -v
 
+      - name: Build firmware (ikoka_stick_transport)
+        run: |
+          platformio run -e ikoka_stick_transport \
+            -v
+
       # ── Generate UF2 ────────────────────────────────────────────────────────
       - name: Get short commit SHA
         id: sha
@@ -68,11 +73,15 @@ jobs:
           python tools/generate_uf2.py \
             .pio/build/wisblock_1w_transport/firmware.hex \
             rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
+          python tools/generate_uf2.py \
+            .pio/build/ikoka_stick_transport/firmware.hex \
+            rns-transport-ikoka-stick-main-${{ steps.sha.outputs.short }}.uf2
 
-      - name: Verify UF2 was created
+      - name: Verify UF2s were created
         run: |
           ls -lh rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2
-          echo "UF2 artifact ready."
+          ls -lh rns-transport-ikoka-stick-main-${{ steps.sha.outputs.short }}.uf2
+          echo "UF2 artifacts ready."
 
       # ── Publish rolling "latest" release ─────────────────────────────────────
       # Creates (or updates) a release tagged "latest" on every push to main.
@@ -89,7 +98,7 @@ jobs:
             **Built:** ${{ github.event.head_commit.timestamp }}
 
             Flash this firmware using the [web flasher](https://hipstereclipse.github.io/rns-transport-wisblock1w/flasher/).
-          artifacts: "rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2"
+          artifacts: "rns-transport-wisblock1w-main-${{ steps.sha.outputs.short }}.uf2,rns-transport-ikoka-stick-main-${{ steps.sha.outputs.short }}.uf2"
           allowUpdates: true        # overwrite the release on every push
           replacesArtifacts: true   # replace the previous .uf2 asset
           makeLatest: true

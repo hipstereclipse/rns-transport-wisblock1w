@@ -1,7 +1,15 @@
 /**
  * @file RNSConfig.h
  * @brief Hardware pins, LoRa defaults, Reticulum protocol constants,
- *        and transport-engine tuning for WisBlock 1W.
+ *        and transport-engine tuning.
+ *
+ * Board selection (exactly one, set from platformio.ini build_flags):
+ *   (default)            WisBlock 1W  — RAK3401 + RAK13302 (SKY66122 PA)
+ *   BOARD_IKOKA_STICK    Ikoka Stick  — Seeed XIAO nRF52840 + EBYTE E22
+ *
+ * RF-module selection for the TX-power invariant (see "TX power" below):
+ *   (default)                 RAK13302
+ *   RADIO_MODULE_E22_900M30S  EBYTE E22-900M30S (30 dBm PA)
  *
  * Safety:  All tuning values sized for nRF52840 (256 KB RAM).
  *          Static allocation only — no heap usage after setup().
@@ -26,9 +34,73 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define FW_VERSION_STRING   "1.0.33"
 #define FW_PRODUCT_NAME     "RatTunnel"
 #define FW_DISPLAY_VERSION  "RatTunnel V. 1.0.33"
+#if defined(BOARD_IKOKA_STICK)
+#define FW_BUILD_TAG        "rattunnel-ikoka-stick"
+#else
 #define FW_BUILD_TAG        "rattunnel-wisblock1w"
+#endif
 
+#if defined(BOARD_IKOKA_STICK)
+// ── Ikoka Stick (Seeed XIAO nRF52840 + EBYTE E22-900M30S) pin mapping ─
+// Board: https://github.com/ndoo/ikoka-stick-meshtastic-device
+// Pin numbers are raw nRF52840 GPIO (pca10056 variant: P0.x = x,
+// P1.x = 32 + x), the same convention as the WisBlock map below.
+//
+//   XIAO  nRF52840  Function      Source
+//   D0    P0.02     user button   Ikoka README GPIO table (pull-up on
+//                                 board since commit d419bfd, active LOW)
+//   D1    P0.03     E22 DIO1      Ikoka README GPIO table
+//   D2    P0.28     E22 RST       Ikoka README GPIO table
+//   D3    P0.29     E22 BUSY      Ikoka README GPIO table
+//   D4    P0.04     E22 NSS       Ikoka README GPIO table
+//   D5    P0.05     E22 RXEN      Ikoka README GPIO table
+//   D8    P1.13     E22 SCK       Ikoka README GPIO table
+//   D9    P1.14     E22 MISO      Ikoka README GPIO table
+//   D10   P1.15     E22 MOSI      Ikoka README GPIO table
+//   —     —         E22 TXEN      NOT a GPIO. Wired to SX1262 DIO2 in
+//                                 ikoka-stick-meshtastic-device.kicad_sch
+//                                 (net TXEN(187.96,57.15) → DIO2
+//                                 (223.52,52.07)). Driven by
+//                                 setDio2AsRfSwitch(true); RXEN via
+//                                 setRfSwitchPins(RXEN, NC). Matches
+//                                 MeshCore variants/ikoka_stick_nrf/
+//                                 platformio.ini (SX126X_TXEN=RADIOLIB_NC,
+//                                 SX126X_DIO2_AS_RF_SWITCH=1).
+//   D6/D7 P1.11/12  SSD1306 I2C   optional OLED, not used by this firmware
+#define BOARD_DISPLAY_NAME  "Ikoka Stick"
+#define BOARD_MODULE_NAME   "XIAO nRF52840 + E22-900M30S"
+#define PIN_LORA_NSS         4   // P0.04  D4
+#define PIN_LORA_SCK        45   // P1.13  D8
+#define PIN_LORA_MISO       46   // P1.14  D9
+#define PIN_LORA_MOSI       47   // P1.15  D10
+#define PIN_LORA_DIO1_ACTIVE true   // real DIO1 line → interrupt-driven RX
+#define PIN_LORA_DIO1_PIN    3   // P0.03  D1
+#define PIN_LORA_BUSY       29   // P0.29  D3
+#define PIN_LORA_RESET      28   // P0.28  D2
+#define PIN_LORA_RXEN        5   // P0.05  D5 — E22 LNA/RF-switch RX enable
+#define PIN_LORA_ENABLE     -1   // no gated rail (MT3608 boost is always on)
+#define RADIO_HAS_RAK_PIN_DISCOVERY 0  // skip WisBlock P34/NRST/BUSY probing
+
+// LEDs — XIAO on-board RGB, common-anode, ACTIVE LOW.
+// Pins from Seeed Adafruit_nRF52_Arduino variants/Seeed_XIAO_nRF52840/
+// variant.cpp (D11=P0.26 red, D12=P0.06 blue, D13=P0.30 green);
+// polarity from MeshCore variants/ikoka_stick_nrf/variant.h LED_STATE_ON (0).
+#define PIN_LED_GREEN       30   // P0.30
+#define PIN_LED_BLUE         6   // P0.06
+#define PIN_LED_RED         26   // P0.26
+#define LED_ACTIVE_HIGH      0
+
+// User button — D0 / P0.02, active LOW (board pull-up). Hold during
+// boot to reboot into the UF2 bootloader (same GPREGRET path as the
+// console `dfu` command; the bootloader itself is never touched).
+#define PIN_USER_BUTTON      2   // P0.02
+#define BUTTON_ACTIVE_LOW    1
+#define BUTTON_DFU_HOLD_MS   2000
+
+#else
 // ── WisBlock 1W (RAK3401 + RAK13302) pin mapping ─────────
+#define BOARD_DISPLAY_NAME  "WisBlock 1W"
+#define BOARD_MODULE_NAME   "RAK3401 + RAK13302"
 #define PIN_LORA_NSS        26   // WB_SPI_CS
 #define PIN_LORA_SCK         3   // WB_SPI_CLK
 #define PIN_LORA_MISO       29   // WB_SPI_MISO
@@ -38,20 +110,77 @@ inline long random(long a, long b) { return a + (rand() % (b - a)); }
 #define PIN_LORA_BUSY        9   // discovered P9 via Phase C timing probe
 #define PIN_LORA_RESET       4   // discovered P4 via Phase B brute-force
 #define PIN_LORA_ENABLE     34   // WB_IO2 → 3V3_S gate (P34, tested V1.0.12)
+#define PIN_LORA_RXEN       -1   // RAK13302 RF switch is DIO2-only
+#define RADIO_HAS_RAK_PIN_DISCOVERY 1
 
 // LEDs (active HIGH)
 #define PIN_LED_GREEN       35
 #define PIN_LED_BLUE        36
 #define PIN_LED_RED         -1
+#define LED_ACTIVE_HIGH      1
+
+// No user button on the WisBlock base (see SAFE_BOOT note below)
+#define PIN_USER_BUTTON     -1
+#define BUTTON_ACTIVE_LOW    1
+#define BUTTON_DFU_HOLD_MS   2000
+#endif
 
 // ── LoRa default parameters ──────────────────────────────
 #define LORA_FREQ_MHZ       915.0f   // US ISM band
 #define LORA_BW_KHZ         125.0f
 #define LORA_SF             9
 #define LORA_CR             5        // coding rate 4/5
-#define LORA_TX_DBM         17       // safer default for power stability (PA adds ~8 dB)
-#define LORA_TX_DBM_MAX_SAFE 17
+
+// ── TX power: HARD FIRMWARE INVARIANT, NOT A USER SETTING ─────────────
+// The SX1262 setpoint written to the chip is clamped to
+// LORA_TX_DBM_MAX_SAFE in RNSRadio::clampTxDbm(), which every write of
+// the setpoint (begin(), setTxPower(), console scan re-inits) goes
+// through. No console command, config file, profile or region path can
+// exceed it. LORA_TX_DBM_VARIANT_MAX is the per-RF-module ceiling; the
+// static_asserts below refuse to build a cap above it.
+#if defined(RADIO_MODULE_E22_900M30S)
+// EBYTE E22-900M30S = SX1262 + PA + LNA, 30 dBm at the antenna.
+//
+// Ebyte's own user manual (E22-900M30S_UserManual_EN v1.20 §2.2 p.3;
+// v1.5 rev 1.4 §2.2 p.5) states only "Max Tx power 29.5/30.0/31 dBm"
+// and "TX current 650 mA"; it publishes NO PA gain figure and NO
+// chip-setting-to-output table. So the drive level cannot be derived
+// from the datasheet alone.
+//
+// Ceiling taken from MeshCore variants/ikoka_stick_nrf/platformio.ini
+// (commit 0679dbe), env [ikoka_stick_nrf_e22_30dbm]:
+//   "limit txpower to 20dBm on E22-900M30S. Anything higher will
+//    cause distortion in the PA output. 20dBm in -> 30dBm out"
+// i.e. ~10 dB PA gain; 20 dBm chip drive is the field-proven maximum.
+// (The often-quoted 9 dBm limit is MeshCore's rule for the E22-900M33S,
+// a different module: "9dBm in -> 33dBm out".)
+//
+// Cap is set 2 dB under that ceiling. Expected output at 18 dBm drive
+// is ~28 dBm; MUST be confirmed with a power meter before sustained TX
+// (see docs/BENCH_IKOKA_STICK.md).
+#define LORA_TX_DBM_VARIANT_MAX   20   // MeshCore-proven ceiling for E22-900M30S
+#define LORA_TX_DBM_MAX_SAFE      18   // configured cap for this build
+#define LORA_TX_DBM               18   // default setpoint (SX1262 dBm, before PA)
+#define LORA_TX_DBM_ANNOUNCE_SAFE 18   // announce-time cap (same PA basis; the
+                                       // MT3608 rail is rated 2.5 A since Ikoka
+                                       // 84d24a0 so no extra derating is applied)
+#else
+// RAK13302 (SX1262 + SKY66122 PA, ~+8 dB). Values unchanged from V1.0.33.
+#define LORA_TX_DBM_VARIANT_MAX   17
+#define LORA_TX_DBM               17       // safer default for power stability (PA adds ~8 dB)
+#define LORA_TX_DBM_MAX_SAFE      17
 #define LORA_TX_DBM_ANNOUNCE_SAFE LORA_TX_DBM  // Use full TX power so peers discover us
+#endif
+#define LORA_TX_DBM_MIN           -9       // SX1262 minimum
+
+static_assert(LORA_TX_DBM_MAX_SAFE <= LORA_TX_DBM_VARIANT_MAX,
+              "LORA_TX_DBM_MAX_SAFE exceeds the RF module's variant maximum");
+static_assert(LORA_TX_DBM <= LORA_TX_DBM_MAX_SAFE,
+              "LORA_TX_DBM default exceeds LORA_TX_DBM_MAX_SAFE");
+static_assert(LORA_TX_DBM_ANNOUNCE_SAFE <= LORA_TX_DBM_MAX_SAFE,
+              "LORA_TX_DBM_ANNOUNCE_SAFE exceeds LORA_TX_DBM_MAX_SAFE");
+static_assert(LORA_TX_DBM >= LORA_TX_DBM_MIN && LORA_TX_DBM_ANNOUNCE_SAFE >= LORA_TX_DBM_MIN,
+              "TX power below SX1262 minimum");
 #define LORA_PREAMBLE       18       // ratspeak-us balanced default
 #define LORA_SYNC_WORD      0x12     // private LoRa sync word
 
