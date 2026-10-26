@@ -2032,7 +2032,7 @@ void setup() {
     // ── Summary ───────────────────────────────────────────
     if (radioOk) {
         Serial.print(F("[RNS] Active: "));
-        Serial.print(radio.curFreqMHz, 1); Serial.print(F(" MHz, SF"));
+        Serial.print(radio.curFreqMHz, 3); Serial.print(F(" MHz, SF"));
         Serial.print(radio.curSF); Serial.print(F(", BW"));
         Serial.print(radio.curBwKHz, 0); Serial.print(F(" kHz, "));
         Serial.print(radio.curTxDbm); Serial.println(F(" dBm (+8 dB PA)"));

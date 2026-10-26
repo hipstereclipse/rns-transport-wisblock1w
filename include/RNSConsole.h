@@ -295,7 +295,7 @@ private:
             io->print(F("  Init RC:   ")); io->println(radio->lastInitState);
             io->print(F("  Attempts:  ")); io->println(radio->initAttempts);
         }
-        io->print(F("  Frequency: ")); io->print(radio->curFreqMHz, 1); io->println(F(" MHz"));
+        io->print(F("  Frequency: ")); io->print(radio->curFreqMHz, 3); io->println(F(" MHz"));
         io->print(F("  Bandwidth: ")); io->print(radio->curBwKHz, 1); io->println(F(" kHz"));
         io->print(F("  SF:        ")); io->println(radio->curSF);
         io->print(F("  CR:        4/")); io->println(radio->curCR);
@@ -322,7 +322,7 @@ private:
             float f = atof(value);
             if (f < 100.0f || f > 1000.0f) { io->println(F("Invalid frequency")); return; }
             radio->setFrequency(f);
-            io->print(F("Frequency → ")); io->print(f, 1); io->println(F(" MHz"));
+            io->print(F("Frequency → ")); io->print(f, 3); io->println(F(" MHz"));
         } else if (strcmp(param, "sf") == 0) {
             int sf = atoi(value);
             if (sf < 5 || sf > 12) { io->println(F("SF must be 5–12")); return; }
@@ -687,7 +687,7 @@ private:
         io->print(F("tx=")); io->print(s.txPackets); io->print(F(" "));
         io->print(F("fwd=")); io->print(s.fwdPackets); io->print(F(" "));
         io->print(F("paths=")); io->print(s.pathEntries); io->print(F(" "));
-        io->print(F("freq_mhz=")); io->print(radio->curFreqMHz, 1); io->print(F(" "));
+        io->print(F("freq_mhz=")); io->print(radio->curFreqMHz, 3); io->print(F(" "));
         io->print(F("sf=")); io->print(radio->curSF); io->print(F(" "));
         io->print(F("bw_khz=")); io->print(radio->curBwKHz, 1); io->print(F(" "));
         io->print(F("tx_dbm=")); io->println(radio->curTxDbm);
@@ -1007,7 +1007,7 @@ private:
         io->print(F("  Pending pktLen: ")); io->println(pktLen);
 
         // 6. Current radio params
-        io->print(F("  Freq: ")); io->print(radio->curFreqMHz, 1); io->println(F(" MHz"));
+        io->print(F("  Freq: ")); io->print(radio->curFreqMHz, 3); io->println(F(" MHz"));
         io->print(F("  SF: ")); io->println(radio->curSF);
         io->print(F("  BW: ")); io->print(radio->curBwKHz, 1); io->println(F(" kHz"));
         io->print(F("  Sync: 0x")); io->println(radio->curSyncWord, HEX);
@@ -1534,7 +1534,7 @@ private:
 
         // ── Phase 1: SF sweep on current frequency ──
         io->println(F("\n── Phase 1: Spreading Factor Sweep ──"));
-        io->print(F("  Freq: ")); io->print(savedFreq, 1);
+        io->print(F("  Freq: ")); io->print(savedFreq, 3);
         io->print(F(" MHz  BW: ")); io->print(savedBW, 0);
         io->println(F(" kHz  Sync: 0x12"));
         io->println(F("  SF   Preambles  Syncs  RxDone  MaxRSSI"));
@@ -1688,7 +1688,7 @@ private:
         io->print(F("  Best SF: ")); io->print(bestSF);
         io->print(F(" (")); io->print(bestCount);
         io->println(F(" preambles in 3s)"));
-        io->print(F("  Freq: ")); io->print(savedFreq, 1);
+        io->print(F("  Freq: ")); io->print(savedFreq, 3);
         io->println(F(" MHz"));
 
         // Known LoRa sync words to test
@@ -1864,7 +1864,7 @@ private:
         radio->lora.setDio2AsRfSwitch(true);
         radio->lora.setCurrentLimit(140.0f);
         radio->lora.startReceive();
-        io->print(F("  Restored: ")); io->print(savedFreq, 1);
+        io->print(F("  Restored: ")); io->print(savedFreq, 3);
         io->print(F(" MHz SF")); io->print(savedSF);
         io->print(F(" sync 0x")); io->print(savedSync, HEX);
         io->print(F(" rc=")); io->println(restoreRc);

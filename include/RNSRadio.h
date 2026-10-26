@@ -488,7 +488,7 @@ public:
         Serial.println(digitalRead(effBusy));
 
         Serial.println(F("[DIAG] SX1262 begin: starting init sequence (V" FW_VERSION_STRING ")"));
-        Serial.print(F("[DIAG]   freq=")); Serial.print(curFreqMHz, 1);
+        Serial.print(F("[DIAG]   freq=")); Serial.print(curFreqMHz, 3);
         Serial.print(F(" bw=")); Serial.print(curBwKHz, 1);
         Serial.print(F(" sf=")); Serial.print(curSF);
         Serial.print(F(" cr=")); Serial.print(curCR);
